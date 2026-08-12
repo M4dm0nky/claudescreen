@@ -44,6 +44,20 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
 /tmp/torget-tokens-test
 
 cc -std=c11 -Wall -Wextra -Werror -O1 \
+  -DFIXTURES_DIR="\"$(cd ../sim-fixtures && pwd)\"" \
+  ../components/app_tokens/max_tracker_parse.c \
+  test_max_tracker_parse.c /tmp/torget-cjson.o \
+  -o /tmp/torget-max-tracker-test
+/tmp/torget-max-tracker-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/app_tokens/max_tracker_presenter.c \
+  test_max_tracker_presenter.c \
+  -lm \
+  -o /tmp/torget-max-tracker-presenter-test
+/tmp/torget-max-tracker-presenter-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
   ../components/app_tokens/usage_presenter.c \
   test_usage_presenter.c \
   -o /tmp/torget-usage-presenter-test
@@ -110,4 +124,5 @@ cd ..
   tools.tokenserver.test_tokenserver \
   tools.tokenserver.test_agent_status \
   tools.tokenserver.test_usage_history \
-  tools.tokenserver.test_quota_cache -v
+  tools.tokenserver.test_quota_cache \
+  tools.tokenserver.test_max_tracker -v

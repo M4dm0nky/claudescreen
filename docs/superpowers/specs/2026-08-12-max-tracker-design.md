@@ -66,24 +66,39 @@ New module `tools/tokenserver/max_tracker.py`:
 
 ## Contract — GET /api/max-tracker (v1, flat, numbers not strings)
 
+Dense form: dates resolved server-side; device receives dense window (no
+date strings on the wire — index position alone carries the day).
+
 ```json
-{"v": 1, "todayLocal": "2026-08-12", "weeks": 20,
- "codingStreakDays": 47, "stale": false,
+{"v": 1, "weeks": 20, "stale": false, "codingStreakDays": 47,
  "claude": {"avgPeakPct": 62.0, "maxWeeksStreak": 0, "maxWeeks": 0,
             "maxDays": 0,
-            "days": [{"d": "2026-08-12", "pct": 91.0, "act": 1, "lvl": 2}],
-            "weeksMaxed": [{"w": "2026-W32", "maxed": false}]},
- "codex": {"same shape": 0}}
+            "weekMaxed": [0, 0, "...(20 total)", 0],
+            "days": [[-1, -1], [-1, 0], "...(140 total)", [91, 2]]},
+ "codex": {"planLabel": "PRO", "same shape": 0}}
 ```
 
-- `pct` null = honest absence (screen renders gray by `lvl`, or empty).
-- `lvl` 0–2 = server-computed volume tercile; null when inactive.
-- Aggregates (`codingStreakDays`, `avgPeakPct`, `maxWeeksStreak`, `maxDays`)
-  are server-computed; the screen never derives them.
+- `days` is fixed-length 140 (20 weeks × 7 days); index 0 is the oldest
+  ISO-Monday, index 139 is the Sunday of the current ISO week. Today is
+  the last non-padded cell, not always index 139 itself — any day after
+  today within that same final week is padding, rendered exactly like an
+  absent day. `pct` ranges −1..100 (−1 = no quota data for that day,
+  honest absence); `lvl` ranges −1..2 (−1 = inactive day, 0–2 =
+  server-computed volume tercile for activity-only backfill days). 100
+  is reserved for an exact quota max.
+- `weekMaxed` is fixed-length 20, one entry per ISO week aligned to Monday,
+  same left-to-right order as `days`; `1` = the general weekly window
+  reached 100 % that week, `0` otherwise.
+- `planLabel` is optional per provider: an allowlisted display string
+  ("PRO", "MAX 5X", "MAX 20X", "PLUS"). Absent flag → absent field →
+  nothing rendered.
+- `avgPeakPct` is `null` when there are zero real-`pct` days to average
+  (never fabricated); `codingStreakDays` is `null` before any activity is
+  recorded (device maps this to −1 = unknown).
+- Aggregates (`codingStreakDays`, `avgPeakPct`, `maxWeeksStreak`, `maxWeeks`,
+  `maxDays`) are server-computed; the screen never derives them.
 - `stale: true` when the server could not refresh today (mirrors the quota
   stale contract); header shows STALE, history cells render normally.
-- Days array covers exactly the requested window (server clamps to 20 weeks
-  aligned to ISO Monday); missing days simply absent → empty cells.
 
 ## Screen (components/app_tokens)
 
@@ -115,8 +130,10 @@ New module `tools/tokenserver/max_tracker.py`:
 
 - Fixtures: `max-tracker-full.json` (Codex 20 weeks, reds in maxed weeks),
   `max-tracker-coldstart.json` (Claude gray gradient + 5 colored days),
-  `max-tracker-empty.json` (all absent), `max-tracker-hostile.json`
-  (parser tests only: wrong types, >100 pct, bad dates, giant arrays).
+  `max-tracker-empty.json` (all absent). Hostile cases (wrong types, >100
+  pct, bad dates, giant arrays, duplicate keys, truncated JSON) live as
+  inline JSON string literals in `test/test_max_tracker_parse.c`, not a
+  fixture file — same pattern as the tokens and agent-status parser tests.
 - Sim key `M` feeds the next tracker fixture; `[`/`]` paging already covers
   the new views. Tour dumps `vibepulse-tracker-claude` and
   `vibepulse-tracker-codex`; static QA adds stale + empty states.

@@ -13,15 +13,17 @@ attention_fonts = (
     (root / "platform/fonts/plex_attention_52.c", "plex_attention_52"),
 )
 
-assert "#define TK_USAGE_SCREEN_VIEWS 5" in header
+assert "#define TK_USAGE_SCREEN_VIEWS 6" in header
 for enum_literal in (
     "VIEW_CLAUDE_FABLE = 0",
     "VIEW_CLAUDE_ALL = 1",
     "VIEW_CODEX_WEEKLY = 2",
     "VIEW_BURN_RATE = 3",
-    "VIEW_VOLUME = 4",
+    "VIEW_TRACKER_CLAUDE = 4",
+    "VIEW_TRACKER_CODEX = 5",
 ):
     assert enum_literal in app_header
+assert "VIEW_VOLUME" not in app_header
 
 for removed in (
     "create_claude_details_page",
@@ -38,7 +40,6 @@ for removed in (
 for required in (
     "create_quota_page",
     "create_burn_rate_page",
-    "create_volume_page",
     "usage_presenter_build_quota_page",
     "plex_num_164",
     "plex_headline_48",
@@ -60,12 +61,15 @@ assert "VIEW_CLAUDE_DETAILS" not in source
 assert "VIEW_OVERVIEW" not in source
 assert "VIEW_CLAUDE_HERO" not in source
 assert "VIEW_CODEX_HERO" not in source
+assert "VIEW_VOLUME" not in source
+assert "create_volume_page" not in source
+assert "usage_screen_set_volume" not in source
 
 create = source[source.index("void usage_screen_create"):]
 create = create[:create.index("void usage_screen_apply_tokens")]
 assert create.count("create_quota_page(") == 3
 assert create.count("create_burn_rate_page(") == 1
-assert create.count("create_volume_page(") == 1
+assert create.count("create_tracker_page(") == 2
 assert "tk_agent_monitor_create(root);" in create
 
 quota = source[source.index("static void create_quota_page"):]
@@ -101,21 +105,38 @@ assert "(uint64_t)now_us - (uint64_t)ui.agent_applied_at_us" in source
 assert "lv_obj_set_size(page->track, VP_CONTENT_W, VP_BAR_H);" in quota
 assert "lv_obj_set_size(page->marker, 3, VP_BAR_H + 8);" in quota
 
+refresh_live_header = source[source.index("static void refresh_live_header"):]
+refresh_live_header = refresh_live_header[
+    :refresh_live_header.index("static void refresh_header")
+]
+assert "ui.has_agent_snapshot && has_data" in refresh_live_header
+assert "usage_presenter_quota_status_text" in refresh_live_header
+for renderer_local_status in ('"NO DATA"', '"STALE"', '"LIVE"'):
+    assert renderer_local_status not in refresh_live_header
+assert "strcmp(rendered_context, context_text) != 0" in refresh_live_header
+assert "lv_label_set_text(context, context_text);" in refresh_live_header
+assert "*halo_visible != view.halo_active" in refresh_live_header
+assert "page->has_data && !ui.stale && view.halo_active" not in refresh_live_header
+assert refresh_live_header.count("lv_label_set_text") == 1
+assert "usage_live_build_header" in refresh_live_header
+
+# Kvot- OCH trackersidorna delar EXAKT samma liveheader-kärna — bara
+# stalebokföringen skiljer, ingen egen kopia av byggmotorn.
 refresh_header = source[source.index("static void refresh_header"):]
 refresh_header = refresh_header[
-    :refresh_header.index("static bool apply_today_bar")
+    :refresh_header.index("static void refresh_tracker_header")
 ]
-assert "ui.has_agent_snapshot && page->has_data" in refresh_header
 assert "ui.stale || page->quota_stale" in refresh_header
-assert "usage_presenter_quota_status_text" in refresh_header
-for renderer_local_status in ('"NO DATA"', '"STALE"', '"LIVE"'):
-    assert renderer_local_status not in refresh_header
-assert "strcmp(page->rendered_context, context) != 0" in refresh_header
-assert "lv_label_set_text(page->context, context);" in refresh_header
-assert "page->halo_visible != view.halo_active" in refresh_header
-assert "page->has_data && !ui.stale && view.halo_active" not in refresh_header
-assert refresh_header.count("lv_label_set_text") == 1
-assert "usage_live_build_header" in refresh_header
+assert "refresh_live_header(" in refresh_header
+
+refresh_tracker_header = source[
+    source.index("static void refresh_tracker_header"):
+]
+refresh_tracker_header = refresh_tracker_header[
+    :refresh_tracker_header.index("static bool apply_today_bar")
+]
+assert "ui.stale || page->quota_stale" in refresh_tracker_header
+assert "refresh_live_header(" in refresh_tracker_header
 
 apply_today = source[source.index("static bool apply_today_bar"):]
 apply_today = apply_today[:apply_today.index("static void apply_quota")]
@@ -133,35 +154,20 @@ assert "lv_label_set_text(page->percent, quota->pct_text);" in apply_quota
 assert 'quota->has_pct ? quota->pct_text : ""' not in apply_quota
 
 burn = source[source.index("static void create_burn_rate_page"):]
-burn = burn[:burn.index("static void create_volume_page")]
+burn = burn[:burn.index("static uint64_t agent_packet_age_ms")]
 for copy in ("BURN RATE", "WEEKLY", "FORECAST"):
     assert f'"{copy}"' in burn
 assert "251" in burn, "Burn Rate rows need the approved separator"
 assert "COL_CARD" not in burn
 
-volume = source[source.index("static void create_volume_page"):]
-volume = volume[:volume.index("void usage_screen_create")]
-for copy in ("VOLUME", "TOKENS", "USED TODAY", "SESSIONS", "MTOK THIS MONTH"):
-    assert f'"{copy}"' in source
-assert "COL_CARD" not in volume
-
-volume_setter = source[source.index("void usage_screen_set_volume"):]
-volume_setter = volume_setter[:volume_setter.index(
-    "void usage_screen_set_stale"
-)]
-for rendered in (
+for removed_volume in (
     "rendered_volume_value", "rendered_volume_sessions",
-    "rendered_volume_month",
+    "rendered_volume_month", "volume_value_initialized",
+    "volume_sessions_initialized", "volume_month_initialized",
+    "set_cached_label_text",
 ):
-    assert rendered in source, f"missing volume string cache: {rendered}"
-    assert rendered in volume_setter, f"volume setter does not use {rendered}"
-assert "isfinite(day_mtok)" in volume_setter
-assert "isfinite(month_mtok)" in volume_setter
-assert volume_setter.count("set_cached_label_text(") == 3
-cache_helper = source[source.index("static void set_cached_label_text"):]
-cache_helper = cache_helper[:cache_helper.index("static void open_launcher")]
-assert "strcmp(rendered, text) == 0" in cache_helper
-assert cache_helper.count("lv_label_set_text") == 1
+    assert removed_volume not in source, \
+        f"removed volume structure remains: {removed_volume}"
 
 assert 'lv_obj_set_tile_id(ui.tileview, index, 0, LV_ANIM_OFF)' in source
 assert "lv_timer_create" not in source, "steady pages must not rotate themselves"
@@ -266,4 +272,4 @@ for anchor in (31, 246, 321, 365, 430):
 assert "int usage_screen_current_view(void);" in header
 assert "usage_screen_current_view()" in sim
 
-print("OK: VibePulse five-page full-screen layout wiring")
+print("OK: VibePulse six-page full-screen layout wiring")

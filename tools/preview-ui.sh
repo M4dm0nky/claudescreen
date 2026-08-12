@@ -97,7 +97,6 @@ expected_names = {
     "torget-vibepulse-burn-early.bmp",
     "torget-vibepulse-burn-learning.bmp",
     "torget-vibepulse-burn-unavailable.bmp",
-    "torget-vibepulse-volume.bmp",
     "torget-vibepulse-claude-stale.bmp",
     "torget-vibepulse-claude-missing.bmp",
     "torget-vibepulse-codex-missing.bmp",
@@ -121,6 +120,10 @@ expected_names = {
     "torget-vibepulse-claude-done-static.bmp",
     "torget-vibepulse-codex-done-static.bmp",
     "torget-vibepulse-claude-swedish-project.bmp",
+    "torget-vibepulse-tracker-claude-coldstart.bmp",
+    "torget-vibepulse-tracker-codex-full.bmp",
+    "torget-vibepulse-tracker-empty.bmp",
+    "torget-vibepulse-tracker-stale.bmp",
 }
 actual_names = {path.name for path in capture_dir.iterdir()}
 missing = sorted(expected_names - actual_names)

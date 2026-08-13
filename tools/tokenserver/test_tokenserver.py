@@ -2254,6 +2254,28 @@ class LogRotationTests(unittest.TestCase):
                 Path(tmp) / "finns-inte.log", stderr_fd=2))
 
 
+class LogRotationWatchTests(unittest.TestCase):
+    def test_watch_keeps_checking_until_stopped(self):
+        # Startrotationen räcker inte för en långlivad process — vakten ska
+        # titta om och om igen och dö snyggt på stoppsignalen.
+        stop = threading.Event()
+        calls = []
+        with mock.patch.object(tokenserver, "_maybe_rotate_own_log",
+                               side_effect=lambda: calls.append(1)):
+            watcher = threading.Thread(
+                target=tokenserver._run_log_rotation_watch,
+                args=(stop,), kwargs={"interval_s": 0.01}, daemon=True)
+            watcher.start()
+            for _ in range(200):
+                if len(calls) >= 2:
+                    break
+                time.sleep(0.01)
+            stop.set()
+            watcher.join(timeout=2)
+        self.assertGreaterEqual(len(calls), 2)
+        self.assertFalse(watcher.is_alive())
+
+
 class ProbeTransitionLogTests(unittest.TestCase):
     """Övergångsloggen: en rad när probestatusen ändras, tystnad medan
     samma läge står — loggfilen ska vara läsbar över veckor."""
@@ -2273,6 +2295,33 @@ class ProbeTransitionLogTests(unittest.TestCase):
             self.assertIn("start -> usage_http_401",
                           "\n".join(captured.output))
 
+            with self.assertNoLogs("tokenserver"):
+                tokenserver._refresh_limits()
+
+    def test_probe_crash_replaces_stale_ok_status_and_logs_once(self):
+        # Kraschar proben innan den satt status fick "usage_http_200 + ok"
+        # stå kvar och ljuga medan värdena försvann — kraschen ska bli en
+        # egen status (syns på GET / och i röktestet) med traceback en
+        # gång per episod.
+        with mock.patch.object(tokenserver, "_probe_status",
+                               "usage_http_200 + ok"), \
+                mock.patch.object(tokenserver, "_probe_status_logged",
+                                  "usage_http_200 + ok"), \
+                mock.patch.object(tokenserver, "_last_limits", None), \
+                mock.patch.object(tokenserver, "_last_probed", 0.0), \
+                mock.patch.object(tokenserver, "_limits_refreshing", False), \
+                mock.patch.object(tokenserver, "_probe_failure_streak", 0), \
+                mock.patch.object(tokenserver, "_probe_limits",
+                                  side_effect=RuntimeError("boom")):
+            with self.assertLogs("tokenserver", level="INFO") as captured:
+                tokenserver._refresh_limits()
+            out = "\n".join(captured.output)
+            self.assertEqual(tokenserver._probe_status,
+                             "probe_crashed: RuntimeError")
+            self.assertIn("kraschade", out)
+            self.assertIn("-> probe_crashed: RuntimeError", out)
+
+            # Samma krasch igen: samma episod, ingen ny rad.
             with self.assertNoLogs("tokenserver"):
                 tokenserver._refresh_limits()
 

@@ -115,6 +115,20 @@ def _maybe_rotate_own_log(path=None, stderr_fd=2):
         return False
 
 
+_LOG_ROTATE_CHECK_S = 3600.0
+
+
+def _run_log_rotation_watch(stop_event, interval_s=None):
+    """Timvis rotationsvakt: startrotationen räcker inte för en process som
+    lever länge — en ihållande felande deltjänst kan annars skriva förbi
+    taket tills en orelaterad omstart råkar städa. Samma fstat-vakt som vid
+    start, så terminalkörningar förblir orörda; tråden sover resten av
+    tiden."""
+    interval = _LOG_ROTATE_CHECK_S if interval_s is None else interval_s
+    while not stop_event.wait(interval):
+        _maybe_rotate_own_log()
+
+
 def _read_server_rev():
     """Git-revisionen som faktiskt serverar — gör 'fel kod kör' synligt i en
     curl i stället för en timmes processarkeologi."""
@@ -741,11 +755,20 @@ def _probe_interval_s():
 
 def _refresh_limits():
     global _last_limits, _last_probed, _limits_refreshing, \
-        _probe_failure_streak, _probe_status_logged
+        _probe_failure_streak, _probe_status_logged, _probe_status
     try:
         refreshed = _probe_limits()
-    except Exception:
+    except Exception as e:
         refreshed = None
+        # Kraschar proben INNAN den hunnit sätta status skulle den gamla
+        # strängen stå kvar — i värsta fall "usage_http_200 + ok" medan
+        # värdena försvinner. En krasch är en bugg (ingen vanlig felväg):
+        # sätt en egen status och logga traceback en gång per episod.
+        crashed = f"probe_crashed: {type(e).__name__}"
+        if _probe_status != crashed:
+            log.exception("claude-proben kraschade (status var %s)",
+                          _probe_status)
+        _probe_status = crashed
     # Övergångsloggen: 401 som dyker upp, 429-backoff, återhämtningen.
     # Läses här på probetråden (enda skrivaren), efter att statussträngen
     # är färdigbyggd — samma läge står stilla utan att skriva en rad till.
@@ -1722,6 +1745,12 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     _maybe_rotate_own_log()
+    threading.Thread(
+        target=_run_log_rotation_watch,
+        args=(threading.Event(),),
+        name="log-rotation-watch",
+        daemon=True,
+    ).start()
     log.info("startar: rev %s", _SERVER_REV)
 
     Handler.projects_dir = Path(args.dir)

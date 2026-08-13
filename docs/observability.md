@@ -129,7 +129,8 @@ Returns live server state, added after real debugging nights:
   [agent-setup.md](agent-setup.md); headline values:
   `usage_http_200 + ok` (healthy), `no_claude_oauth_token`,
   `usage_http_401`, `usage_http_429 + backoff_until_HH:MM`,
-  `usage_request_failed: <Type>`.
+  `usage_request_failed: <Type>`, `probe_crashed: <Type>` (the probe
+  itself hit a bug — the log has the traceback).
 - `ratelimitHeaders` / `unknownRateLimitBuckets` — header names seen by
   the fallback probe. A non-empty `unknownRateLimitBuckets` means
   Anthropic added a bucket we don't map yet: file it.

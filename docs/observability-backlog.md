@@ -109,9 +109,10 @@ whenever a 500 is served.
 ### OBS-06 · Move the launchd log out of /tmp, cap it
 `server · S · done (2026-08-13)` — plist now logs to
 `~/Library/Logs/torget-tokenserver.log`; the server self-rotates it at
-startup past 5 MB with the last 256 KB preserved in `.old`, guarded by
-an fstat/stat identity check so terminal runs never touch it. Original
-problem:
+startup and hourly while running (a long-lived process must not outgrow
+the cap between restarts), 5 MB threshold with the last 256 KB preserved
+in `.old`, guarded by an fstat/stat identity check so terminal runs
+never touch it. Original problem:
 `se.torget.tokenserver.plist` sends both streams to
 `/tmp/torget-tokenserver.log`: unrotated and uncapped within a boot, yet
 erased by macOS reboot//tmp-cleaning — unbounded *and* unavailable for

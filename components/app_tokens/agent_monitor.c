@@ -69,6 +69,40 @@ static lv_obj_t *create_codex_icon(lv_obj_t *parent, int x, int y) {
   return image;
 }
 
+/* Pulsen: accentkonturen och ikonringen andas i opacitet under larmets
+ * PULSE-fas. Rörelse i befintliga element, aldrig nya ytor; texten står
+ * still för läsbarhet. 4 cykler à 1200 ms fyller exakt
+ * TK_COMPLETION_PULSE_MS, sedan vilar allt på full opacitet i STATIC. */
+#define COMPLETION_PULSE_CYCLE_MS 1200U
+#define COMPLETION_PULSE_MIN_OPA 100
+
+static void completion_pulse_exec(void *var, int32_t value) {
+  (void)var;
+  lv_obj_set_style_border_opa(mon.completion.outline, (lv_opa_t)value, 0);
+  lv_obj_set_style_border_opa(mon.completion.icon_ring, (lv_opa_t)value, 0);
+}
+
+static void completion_pulse_stop(void) {
+  lv_anim_delete(&mon.completion, completion_pulse_exec);
+  lv_obj_set_style_border_opa(mon.completion.outline, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_opa(mon.completion.icon_ring, LV_OPA_COVER, 0);
+}
+
+static void completion_pulse_start(void) {
+  completion_pulse_stop();
+  lv_anim_t anim;
+  lv_anim_init(&anim);
+  lv_anim_set_var(&anim, &mon.completion);
+  lv_anim_set_exec_cb(&anim, completion_pulse_exec);
+  lv_anim_set_values(&anim, LV_OPA_COVER, COMPLETION_PULSE_MIN_OPA);
+  lv_anim_set_duration(&anim, COMPLETION_PULSE_CYCLE_MS / 2);
+  lv_anim_set_playback_duration(&anim, COMPLETION_PULSE_CYCLE_MS / 2);
+  lv_anim_set_repeat_count(&anim,
+                           TK_COMPLETION_PULSE_MS / COMPLETION_PULSE_CYCLE_MS);
+  lv_anim_set_path_cb(&anim, lv_anim_path_ease_in_out);
+  lv_anim_start(&anim);
+}
+
 static void render_completion(uint64_t now_ms) {
   tk_completion_phase phase = tk_completion_phase_at(&mon.queue, now_ms);
   const tk_completion_event *event =
@@ -77,6 +111,7 @@ static void render_completion(uint64_t now_ms) {
   if (!tk_completion_render_key_update(&mon.rendered_completion, event,
                                        visible)) return;
   if (!visible) {
+    completion_pulse_stop();
     lv_obj_add_flag(mon.completion.root, LV_OBJ_FLAG_HIDDEN);
     return;
   }
@@ -140,6 +175,9 @@ static void render_completion(uint64_t now_ms) {
   }
   lv_label_set_text(mon.completion.title, title);
   lv_label_set_text(mon.completion.detail, detail);
+  /* Ny alert eller nytt tillstånd på skärmen = ny puls. Startar även när
+   * antalet i samma tillstånd växer — ny information förtjänar en andning. */
+  completion_pulse_start();
 }
 
 static void completion_event(lv_event_t *event) {

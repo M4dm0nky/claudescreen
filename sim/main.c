@@ -725,6 +725,28 @@ static int run_vibepulse_static_qa(void) {
   return capture_failures == 0 ? 0 : 1;
 }
 
+/* Pumpa verklig LVGL-tid: pulsdumparna är MÄNNISKOGRANSKNING, inte
+ * pixelfacit — tidsstyrda bildrutor hör inte hemma i deterministiska
+ * assertioner. */
+static void pump_ms(uint32_t ms) {
+  uint32_t start = lv_tick_get();
+  while (lv_tick_get() - start < ms) {
+    lv_timer_handler();
+    usleep(5 * 1000);
+  }
+}
+
+static void run_vibepulse_pulse_qa(void) {
+  torget_app_show(SIM_APP_VIBEPULSE);
+  tokens_show_view(VIEW_CLAUDE_FABLE);
+  apply_agent_file("agent-status-claude-waiting.json");
+  dump_frame("vibepulse-pulse-t0-bright");
+  pump_ms(600);
+  dump_frame("vibepulse-pulse-t600-dim");
+  pump_ms(600);
+  dump_frame("vibepulse-pulse-t1200-bright");
+}
+
 static void run_vibepulse_completion_qa(void) {
   torget_app_show(SIM_APP_VIBEPULSE);
   tokens_show_view(VIEW_CLAUDE_FABLE);
@@ -782,6 +804,11 @@ int main(int argc, char **argv) {
 
   if (argc == 2 && strcmp(argv[1], "--vibepulse-completion-qa") == 0) {
     run_vibepulse_completion_qa();
+    return 0;
+  }
+
+  if (argc == 2 && strcmp(argv[1], "--vibepulse-pulse-qa") == 0) {
+    run_vibepulse_pulse_qa();
     return 0;
   }
 

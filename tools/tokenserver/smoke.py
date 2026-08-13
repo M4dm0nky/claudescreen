@@ -30,6 +30,19 @@ else:  # direktkörning: python3 tools/tokenserver/smoke.py
 DEFAULT_BASE_URL = "http://localhost:8737"
 STATE_DIR = Path.home() / "Library" / "Application Support" / "VibePulse"
 STATE_FILES = ("usage-history.json", "quota-cache.json", "max-tracker.json")
+# Versionsskev-snubbeltråd, inte en andra parser: skärmens parsrar är
+# kontraktsstränga och avvisar HELA svaret vid fel version eller saknade
+# bärande fält — HTTP ser friskt ut medan displayen fryser. Kontraktets
+# fulla sanning bor i C-testerna och fixturerna; här räcker versionen plus
+# de obligatoriska fälten (tokens_parse.c:328-332, agent_status_parse.c:530,
+# max_tracker_parse.c:303). Bumpas ett kontrakt är den här tabellen en del
+# av bumpen.
+ENDPOINT_SHAPE = {
+    "/api/tokens": (2, ("dayTokens", "dayTokensPerHour", "daySessions",
+                        "monthTokens")),
+    "/api/agent-status": (2, ("seq", "agents")),
+    "/api/max-tracker": (1, ("weeks", "claude", "codex")),
+}
 PROBE_OK = "usage_http_200 + ok"
 # Fler startrader än så i EN loggfil tyder på en respawn-loop, inte på
 # avsiktliga omstarter (rotationen vid start håller filen till en era).
@@ -113,7 +126,7 @@ def check_server(base_url, checkout_rev=None):
 def check_endpoints(base_url):
     """Kamsteg 2, forts: svarar alla tre API:erna med kontraktets form?"""
     results = []
-    for path in ("/api/tokens", "/api/agent-status", "/api/max-tracker"):
+    for path, (expected_v, required) in ENDPOINT_SHAPE.items():
         try:
             payload = _get_json(f"{base_url}{path}")
         except Exception as e:
@@ -127,6 +140,18 @@ def check_endpoints(base_url):
                       else type(payload).__name__)
             results.append((FAIL, f"{path}: error-form i svaret ({detail}) "
                                   f"— läs loggfilen"))
+            continue
+        if payload.get("v") != expected_v:
+            results.append((FAIL, f"{path}: kontraktsversion "
+                                  f"{payload.get('v')!r}, skärmen kräver "
+                                  f"{expected_v} — versionsskev server/"
+                                  f"firmware? (jämför rev-raden ovan)"))
+            continue
+        missing = [k for k in required if k not in payload]
+        if missing:
+            results.append((FAIL, f"{path}: saknar bärande fält {missing} — "
+                                  f"skärmens parser avvisar hela svaret och "
+                                  f"displayen fryser"))
             continue
         stale_keys = [k for k in ("claudeWeekStale", "claudeModelWeekStale",
                                   "codexWeekStale", "stale")

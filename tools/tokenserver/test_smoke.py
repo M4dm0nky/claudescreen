@@ -30,8 +30,14 @@ HEALTHY_ROOT = {
     "usageComputeOk": True,
     "usageComputeFailingForS": None,
 }
-HEALTHY_TOKENS = {"v": 1, "dayTokens": 1, "claudeWeekStale": False,
-                  "codexWeekStale": False}
+# Formerna speglar de verkliga kontrakten (v2/v2/v1 med bärande fält) —
+# ENDPOINT_SHAPE i smoke.py avvisar annat, precis som skärmens parsrar.
+HEALTHY_TOKENS = {"v": 2, "dayTokens": 1, "dayTokensPerHour": 0,
+                  "daySessions": 1, "monthTokens": 2,
+                  "claudeWeekStale": False, "codexWeekStale": False}
+HEALTHY_AGENTS = {"v": 2, "seq": 1, "agents": []}
+HEALTHY_TRACKER = {"v": 1, "weeks": 20, "claude": {}, "codex": {},
+                   "stale": False}
 
 
 @contextlib.contextmanager
@@ -135,16 +141,16 @@ class ServerCheckTests(unittest.TestCase):
 class EndpointCheckTests(unittest.TestCase):
     def test_three_healthy_endpoints_are_ok(self):
         payloads = {"/api/tokens": HEALTHY_TOKENS,
-                    "/api/agent-status": {"v": 1},
-                    "/api/max-tracker": {"v": 1, "stale": False}}
+                    "/api/agent-status": HEALTHY_AGENTS,
+                    "/api/max-tracker": HEALTHY_TRACKER}
         with canned_server(payloads) as base:
             results = smoke.check_endpoints(base)
         self.assertEqual(levels(results), [smoke.OK] * 3)
 
     def test_error_form_is_fail_even_on_http_500(self):
         payloads = {"/api/tokens": {"error": "internal server error"},
-                    "/api/agent-status": {"v": 1},
-                    "/api/max-tracker": {"v": 1}}
+                    "/api/agent-status": HEALTHY_AGENTS,
+                    "/api/max-tracker": HEALTHY_TRACKER}
         with canned_server(payloads, status=500) as base:
             results = smoke.check_endpoints(base)
         self.assertEqual(levels(results)[0], smoke.FAIL)
@@ -153,12 +159,37 @@ class EndpointCheckTests(unittest.TestCase):
     def test_stale_flags_warn(self):
         payloads = {"/api/tokens": dict(HEALTHY_TOKENS,
                                         claudeWeekStale=True),
-                    "/api/agent-status": {"v": 1},
-                    "/api/max-tracker": {"v": 1, "stale": True}}
+                    "/api/agent-status": HEALTHY_AGENTS,
+                    "/api/max-tracker": dict(HEALTHY_TRACKER, stale=True)}
         with canned_server(payloads) as base:
             results = smoke.check_endpoints(base)
         self.assertEqual(levels(results),
                          [smoke.VARN, smoke.OK, smoke.VARN])
+
+    def test_contract_version_skew_is_fail_not_a_false_green(self):
+        # En gammal serverprocess som serverar v1 ser HTTP-frisk ut medan
+        # skärmens parser avvisar allt (tokens_parse.c kräver v == 2) —
+        # exakt fallet "smoke grönt, display frusen" som ska bli FAIL.
+        payloads = {"/api/tokens": dict(HEALTHY_TOKENS, v=1),
+                    "/api/agent-status": HEALTHY_AGENTS,
+                    "/api/max-tracker": HEALTHY_TRACKER}
+        with canned_server(payloads) as base:
+            results = smoke.check_endpoints(base)
+        self.assertEqual(levels(results),
+                         [smoke.FAIL, smoke.OK, smoke.OK])
+        self.assertIn("kontraktsversion", results[0][1])
+
+    def test_missing_mandatory_field_is_fail(self):
+        broken = {k: v for k, v in HEALTHY_TOKENS.items()
+                  if k != "monthTokens"}
+        payloads = {"/api/tokens": broken,
+                    "/api/agent-status": HEALTHY_AGENTS,
+                    "/api/max-tracker": HEALTHY_TRACKER}
+        with canned_server(payloads) as base:
+            results = smoke.check_endpoints(base)
+        self.assertEqual(levels(results),
+                         [smoke.FAIL, smoke.OK, smoke.OK])
+        self.assertIn("monthTokens", results[0][1])
 
 
 class LogFileCheckTests(unittest.TestCase):
@@ -241,8 +272,8 @@ class RunExitCodeTests(unittest.TestCase):
     def test_healthy_chain_exits_0(self):
         payloads = {"/": HEALTHY_ROOT,
                     "/api/tokens": HEALTHY_TOKENS,
-                    "/api/agent-status": {"v": 1},
-                    "/api/max-tracker": {"v": 1, "stale": False}}
+                    "/api/agent-status": HEALTHY_AGENTS,
+                    "/api/max-tracker": HEALTHY_TRACKER}
         code, text = self._run(payloads)
         self.assertEqual(code, 0, text)
         self.assertIn("röktest:", text)
@@ -251,16 +282,16 @@ class RunExitCodeTests(unittest.TestCase):
     def test_warnings_exit_1(self):
         payloads = {"/": dict(HEALTHY_ROOT, claudeProbe="not_run"),
                     "/api/tokens": HEALTHY_TOKENS,
-                    "/api/agent-status": {"v": 1},
-                    "/api/max-tracker": {"v": 1, "stale": False}}
+                    "/api/agent-status": HEALTHY_AGENTS,
+                    "/api/max-tracker": HEALTHY_TRACKER}
         code, text = self._run(payloads)
         self.assertEqual(code, 1, text)
 
     def test_error_form_exits_2(self):
         payloads = {"/": HEALTHY_ROOT,
                     "/api/tokens": {"error": "internal server error"},
-                    "/api/agent-status": {"v": 1},
-                    "/api/max-tracker": {"v": 1, "stale": False}}
+                    "/api/agent-status": HEALTHY_AGENTS,
+                    "/api/max-tracker": HEALTHY_TRACKER}
         code, text = self._run(payloads)
         self.assertEqual(code, 2, text)
 

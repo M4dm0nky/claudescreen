@@ -386,6 +386,18 @@ mattered (internal free, largest DMA block); a handful of counters
 groundwork for a later on-device diagnostics view (which would go
 through the AMOLED gate).
 
+### OBS-29 · An agent-status tailer test is load-flaky
+`test · S · open`
+During this branch's runs, `test_inode_churn_enforces_identity_cap_before_next_discovery`
+(`test_agent_status.py`) failed once in six full-suite runs on a loaded
+Linux container — `base-secret` survived in `tailer._identities` past the
+identity cap — then passed five-for-five in isolation immediately after.
+Suspect: timing-sensitive eviction/verify scheduling stretching under CPU
+load. Platform-dependent test assumptions are an established theme
+(`3743042`, and the lessons entry on CI's fresh VM).
+**Fix:** drive the eviction deterministically in the test (injected clock
+or forced verify schedule) instead of relying on wall-clock behavior.
+
 ### OBS-28 · Pin logging config on purpose
 `firmware · S · open`
 `sdkconfig.defaults` deliberately pins flash, PSRAM, LVGL, and mbedTLS

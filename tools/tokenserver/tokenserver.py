@@ -5,7 +5,7 @@ Skannar sessionsloggarna i ~/.claude/projects/**/*.jsonl (samma källa som
 usage-verktyg i ccusage-familjen läser), summerar tokens per dag och serverar
 glance-mönstrets kontrakt på /api/tokens:
 
-    {"v": 1, "dayTokens": ..., "dayTokensPerHour": ..., "daySessions": ...,
+    {"v": 2, "dayTokens": ..., "dayTokensPerHour": ..., "daySessions": ...,
      "monthTokens": ...}
 
 Designregler, ärvda från Solelkollens /api/glance:
@@ -1267,6 +1267,12 @@ def _max_tracker_writer(store):
             _max_tracker_dirty = False
         try:
             store.save()
+            if _last_save_error_logged is not None:
+                # Lyckad skrivning stänger felepisoden: logga slutet och
+                # nollställ strypningen, så nästa fel (en NY episod) loggar
+                # direkt i stället för att ärva gamla fönstret.
+                log.info("max-tracker: save lyckades igen")
+                _last_save_error_logged = None
         except Exception:
             # En misslyckad skrivning får inte tappa dirty-signalen: markera
             # om och avsluta, så NÄSTA observation (eller slutflushen)
@@ -1386,6 +1392,9 @@ def _refresh_usage_totals(projects_dir, max_tracker_store=None):
             log.info("usage-omräkningen frisk igen efter %.0f s",
                      time.monotonic() - _compute_failing_since)
             _compute_failing_since = None
+            # Återhämtningen stänger episoden: nästa fel är en NY episod
+            # och ska logga direkt, inte ärva gamla strypfönstret.
+            _last_compute_error_logged = None
     with _cache_lock:
         if refreshed is not None:
             _last_result = refreshed

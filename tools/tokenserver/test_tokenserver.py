@@ -1607,6 +1607,14 @@ class UsageComputeHealthTests(unittest.TestCase):
             self.assertTrue(payload["usageComputeOk"])
             self.assertIsNone(payload["usageComputeFailingForS"])
 
+            # Återhämtningen stänger episoden: ett NYTT fel inom gamla
+            # strypfönstret ska logga direkt, inte tigas ihjäl.
+            self.assertIsNone(tokenserver._last_compute_error_logged)
+            with mock.patch.object(tokenserver, "_compute",
+                                   side_effect=RuntimeError("ny episod")), \
+                    self.assertLogs("tokenserver", level="ERROR"):
+                tokenserver._refresh_usage_totals(Path("/x"))
+
 
 class MaxTrackerLiveHookTests(unittest.TestCase):
     """get_snapshot()'s observe_quota wiring: session/week windows, the
@@ -1972,16 +1980,30 @@ class MaxTrackerDirtyWriterTests(unittest.TestCase):
         self.assertTrue(tokenserver._max_tracker_dirty)
         self.assertIn("save misslyckades", "\n".join(captured.output))
 
-        # Nästa markering försöker igen — signalen överlevde felet.
+        # Nästa markering försöker igen — signalen överlevde felet, och
+        # den lyckade skrivningen stänger episoden i loggen.
         store.save.side_effect = None
-        tokenserver._mark_max_tracker_dirty(store)
-        for _ in range(50):
-            if store.save.call_count == 2:
-                break
-            time.sleep(0.01)
-        self._wait_for_writer_stop()
+        with self.assertLogs("tokenserver", level="INFO") as recovered:
+            tokenserver._mark_max_tracker_dirty(store)
+            for _ in range(50):
+                if store.save.call_count == 2:
+                    break
+                time.sleep(0.01)
+            self._wait_for_writer_stop()
         self.assertEqual(store.save.call_count, 2)
         self.assertFalse(tokenserver._max_tracker_dirty)
+        self.assertIn("lyckades igen", "\n".join(recovered.output))
+        # Episoden är stängd: ett nytt fel loggar direkt trots att gamla
+        # strypfönstret inte hunnit löpa ut.
+        store.save.side_effect = OSError("disken full igen")
+        with self.assertLogs("tokenserver", level="ERROR"):
+            tokenserver._mark_max_tracker_dirty(store)
+            for _ in range(50):
+                if store.save.call_count == 3:
+                    break
+                time.sleep(0.01)
+            self._wait_for_writer_stop()
+        self.assertTrue(tokenserver._max_tracker_dirty)
 
 
 class MaxTrackerBackfillLoopTests(unittest.TestCase):

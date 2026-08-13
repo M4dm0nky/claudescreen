@@ -49,8 +49,9 @@ Five tags:
 | `tokens` | `components/app_tokens/net.c` | /api/tokens + /api/max-tracker polls |
 | `agent-net` | `components/app_tokens/agent_net.c` | /api/agent-status poll (1 Hz, log rate-limited to 30 s) |
 
-A healthy boot shows: the `boot:` banner (build date/time, IDF version,
-and the decoded reset reason — `strömpåslag` is normal; `PANIK`,
+A healthy boot shows: the `boot:` banner (project name and git-describe
+version from the app descriptor, build date/time, IDF version, and the
+decoded reset reason — `strömpåslag` is normal; `PANIK`,
 `TASKVAKTHUND` or `BROWNOUT` mean the previous run died and this line is
 your only witness), the WiFi scan table (deliberately permanent — it is
 the ground truth for "which networks can the 2.4 GHz-only S3 actually

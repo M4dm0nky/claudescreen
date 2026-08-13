@@ -30,14 +30,16 @@ HEALTHY_ROOT = {
     "usageComputeOk": True,
     "usageComputeFailingForS": None,
 }
-# Formerna speglar de verkliga kontrakten (v2/v2/v1 med bärande fält) —
-# ENDPOINT_SHAPE i smoke.py avvisar annat, precis som skärmens parsrar.
-HEALTHY_TOKENS = {"v": 2, "dayTokens": 1, "dayTokensPerHour": 0,
-                  "daySessions": 1, "monthTokens": 2,
-                  "claudeWeekStale": False, "codexWeekStale": False}
-HEALTHY_AGENTS = {"v": 2, "seq": 1, "agents": []}
-HEALTHY_TRACKER = {"v": 1, "weeks": 20, "claude": {}, "codex": {},
-                   "stale": False}
+# De friska svaren ÄR sim-fixturerna — samma payloads som firmwarens
+# parsrar bevisligen accepterar (de matas genom exakt de parsrarna i
+# simulatorn och C-testerna). Driftar kontraktet faller de här testen
+# i stället för att röktestet ljuger grönt.
+_FIXTURES = Path(__file__).resolve().parents[2] / "sim-fixtures"
+HEALTHY_TOKENS = json.loads((_FIXTURES / "tokens.json").read_text())
+HEALTHY_AGENTS = json.loads(
+    (_FIXTURES / "agent-status-idle.json").read_text())
+HEALTHY_TRACKER = json.loads(
+    (_FIXTURES / "max-tracker-live-shape.json").read_text())
 
 
 @contextlib.contextmanager
@@ -190,6 +192,40 @@ class EndpointCheckTests(unittest.TestCase):
         self.assertEqual(levels(results),
                          [smoke.FAIL, smoke.OK, smoke.OK])
         self.assertIn("monthTokens", results[0][1])
+
+    def test_non_200_with_healthy_body_is_fail(self):
+        # torget_http.c avvisar allt utom HTTP 200 — en proxy eller cache
+        # som svarar 502 med frisk-seende kropp får inte smoke-grönt.
+        payloads = {"/api/tokens": HEALTHY_TOKENS,
+                    "/api/agent-status": HEALTHY_AGENTS,
+                    "/api/max-tracker": HEALTHY_TRACKER}
+        with canned_server(payloads, status=502) as base:
+            results = smoke.check_endpoints(base)
+        self.assertEqual(levels(results), [smoke.FAIL] * 3)
+        for _, text in results:
+            self.assertIn("502", text)
+
+    def test_agents_as_list_is_fail(self):
+        # agent_status_parse.c kräver att agents är ett objekt med claude
+        # och codex — en lista ser HTTP-frisk ut men skärmen avvisar den.
+        payloads = {"/api/tokens": HEALTHY_TOKENS,
+                    "/api/agent-status": dict(HEALTHY_AGENTS, agents=[]),
+                    "/api/max-tracker": HEALTHY_TRACKER}
+        with canned_server(payloads) as base:
+            results = smoke.check_endpoints(base)
+        self.assertEqual(levels(results),
+                         [smoke.OK, smoke.FAIL, smoke.OK])
+        self.assertIn("agents", results[1][1])
+
+    def test_empty_provider_object_is_fail(self):
+        payloads = {"/api/tokens": HEALTHY_TOKENS,
+                    "/api/agent-status": HEALTHY_AGENTS,
+                    "/api/max-tracker": dict(HEALTHY_TRACKER, claude={})}
+        with canned_server(payloads) as base:
+            results = smoke.check_endpoints(base)
+        self.assertEqual(levels(results),
+                         [smoke.OK, smoke.OK, smoke.FAIL])
+        self.assertIn("providerobjekt", results[2][1])
 
 
 class LogFileCheckTests(unittest.TestCase):

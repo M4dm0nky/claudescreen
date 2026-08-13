@@ -33,7 +33,10 @@ idf_component_register(
            esp_wifi
            esp_netif
            esp_event
-           esp_timer)
+           esp_timer
+           # bootbanderollens appdeskriptor (esp_app_desc.h) — explicit
+           # hellre än via transitiva beroenden som kan ändras i en IDF-bump
+           esp_app_format)
 
 if(EXISTS "$ENV{TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE TORGET_HAVE_SOLELKOLLEN)

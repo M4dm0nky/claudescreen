@@ -34,10 +34,11 @@ Tiers:
 ## P1 — stop flying blind
 
 ### OBS-01 · Boot banner: version, git rev, and reset reason
-`firmware · S · done (2026-08-13)` — `app_main` now logs `boot: byggd
-<datum> <tid>, IDF <ver>, omstartsorsak <namn> (<kod>)` as its first
-line, with PANIK/TASKVAKTHUND/BROWNOUT decoded loudly. Takes effect on
-the next flash. Original problem, for the record:
+`firmware · S · done (2026-08-13)` — `app_main` now logs `boot: <namn>
+<version> (byggd <datum> <tid>, IDF <ver>), omstartsorsak <namn> (<kod>)`
+as its first line: the version is git describe via ESP-IDF's app
+descriptor, and PANIK/TASKVAKTHUND/BROWNOUT are decoded loudly. Takes
+effect on the next flash. Original problem, for the record:
 The firmware never announces what it is or why it started:
 `esp_reset_reason()` is called nowhere in the repo, and boot logs carry
 no version or rev. A board that panicked and rebooted overnight is

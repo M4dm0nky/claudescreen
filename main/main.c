@@ -15,6 +15,7 @@
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 
+#include "esp_app_desc.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -398,13 +399,15 @@ static const char *reset_reason_name(esp_reset_reason_t r) {
 
 void app_main(void) {
   /* Bootbanderollen svarar på två frågor loggen annars inte kan:
-   * "kör kortet det jag just flashade?" (byggtiden) och "varför startade
-   * det om?" (orsaken — en nattlig panik/brownout är annars osynlig i
-   * efterhand). Serverns motsvarighet är rev/startedAt på GET /. */
+   * "kör kortet det jag just flashade?" (versionen är git describe via
+   * ESP-IDF:s appdeskriptor, plus byggtiden) och "varför startade det om?"
+   * (orsaken — en nattlig panik/brownout är annars osynlig i efterhand).
+   * Serverns motsvarighet är rev/startedAt på GET /. */
+  const esp_app_desc_t *app = esp_app_get_description();
   esp_reset_reason_t rr = esp_reset_reason();
-  ESP_LOGI(TAG, "boot: byggd %s %s, IDF %s, omstartsorsak %s (%d)",
-           __DATE__, __TIME__, esp_get_idf_version(),
-           reset_reason_name(rr), (int)rr);
+  ESP_LOGI(TAG, "boot: %s %s (byggd %s %s, IDF %s), omstartsorsak %s (%d)",
+           app->project_name, app->version, app->date, app->time,
+           app->idf_ver, reset_reason_name(rr), (int)rr);
 
   esp_err_t nvs = nvs_flash_init();
   if (nvs == ESP_ERR_NVS_NO_FREE_PAGES || nvs == ESP_ERR_NVS_NEW_VERSION_FOUND) {

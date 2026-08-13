@@ -31,17 +31,47 @@ DEFAULT_BASE_URL = "http://localhost:8737"
 STATE_DIR = Path.home() / "Library" / "Application Support" / "VibePulse"
 STATE_FILES = ("usage-history.json", "quota-cache.json", "max-tracker.json")
 # Versionsskev-snubbeltråd, inte en andra parser: skärmens parsrar är
-# kontraktsstränga och avvisar HELA svaret vid fel version eller saknade
-# bärande fält — HTTP ser friskt ut medan displayen fryser. Kontraktets
-# fulla sanning bor i C-testerna och fixturerna; här räcker versionen plus
-# de obligatoriska fälten (tokens_parse.c:328-332, agent_status_parse.c:530,
-# max_tracker_parse.c:303). Bumpas ett kontrakt är den här tabellen en del
-# av bumpen.
+# kontraktsstränga och avvisar HELA svaret vid fel version, saknade
+# obligatoriska fält eller fel HTTP-status — HTTP kan se friskt ut medan
+# displayen fryser. Här kontrolleras versionen, toppnivåfälten och de
+# grövsta typerna (tokens_parse.c:328-332, agent_status_parse.c:529-542,
+# max_tracker_parse.c:303-317); providrarnas INRE fält bor medvetet bara i
+# C-testerna och fixturerna. Bumpas ett kontrakt är den här tabellen en
+# del av bumpen — och testernas friska svar ÄR sim-fixturerna, så en drift
+# faller i test innan den ljuger i drift.
+
+
+def _tokens_shape(payload):
+    bad = [k for k in ("dayTokens", "dayTokensPerHour", "daySessions",
+                       "monthTokens")
+           if isinstance(payload.get(k), bool)
+           or not isinstance(payload.get(k), (int, float))]
+    return f"icke-numeriska fält {bad}" if bad else None
+
+
+def _agents_shape(payload):
+    agents = payload.get("agents")
+    if not isinstance(agents, dict) or not {"claude", "codex"} <= set(agents):
+        return "agents ska vara ett objekt med claude och codex"
+    return None
+
+
+def _tracker_shape(payload):
+    if not isinstance(payload.get("stale"), bool):
+        return "stale ska vara bool"
+    empty = [k for k in ("claude", "codex")
+             if not isinstance(payload.get(k), dict) or not payload.get(k)]
+    if empty:
+        return f"{empty} ska vara ifyllda providerobjekt"
+    return None
+
+
 ENDPOINT_SHAPE = {
     "/api/tokens": (2, ("dayTokens", "dayTokensPerHour", "daySessions",
-                        "monthTokens")),
-    "/api/agent-status": (2, ("seq", "agents")),
-    "/api/max-tracker": (1, ("weeks", "claude", "codex")),
+                        "monthTokens"), _tokens_shape),
+    "/api/agent-status": (2, ("seq", "agents"), _agents_shape),
+    "/api/max-tracker": (1, ("weeks", "stale", "codingStreakDays",
+                             "claude", "codex"), _tracker_shape),
 }
 PROBE_OK = "usage_http_200 + ok"
 # Fler startrader än så i EN loggfil tyder på en respawn-loop, inte på
@@ -53,13 +83,20 @@ OK, VARN, FAIL = "ok", "varn", "fail"
 
 
 def _get_json(url, timeout=5):
+    """(HTTP-status, parsad JSON). Statusen följer med: skärmen avvisar
+    allt utom 200 (torget_http.c), så en proxy eller cache som svarar 502
+    med frisk-seende kropp får inte bli grönt här. Serverns egna 500 bär
+    kontraktets {"error": ...}-kropp och parsas också."""
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8", errors="replace"))
+            return resp.status, json.loads(
+                resp.read().decode("utf-8", errors="replace"))
     except urllib.error.HTTPError as e:
-        # Serverns 500 bär kontraktets {"error": ...}-kropp — läs den i
-        # stället för att rapportera "inget svar".
-        return json.loads(e.read().decode("utf-8", errors="replace"))
+        body = e.read().decode("utf-8", errors="replace")
+        try:
+            return e.code, json.loads(body)
+        except json.JSONDecodeError:
+            return e.code, None
 
 
 def repo_rev():
@@ -78,11 +115,14 @@ def repo_rev():
 def check_server(base_url, checkout_rev=None):
     """Kamsteg 1–2: identitet, rev och probestatus från GET /."""
     try:
-        root = _get_json(f"{base_url}/")
+        status, root = _get_json(f"{base_url}/")
     except Exception as e:
         return [(FAIL, f"servern svarar inte på {base_url}/ ({type(e).__name__})"
                        " — kör den? launchctl list | grep torget, eller starta"
                        " python3 tokenserver.py för hand")]
+    if status != 200:
+        return [(FAIL, f"HTTP {status} på {base_url}/ — fel tjänst, proxy "
+                       f"eller trasig server")]
     # En annan tjänst på porten kan svara med giltig JSON som inte är ett
     # objekt (lista, tal, null) — det ska bli [FAIL], inte en traceback.
     if (not isinstance(root, dict)
@@ -126,20 +166,28 @@ def check_server(base_url, checkout_rev=None):
 def check_endpoints(base_url):
     """Kamsteg 2, forts: svarar alla tre API:erna med kontraktets form?"""
     results = []
-    for path, (expected_v, required) in ENDPOINT_SHAPE.items():
+    for path, (expected_v, required, shape_check) in ENDPOINT_SHAPE.items():
         try:
-            payload = _get_json(f"{base_url}{path}")
+            status, payload = _get_json(f"{base_url}{path}")
         except Exception as e:
             results.append((FAIL, f"{path}: inget svar ({type(e).__name__})"))
             continue
-        if not isinstance(payload, dict) or "error" in payload:
+        if isinstance(payload, dict) and "error" in payload:
             # Error-formen är kontraktets "något är trasigt i servern" —
             # skärmen avvisar den och fryser hellre än gissar. Orsaken står
             # i loggfilen sedan servern började logga sina 500.
-            detail = (payload.get("error") if isinstance(payload, dict)
-                      else type(payload).__name__)
-            results.append((FAIL, f"{path}: error-form i svaret ({detail}) "
-                                  f"— läs loggfilen"))
+            results.append((FAIL, f"{path}: error-form i svaret "
+                                  f"({payload.get('error')}) — läs "
+                                  f"loggfilen"))
+            continue
+        if status != 200:
+            results.append((FAIL, f"{path}: HTTP {status} — skärmen kräver "
+                                  f"200 och behåller sina gamla värden"))
+            continue
+        if not isinstance(payload, dict):
+            results.append((FAIL, f"{path}: svaret är "
+                                  f"{type(payload).__name__}, inte ett "
+                                  f"objekt — fel tjänst på porten?"))
             continue
         if payload.get("v") != expected_v:
             results.append((FAIL, f"{path}: kontraktsversion "
@@ -152,6 +200,11 @@ def check_endpoints(base_url):
             results.append((FAIL, f"{path}: saknar bärande fält {missing} — "
                                   f"skärmens parser avvisar hela svaret och "
                                   f"displayen fryser"))
+            continue
+        shape_error = shape_check(payload)
+        if shape_error:
+            results.append((FAIL, f"{path}: {shape_error} — skärmens parser "
+                                  f"avvisar hela svaret"))
             continue
         stale_keys = [k for k in ("claudeWeekStale", "claudeModelWeekStale",
                                   "codexWeekStale", "stale")

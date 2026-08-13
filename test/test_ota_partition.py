@@ -89,3 +89,45 @@ assert "TORGET_BOOT_HEALTH_FORCE_FAIL" in kconfig
 assert "CONFIG_TORGET_BOOT_HEALTH_FORCE_FAIL" in adapter
 
 print("OK: boot-health adapter is wired into the target boot order")
+
+# --- Task 6: maintenance overlay safety (must not alter app layouts) -------
+
+ota_ui_path = root / "components/torget_ota/ota_ui.c"
+assert ota_ui_path.exists(), "ota_ui.c must exist in torget_ota"
+ota_ui = ota_ui_path.read_text(encoding="utf-8")
+
+# The overlay lives on LVGL's top layer, never inside the app tree: that is
+# the structural guarantee that no existing app layout can change.
+assert "lv_layer_top()" in ota_ui, "overlay must be created on lv_layer_top()"
+assert "lv_screen_active" not in ota_ui, (
+    "the overlay must never touch the screen the apps live on"
+)
+assert "torget_ui_lock()" in ota_ui and "torget_ui_unlock()" in ota_ui, (
+    "widget updates must happen under the shared UI lock"
+)
+
+# Native fonts only. plex_text_32 (kr/%/GWh glyphs) and plex_num_50 (no
+# colon) cannot spell the state words or a countdown, so the overlay uses
+# the native fonts that do cover them; scaling or transforms stay banned.
+for font in ("plex_attention_52", "plex_num_50", "plex_ui_21"):
+    assert f"extern const lv_font_t {font};" in ota_ui, (
+        f"overlay must use the native font {font}"
+    )
+assert "lv_color_black()" in ota_ui, "overlay background must be true black"
+
+# Same private-heap rules as the app screens: no transform layers, no canvas
+# buffers, no opacity layers, no animation.
+assert "lv_obj_set_style_transform" not in ota_ui
+assert "lv_canvas" not in ota_ui
+assert "lv_obj_set_style_opa" not in ota_ui
+assert "lv_anim_start" not in ota_ui and "LV_ANIM_ON" not in ota_ui
+
+# Wiring: created once, after the shared UI, while the lock is held.
+assert '"ota_ui.c"' in ota_cmake, "torget_ota must compile ota_ui.c"
+assert re.search(
+    r"torget_ui_create\(\);.*?torget_ota_ui_create\(\);.*?torget_ui_unlock\(\);",
+    main_c,
+    re.DOTALL,
+), "overlay must be created after torget_ui_create() under the held UI lock"
+
+print("OK: OTA overlay stays on the top layer and off the app layouts")

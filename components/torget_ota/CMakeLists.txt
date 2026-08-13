@@ -4,6 +4,8 @@
 # låst i en policy.
 idf_component_register(
   SRCS "ota_policy.c" "button_policy.c" "boot_health_policy.c"
-       "boot_health.c"
+       "boot_health.c" "ota_ui.c"
   INCLUDE_DIRS "."
+  # torget_app: designsystemets fonter (extern lv_font_t) + torget.h-låset.
+  REQUIRES torget_app
   PRIV_REQUIRES app_update nvs_flash esp_timer)

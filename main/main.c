@@ -34,6 +34,7 @@
 #include "lvgl.h"
 
 #include "boot_health.h"
+#include "ota_ui.h"
 #include "rotation.h"
 #include "secrets.h"
 #include "torget.h"
@@ -434,6 +435,9 @@ void app_main(void) {
   torget_ui_create(); /* bygger apparna via registret + launchern */
   /* UI-beviset: registret, apparnas create() och launchern överlevde. */
   torget_boot_health_mark(TG_HEALTH_UI);
+  /* OTA-overlayn EFTER det delade UI:t, på topplagret, dold tills KEY3-
+   * hållet öppnar underhållsfönstret — appträdet rörs aldrig. */
+  torget_ota_ui_create();
   lv_timer_create(tick_cb, TICK_EVERY_MS, NULL);
   torget_ui_unlock();
 

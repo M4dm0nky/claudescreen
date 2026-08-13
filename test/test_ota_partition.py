@@ -131,3 +131,98 @@ assert re.search(
 ), "overlay must be created after torget_ui_create() under the held UI lock"
 
 print("OK: OTA overlay stays on the top layer and off the app layouts")
+
+# --- Task 7: authenticated inactive-slot streaming service ----------------
+
+service_path = root / "components/torget_ota/ota_service.c"
+assert service_path.exists(), "ota_service.c must exist in torget_ota"
+service = service_path.read_text(encoding="utf-8")
+service_h = (root / "components/torget_ota/ota_service.h").read_text(
+    encoding="utf-8"
+)
+
+# The whole esp_ota lifecycle must be present: begin/write/end for the
+# stream, abort for every failure path, and slot selection only at the end.
+for symbol in (
+    "esp_ota_get_next_update_partition",
+    "esp_ota_begin",
+    "esp_ota_write",
+    "esp_ota_end",
+    "esp_ota_set_boot_partition",
+    "esp_ota_abort",
+):
+    assert symbol in service, f"ota_service.c must use {symbol}"
+
+# The digest is computed incrementally while streaming — never by buffering
+# the whole image (there is no RAM for that).
+for symbol in (
+    "mbedtls_sha256_starts",
+    "mbedtls_sha256_update",
+    "mbedtls_sha256_finish",
+):
+    assert symbol in service, f"ota_service.c must use incremental {symbol}"
+
+# Token comparison must be constant-time, and the Authorization header must
+# never reach a log line.
+assert "constant_time_equal" in service, (
+    "token comparison must go through the constant-time helper"
+)
+assert "strcmp(authorization" not in service and (
+    "strncmp(authorization, \"Bearer \"" in service
+), "the bearer prefix check is the only string scan allowed on the header"
+for line in service.splitlines():
+    if "ESP_LOG" in line:
+        assert "authorization" not in line.lower(), (
+            "the Authorization header must never be logged"
+        )
+        assert "TG_OTA_TOKEN" not in line, "the token must never be logged"
+
+# The pure policy stays the gatekeeper: the HTTP layer maps its request and
+# asks before esp_ota_begin may touch flash.
+assert "tg_ota_request_check" in service
+assert service.index("tg_ota_request_check") < service.index("esp_ota_begin"), (
+    "the policy verdict must come before esp_ota_begin in the handler flow"
+)
+assert "TG_OTA_MAX_IMAGE_BYTES" in service, (
+    "the status endpoint shares the policy's size cap"
+)
+
+# Metadata gate on the first chunk: image magic, chip id, app-desc magic and
+# project name, straight from esp_app_format.h.
+for symbol in (
+    "ESP_IMAGE_HEADER_MAGIC",
+    "ESP_CHIP_ID_ESP32S3",
+    "ESP_APP_DESC_MAGIC_WORD",
+    '"torget"',
+):
+    assert symbol in service, f"first-chunk validation must check {symbol}"
+
+# HTTP boundary contract.
+assert "#define TG_OTA_HTTP_PORT 80" in service_h
+assert '"/api/ota/status"' in service and '"/api/ota/firmware"' in service
+assert "httpd_req_recv" in service and "4096" in service
+
+# secrets.h.example documents the development token contract.
+example = (root / "secrets.h.example").read_text(encoding="utf-8")
+assert "TG_OTA_TOKEN" in example, "secrets.h.example must describe TG_OTA_TOKEN"
+assert 'sizeof(TG_OTA_TOKEN) == 65' in service, (
+    "the 64-hex-character token length must be locked by _Static_assert"
+)
+
+# Wiring: compiled into the component, KEY3 routed through the pure button
+# policy, and the listener started right after wifi_start().
+assert '"ota_service.c"' in ota_cmake
+assert "esp_http_server" in ota_cmake and "mbedtls" in ota_cmake
+main_c = (root / "main/main.c").read_text(encoding="utf-8")
+assert "tg_button_update" in main_c, "KEY3 must go through tg_button_update"
+assert "key3_was_down" not in main_c, (
+    "the raw KEY3 edge check must be replaced by the button policy"
+)
+assert "torget_ota_service_open_maintenance" in main_c
+assert re.search(
+    r"wifi_start\(\);\s*(/\*.*?\*/\s*)?torget_ota_service_start\(\);",
+    main_c,
+    re.DOTALL,
+), "the OTA listener must start immediately after wifi_start()"
+
+print("OK: OTA service streams to the inactive slot behind token and policy")

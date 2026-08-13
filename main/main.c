@@ -34,6 +34,8 @@
 #include "lvgl.h"
 
 #include "boot_health.h"
+#include "button_policy.h"
+#include "ota_service.h"
 #include "ota_ui.h"
 #include "rotation.h"
 #include "secrets.h"
@@ -251,16 +253,23 @@ static void tick_cb(lv_timer_t *t) {
   if (s_touch && lv_indev_get_state(s_touch) == LV_INDEV_STATE_PRESSED)
     s_last_touch_us = now;
 
-  /* KEY3 (GPIO18, aktiv låg): fysisk appväxlare — ett tryck, nästa app.
-   * Pollad i 10 Hz-ticken (naturlig avstudsning: en flank per nedtryck,
-   * släpp krävs mellan). Körs i LVGL-tasken, så inga lås behövs. */
-  static bool key3_was_down;
+  /* KEY3 (GPIO18, aktiv låg): kort tryck = nästa app, tre sekunders håll =
+   * OTA-underhållsfönster. Tidsreglerna bor i den värdtestade knappolicyn;
+   * 10 Hz-ticken pollar vidare medan knappen är nere så hållet avfyras
+   * utan släpp. Körs i LVGL-tasken — därför bara atomära tjänsteanrop här,
+   * aldrig torget_ota_ui_set (som tar UI-låset). */
+  static tg_button_policy key3;
   bool key3_down = gpio_get_level(GPIO_NUM_18) == 0;
-  if (key3_down && !key3_was_down) {
-    torget_app_next();
-    s_last_touch_us = now; /* ett knapptryck är aktivitet, precis som touch */
+  tg_button_action key3_action = tg_button_update(&key3, key3_down, now);
+  if (key3_down)
+    s_last_touch_us = now; /* knappkontakt är aktivitet, precis som touch */
+  if (key3_action == TG_BUTTON_NEXT_APP) {
+    /* Öppet underhållsfönster undertrycker appbyte: handen på KEY3 hör
+     * till uppdateringsflödet, och overlayn täcker ändå apparna. */
+    if (!torget_ota_service_maintenance_open()) torget_app_next();
+  } else if (key3_action == TG_BUTTON_OPEN_MAINTENANCE) {
+    torget_ota_service_open_maintenance();
   }
-  key3_was_down = key3_down;
 
   int target = ((now - s_last_activity_us) > NIGHT_AFTER_US
                 && (now - s_last_touch_us) > WAKE_HOLD_US)
@@ -442,5 +451,9 @@ void app_main(void) {
   torget_ui_unlock();
 
   wifi_start();
+  /* OTA-lyssnaren direkt efter wifi_start: sockeln binds innan stationen
+   * ens fått IP och blir nåbar på det gränssnitt som kommer upp. Utan
+   * TG_OTA_TOKEN i secrets.h är uppladdningen avstängd; status svarar. */
+  torget_ota_service_start();
   xTaskCreate(net_task, "torget-net", 4096, NULL, 5, NULL);
 }

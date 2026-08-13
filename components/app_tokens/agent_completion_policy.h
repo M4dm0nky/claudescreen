@@ -11,6 +11,10 @@
 #define TK_COMPLETION_PULSE_MS 4800ULL
 #define TK_COMPLETION_VISIBLE_MS 10000ULL
 #define TK_COMPLETION_INITIAL_MAX_AGE_MS 15000U
+/* Ett larm är en händelse man kan agera på i stunden. Äldre tillstånd än så
+ * här (serveromstart, återhämtat avbrott) hör hemma i headern, inte som
+ * helskärm — 2 min täcker pollcykeln på 30 s med god marginal. */
+#define TK_COMPLETION_FRESH_MAX_AGE_MS (2U * 60U * 1000U)
 
 typedef enum {
   TK_COMPLETION_HIDDEN,

@@ -194,8 +194,12 @@ void tk_completion_queue_apply(tk_completion_queue *queue,
           !remember(queue, snapshot, provider, job->event_id)) {
         continue;
       }
-      if (!already_queued && first_snapshot &&
-          job->updated_ms > TK_COMPLETION_INITIAL_MAX_AGE_MS) {
+      /* remember() ovan har redan tystat händelsen permanent; grinden här
+       * avgör bara om den får ta skärmen. Utan post-boot-tak larmade varje
+       * återupptäckt timmesgammalt väntläge efter ett serveravbrott. */
+      uint32_t max_age_ms = first_snapshot ? TK_COMPLETION_INITIAL_MAX_AGE_MS
+                                           : TK_COMPLETION_FRESH_MAX_AGE_MS;
+      if (!already_queued && job->updated_ms > max_age_ms) {
         continue;
       }
       candidates[candidate_count++] = (completion_candidate){

@@ -100,6 +100,29 @@ static void test_non_attention_and_stale_events(void) {
   check("ignored first-snapshot event is remembered", current(&stale_queue) == NULL);
 }
 
+static void test_stale_event_never_alerts_after_boot(void) {
+  tk_agent_snapshot empty = {0};
+  tk_completion_queue queue = {0};
+  tk_completion_queue_apply(&queue, &empty, 100);
+
+  /* Servern var nere; när den kommer tillbaka bär snapshoten både ett
+   * timmesgammalt väntläge och ett färskt. Bara det färska får ta skärmen. */
+  tk_agent_snapshot revived = {0};
+  add_job(&revived.claude,
+          job(TK_AGENT_WAITING, "ghost", "Old", 30U * 60U * 1000U));
+  add_job(&revived.claude, job(TK_AGENT_WAITING, "fresh", "New", 5000));
+  tk_completion_queue_apply(&queue, &revived, 200);
+  check("fresh event alerts while the stale one stays silent",
+        current(&queue) && strcmp(current(&queue)->event_id, "fresh") == 0);
+  check("stale event never entered the queue", queue.count == 1);
+
+  tk_agent_snapshot again = {0};
+  add_job(&again.claude, job(TK_AGENT_WAITING, "ghost", "Old", 1));
+  tk_completion_queue_apply(&queue, &again, 300);
+  check("silenced stale event stays silent even when re-reported fresh",
+        current(&queue) == NULL);
+}
+
 static void test_independent_waiting_and_provider_counts(void) {
   tk_agent_snapshot snapshot = {0};
   add_job(&snapshot.claude, job(TK_AGENT_WAITING, "one", "One", 1));
@@ -354,6 +377,7 @@ int main(void) {
   test_priority_order();
   test_freshness_and_provider_tie_break();
   test_non_attention_and_stale_events();
+  test_stale_event_never_alerts_after_boot();
   test_independent_waiting_and_provider_counts();
   test_reconciliation_and_transitions();
   test_state_transition_restarts_entry_phase();

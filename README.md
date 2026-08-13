@@ -166,10 +166,11 @@ understand how the pieces fit together.
    idf.py -p /dev/cu.usbmodem101 flash
    ```
 
-   **Don't miss this:** in `secrets.h`, uncomment the `TK_VIBEPULSE_BASE_URL`
-   block and point it at your Mac. Those URLs are commented out in the
-   example, and an undefined URL compiles the fetch out entirely — the
-   screen boots fine and shows dashes forever. Use your Mac's Bonjour name
+   **Don't miss this:** in `secrets.h`, point the `TK_VIBEPULSE_BASE_URL`
+   block at your Mac by replacing the `DIN-MAC` placeholder. Those URLs ship
+   active on purpose — a wrong hostname is visible in the log, whereas an
+   undefined URL compiles the fetch out entirely and the screen boots fine
+   and shows dashes forever. Use your Mac's Bonjour name
    (`scutil --get LocalHostName`) rather than an IP, so the same firmware
    works on your home network and on a phone hotspot.
 
@@ -200,7 +201,7 @@ cmake -S sim -B sim/build -G Ninja && ninja -C sim/build
 (On Debian/Ubuntu: `apt-get install libsdl2-dev cmake ninja-build` instead.)
 
 Same code, same fonts, same pixels as the device — it builds the real
-platform and both apps against the real LVGL, and feeds them the recorded
+platform and VibePulse against the real LVGL, and feeds it the recorded
 fixtures in `sim-fixtures/` through the same parsers the board runs. Every
 device screenshot in this README is an unmodified simulator frame (the
 banner just places three of them side by side), and the physical panel was

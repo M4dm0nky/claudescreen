@@ -331,6 +331,19 @@ class RunExitCodeTests(unittest.TestCase):
         code, text = self._run(payloads)
         self.assertEqual(code, 2, text)
 
+    def test_compute_failure_still_checks_every_endpoint(self):
+        # Nådd men sjuk server: kompute-FAIL:et får inte gömma oberoende
+        # fel i de andra feedarna — alla tre kontrakten ska granskas.
+        payloads = {"/": dict(HEALTHY_ROOT, usageComputeOk=False,
+                              usageComputeFailingForS=90),
+                    "/api/tokens": HEALTHY_TOKENS,
+                    "/api/agent-status": HEALTHY_AGENTS,
+                    "/api/max-tracker": HEALTHY_TRACKER}
+        code, text = self._run(payloads)
+        self.assertEqual(code, 2, text)
+        self.assertIn("/api/agent-status: svarar", text)
+        self.assertIn("/api/max-tracker: svarar", text)
+
     def test_unreachable_server_skips_endpoint_checks_and_exits_2(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = io.StringIO()

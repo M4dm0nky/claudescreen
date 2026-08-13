@@ -287,9 +287,14 @@ def run(base_url=DEFAULT_BASE_URL, log_path=None, state_dir=None,
         checkout_rev=None, out=None):
     out = out or sys.stdout
     results = []
-    results += check_server(base_url,
-                            checkout_rev if checkout_rev else repo_rev())
-    if not any(level == FAIL for level, _ in results):
+    server_results = check_server(base_url,
+                                  checkout_rev if checkout_rev else repo_rev())
+    results += server_results
+    # Hoppa över endpointkollen BARA när ingen riktig tokenserver svarar
+    # (onåbar, fel tjänst, fel status — då är första raden ett FAIL). En
+    # nådd men sjuk server ska få alla tre kontrakten granskade: det är
+    # mitt i ett haveri de oberoende felen behöver synas.
+    if server_results and server_results[0][0] != FAIL:
         results += check_endpoints(base_url)
     results += check_log_file(log_path or DEFAULT_LOG_PATH)
     results += check_state_files(state_dir or STATE_DIR)

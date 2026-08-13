@@ -7,6 +7,11 @@ on the [releases page](https://github.com/niclasvestlund-YT/vibepulse/releases).
 
 ### Fixed
 
+- Repeated probe failures now slow the probe down (120 → 240 → 480 s cap), so
+  a dead token can never again hammer the API every two minutes for hours —
+  the pattern that earned tonight's 429 penalty. A successful probe restores
+  the normal pace. The root endpoint also reports `rev` and `startedAt`, so a
+  stale running process (wrong directory, old code) is visible in one curl.
 - The Claude probe backs off on HTTP 429: it stops the cycle immediately (no
   second token source, no header probe — extra traffic only extends the
   penalty) and rests for at least ten minutes, honouring a longer

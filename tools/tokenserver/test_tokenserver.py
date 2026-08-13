@@ -258,6 +258,34 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
         # och nästa cykel rör inte nätet alls under nedkylningen.
         self.assertEqual(len(calls), 1)
 
+    def test_probe_backoff_interval_grows_with_failures(self):
+        with mock.patch.object(tokenserver, "_probe_failure_streak", 0):
+            self.assertEqual(tokenserver._probe_interval_s(), 120)
+        with mock.patch.object(tokenserver, "_probe_failure_streak", 1):
+            self.assertEqual(tokenserver._probe_interval_s(), 240)
+        with mock.patch.object(tokenserver, "_probe_failure_streak", 5):
+            self.assertEqual(tokenserver._probe_interval_s(), 480)
+
+    def test_refresh_updates_failure_streak(self):
+        with mock.patch.object(tokenserver, "_probe_failure_streak", 0), \
+                mock.patch.object(tokenserver, "_last_limits", None), \
+                mock.patch.object(tokenserver, "_last_probed", 0.0), \
+                mock.patch.object(tokenserver, "_limits_refreshing", False), \
+                mock.patch.object(tokenserver, "_probe_limits",
+                                  return_value=None):
+            tokenserver._refresh_limits()
+            self.assertEqual(tokenserver._probe_failure_streak, 1)
+            tokenserver._refresh_limits()
+            self.assertEqual(tokenserver._probe_failure_streak, 2)
+        with mock.patch.object(tokenserver, "_probe_failure_streak", 4), \
+                mock.patch.object(tokenserver, "_last_limits", None), \
+                mock.patch.object(tokenserver, "_last_probed", 0.0), \
+                mock.patch.object(tokenserver, "_limits_refreshing", False), \
+                mock.patch.object(tokenserver, "_probe_limits",
+                                  return_value={"weekPct": 60.0}):
+            tokenserver._refresh_limits()
+            self.assertEqual(tokenserver._probe_failure_streak, 0)
+
     def test_probe_gives_up_when_every_candidate_is_rejected(self):
         calls = []
 

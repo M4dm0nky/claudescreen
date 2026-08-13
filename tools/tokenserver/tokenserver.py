@@ -63,6 +63,23 @@ else:  # direktkörning: python3 tools/tokenserver/tokenserver.py
 
 RECOMPUTE_EVERY_S = 30
 LIMITS_EVERY_S = 120  # rate-limit-proben: snäll mot API:t, färsk nog för hyllan
+
+
+def _read_server_rev():
+    """Git-revisionen som faktiskt serverar — gör 'fel kod kör' synligt i en
+    curl i stället för en timmes processarkeologi."""
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+        ).stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+_SERVER_REV = _read_server_rev()
+_SERVER_STARTED = datetime.now().astimezone().isoformat(timespec="seconds")
 MAX_TRACKER_BACKFILL_TICK_S = 0.5  # samma kadens som agent_status.POLL_S
 # Claude bär aldrig fönstrets minuttal i klartext (bara namnen "5h"/"7d") --
 # till skillnad från Codex, vars rate-limits-snapshot har window_minutes
@@ -285,6 +302,7 @@ _probe_status = "not_run"
 _probe_headers = []
 _probe_unknown_buckets = []
 _probe_cooldown_until = 0.0
+_probe_failure_streak = 0
 
 
 _CLAUDE_DESKTOP_PROCESS = re.compile(
@@ -652,13 +670,24 @@ def _probe_limits():
     return found
 
 
+def _probe_interval_s():
+    """Backa av vid upprepade misslyckanden: 120 → 240 → 480 s (tak).
+
+    En död token fick tidigare hamra API:t varannan minut i timmar — det
+    mönstret utlöste en 429-straffruta. Lyckad probe återställer takten.
+    """
+    return LIMITS_EVERY_S * (2 ** min(_probe_failure_streak, 2))
+
+
 def _refresh_limits():
-    global _last_limits, _last_probed, _limits_refreshing
+    global _last_limits, _last_probed, _limits_refreshing, \
+        _probe_failure_streak
     try:
         refreshed = _probe_limits()
     except Exception:
         refreshed = None
     with _limits_lock:
+        _probe_failure_streak = 0 if refreshed else _probe_failure_streak + 1
         _last_limits = refreshed
         _last_probed = time.monotonic()
         _limits_refreshing = False
@@ -668,7 +697,7 @@ def get_limits():
     global _limits_refreshing
     with _limits_lock:
         if ((_last_probed == 0.0 or
-             time.monotonic() - _last_probed > LIMITS_EVERY_S) and
+             time.monotonic() - _last_probed > _probe_interval_s()) and
                 not _limits_refreshing):
             _limits_refreshing = True
             threading.Thread(
@@ -1479,6 +1508,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, {"error": "internal server error"})
         elif self.path == "/":
             self._send(200, {"service": "torget-tokenserver",
+                             "rev": _SERVER_REV,
+                             "startedAt": _SERVER_STARTED,
                              "endpoint": "/api/tokens",
                              "endpoints": ["/api/tokens", "/api/agent-status",
                                           "/api/max-tracker"],

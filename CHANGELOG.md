@@ -7,6 +7,11 @@ on the [releases page](https://github.com/niclasvestlund-YT/vibepulse/releases).
 
 ### Fixed
 
+- The Claude probe backs off on HTTP 429: it stops the cycle immediately (no
+  second token source, no header probe — extra traffic only extends the
+  penalty) and rests for at least ten minutes, honouring a longer
+  `Retry-After` when the API sends one. `claudeProbe` shows
+  `usage_http_429 + backoff_until_HH:MM` while resting.
 - The Claude probe no longer requires an active 5-hour session window to
   count as successful. Between windows the usage API reports the session row
   with a lapsed reset, and the probe used to discard the still-valid weekly

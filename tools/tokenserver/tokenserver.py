@@ -284,6 +284,7 @@ _headers_logged = False
 _probe_status = "not_run"
 _probe_headers = []
 _probe_unknown_buckets = []
+_probe_cooldown_until = 0.0
 
 
 _CLAUDE_DESKTOP_PROCESS = re.compile(
@@ -524,7 +525,11 @@ def _usage_request(token):
 def _probe_limits():
     """Ett minimalt API-anrop; returnerar {sessionPct, sessionResetMin,
     weekPct, weekResetMin} eller None om något saknas på vägen."""
-    global _probe_status, _probe_headers, _probe_unknown_buckets
+    global _probe_status, _probe_headers, _probe_unknown_buckets, \
+        _probe_cooldown_until
+    if time.time() < _probe_cooldown_until:
+        # I nedkylning efter 429 — statusen står kvar på backoff-strängen.
+        return None
     candidates = _read_oauth_candidates()
     if not candidates:
         _probe_status = "no_claude_oauth_token"
@@ -548,6 +553,21 @@ def _probe_limits():
                 usage = json.load(resp)
         except urllib.error.HTTPError as error:
             _probe_status = f"usage_http_{error.code}"
+            if error.code == 429:
+                # Rate-limited: varje ytterligare anrop förlänger straffet.
+                # Avbryt hela cykeln — ingen andra källa, ingen header-probe
+                # — och vila minst tio minuter (mer om Retry-After kräver).
+                retry_after = 0
+                try:
+                    retry_after = int((error.headers or {}).get(
+                        "Retry-After", 0))
+                except (TypeError, ValueError):
+                    retry_after = 0
+                _probe_cooldown_until = time.time() + max(retry_after, 600)
+                _probe_status = (
+                    f"usage_http_429 + backoff_until_"
+                    f"{datetime.fromtimestamp(_probe_cooldown_until):%H:%M}")
+                return None
             if error.code in (401, 403):
                 # Avvisad token säger inget om nästa källa — prova den innan
                 # vi ger upp.

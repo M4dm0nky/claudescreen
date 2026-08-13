@@ -233,6 +233,31 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
         self.assertEqual(found["modelLabel"], "FABLE · WEEK")
         self.assertEqual(calls, ["https://api.anthropic.com/api/oauth/usage"])
 
+    def test_probe_backs_off_on_rate_limit(self):
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(req.get_full_url())
+            raise urllib.error.HTTPError(
+                req.get_full_url(), 429, "Too Many Requests", None, None)
+
+        with mock.patch.object(tokenserver, "_probe_cooldown_until", 0.0), \
+                mock.patch.object(tokenserver, "_read_oauth_candidates",
+                                  return_value=[("a", None), ("b", None)]), \
+                mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                  side_effect=fake_urlopen):
+            first = tokenserver._probe_limits()
+            second = tokenserver._probe_limits()
+            status = tokenserver._probe_status
+
+        self.assertIsNone(first)
+        self.assertIsNone(second)
+        self.assertTrue(status.startswith("usage_http_429 + backoff_until_"),
+                        status)
+        # 429 avbryter cykeln direkt: ingen andra källa, ingen header-probe,
+        # och nästa cykel rör inte nätet alls under nedkylningen.
+        self.assertEqual(len(calls), 1)
+
     def test_probe_gives_up_when_every_candidate_is_rejected(self):
         calls = []
 

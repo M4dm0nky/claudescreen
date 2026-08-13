@@ -143,8 +143,14 @@ Cursor, whatever you run), and say:
 > Set up VibePulse for me: help me fill in secrets.h, build and flash the
 > board over USB, and start the tokenserver on this Mac.
 
-The repo ships with `CLAUDE.md` / `AGENTS.md`, so your agent already knows
-its way around. That's the whole onboarding.
+The repo is built for this. `CLAUDE.md` and `AGENTS.md` point your agent
+straight at **[docs/agent-setup.md](docs/agent-setup.md)** — an English
+runbook written for agents, with a verification after every step, the traps
+that actually cost people an evening, and a symptom→fix table. That's the
+whole onboarding.
+
+Reading rather than running? That runbook is also the fastest way to
+understand how the pieces fit together.
 
 ## Setup, the manual way
 

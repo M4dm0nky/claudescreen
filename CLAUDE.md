@@ -1,5 +1,9 @@
 Read `README.md` for the repository structure and build workflow.
 
+Setting this repo up for someone (secrets, build, flash, tokenserver)? Follow
+`docs/agent-setup.md` — step-by-step, with verifications and a symptom→fix
+table. Never flash the board without the user explicitly asking you to.
+
 ## AMOLED visual work
 
 Use `.claude/skills/iterating-esp32-amoled-ui/SKILL.md` for AMOLED work. Show

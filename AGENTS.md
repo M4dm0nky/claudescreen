@@ -12,7 +12,20 @@ kanoniska femfilslistan där före hårdvaruarbete. Designsystemet:
 `docs/roadmap-hyllskarmen.md` — P25 + P25-VISION är detta repos
 födelseattest.
 
-## Status (2026-08-06, utbrytningen klar)
+## New here? Setting this repo up for someone
+
+**If you were handed this repo to _set it up_** — fill in secrets, build,
+flash, start the service — follow
+**[docs/agent-setup.md](docs/agent-setup.md)**, not this file. It is in
+English, step-by-step, with a verification after every step and a
+symptom→fix table.
+
+The rest of AGENTS.md is maintainer context for working *on* the platform.
+It refers to things you do not have and do not need: `~/Buddy/components`
+(app 3) and the Solceller repo's roadmap. Both builds gate on their absence
+and simply build two apps instead of three.
+
+## Status (2026-08-13, första flashen gjord)
 
 Plattformen kopierades (flyttades inte) från `~/Documents/Solceller/firmware/`
 och stöptes om enligt granskningens tre krav: (1) versionerat appkontrakt
@@ -24,11 +37,13 @@ VibePulse (Claude/Codex-användning via tools/tokenserver på Macen, platt JSON
 över LAN) och Vibbe/Buddy från companion-repots build input
 `~/Buddy/components` (exakt källrevision i `spec/hardware-sources.yaml`).
 
-**Solceller-kopian fortsätter driva skärmen tills detta repo bevisat sig med
-en lyckad flash + fysisk verifiering.** Verifierat hittills: hosttesterna
-gröna, simulatorn BMP-dumpar vyer för Solelkollen, VibePulse och Vibbe/Buddy
-samt launchern korrekt, targetbygget går igenom. Inte verifierat: flash på
-glaset.
+**Detta repo äger nu glaset.** Den första fysiska flashen gjordes 2026-08-13
+med användarens uttryckliga tillåtelse, från mergad main; den statiska
+fysiska grinden är PASSERAD för kvotsidorna, agentmonitorn och Max Tracker,
+och Solceller-kopian är avvecklad som skärmens drivrutin. Evidens:
+`docs/superpowers/reviews/2026-08-13-max-tracker-physical-static.md`.
+Fortfarande ogrindat: rörelse/animation — den kräver
+interaktionsprotokollet i AMOLED-skillen, mätt på panelen först.
 
 ## Arbetsregler
 

@@ -148,7 +148,7 @@ are not arriving:
 | `no_claude_oauth_token` | No Claude Desktop / Claude Code token found | Have them sign in to Claude Code on this Mac |
 | `token_expired_…` | Token found but expired | Re-authenticate in Claude Code |
 | `usage_http_401` / `usage_http_403` | Every token source rejected (the probe tries Claude Desktop's process token, then the keychain, and falls back automatically) | Re-authenticate in Claude Code |
-| `usage_http_200 + no_mapped_limits` | Authenticated, no recognisable limit headers | Plan may not expose them; Codex half still works |
+| `usage_http_200 + no_mapped_limits` | Authenticated, but nothing in the usage response mapped (a `; fallback_…` suffix records the header-probe outcome) | Plan may not expose limits; Codex half still works |
 | `usage_request_failed: …` | Network/DNS failure from the Mac | Check the Mac's own connectivity |
 
 Codex is read separately from its local app-server, so a bad `claudeProbe`

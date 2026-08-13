@@ -7,6 +7,15 @@ on the [releases page](https://github.com/niclasvestlund-YT/vibepulse/releases).
 
 ### Fixed
 
+- The Claude probe no longer requires an active 5-hour session window to
+  count as successful. Between windows the usage API reports the session row
+  with a lapsed reset, and the probe used to discard the still-valid weekly
+  numbers, fall back to the header probe, and report its 401 instead — so the
+  screen lost all Claude data for the gap after every window ended. Weekly
+  and per-model figures now go through on their own; the session field shows
+  a dash until the next window opens. The header-probe fallback also appends
+  its outcome (`; fallback_http_…`) instead of overwriting the usage status,
+  so `claudeProbe` keeps the evidence.
 - The tokenserver's Claude probe no longer trusts a stale token frozen into a
   long-lived Claude Desktop child process. `ps eww` reports the environment as
   of process launch, so a Desktop child that outlives its token kept serving

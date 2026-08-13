@@ -202,6 +202,37 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
                          ["Bearer stale-process-token",
                           "Bearer fresh-keychain-token"])
 
+    def test_probe_ok_when_session_window_lapsed(self):
+        """Speglar ett live-svar 2026-08-13: sessionsfönstret hade löpt ut
+        minuter tidigare, veckosiffrorna var giltiga. Proben ska behålla dem
+        i stället för att falla vidare till header-proben."""
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(req.get_full_url())
+            return _FakeUsageResponse({"limits": [
+                {"kind": "session", "percent": 17,
+                 "resets_at": "2020-01-01T00:00:00+00:00", "is_active": False},
+                {"kind": "weekly_all", "percent": 60,
+                 "resets_at": "2100-08-14T06:00:00+00:00", "is_active": False},
+                {"kind": "weekly_scoped", "percent": 79,
+                 "resets_at": "2100-08-14T06:00:00+00:00", "is_active": True,
+                 "scope": {"model": {"display_name": "Fable"}}},
+            ]})
+
+        with mock.patch.object(tokenserver, "_read_oauth_candidates",
+                               return_value=[("fresh-token", None)]), \
+                mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                  side_effect=fake_urlopen):
+            found = tokenserver._probe_limits()
+
+        self.assertEqual(tokenserver._probe_status, "usage_http_200 + ok")
+        self.assertNotIn("sessionPct", found)
+        self.assertEqual(found["weekPct"], 60.0)
+        self.assertEqual(found["modelPct"], 79.0)
+        self.assertEqual(found["modelLabel"], "FABLE · WEEK")
+        self.assertEqual(calls, ["https://api.anthropic.com/api/oauth/usage"])
+
     def test_probe_gives_up_when_every_candidate_is_rejected(self):
         calls = []
 

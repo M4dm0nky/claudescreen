@@ -560,7 +560,11 @@ def _probe_limits():
             break
         else:
             found = _parse_usage_limits(usage, time.time())
-            if "sessionPct" in found:
+            # Kräv inte sessionPct: utan aktivt 5-timmarsfönster (bara mobil-
+            # eller molnarbete) rapporterar API:t sessionsraden med passerad
+            # reset, och parsern hoppar korrekt över den. Veckosiffrorna är
+            # fortfarande giltiga — kasta inte bort dem.
+            if found:
                 _probe_status = "usage_http_200 + ok"
                 _probe_headers = []
                 _probe_unknown_buckets = []
@@ -589,17 +593,19 @@ def _probe_limits():
             "anthropic-beta": "oauth-2025-04-20",
         },
     )
+    # Header-proben får aldrig skriva över usage-utfallet — det var så en
+    # felmappning maskerades som "http_401" en hel kväll.
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             headers = dict(resp.headers)
     except urllib.error.HTTPError as e:
-        _probe_status = f"http_{e.code}"
+        _probe_status += f"; fallback_http_{e.code}"
         headers = dict(e.headers) if e.headers else {}
     except Exception as e:
-        _probe_status = f"request_failed: {type(e).__name__}"
+        _probe_status += f"; fallback_failed: {type(e).__name__}"
         return None
     else:
-        _probe_status = "http_200"
+        _probe_status += "; fallback_http_200"
 
     now_ts = time.time()
     # Diagnostik vid första proben: headernamnen är hämtade ur Clawdmeters
@@ -619,7 +625,7 @@ def _probe_limits():
     _probe_headers = sorted(
         n for n in headers if "ratelimit" in n.lower())
     _probe_unknown_buckets = found.pop("unknownBuckets", [])
-    if "sessionPct" not in found:
+    if not found:
         _probe_status += " + no_mapped_headers"
         return None
     _probe_status += " + ok"

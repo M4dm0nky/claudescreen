@@ -3,6 +3,15 @@
 **Written:** 2026-08-13. **Status:** brainstorm. Nothing here is authorized
 work, no capability is promoted, no flash is implied.
 
+> **Revised after an adversarial verification pass.** Nine load-bearing
+> claims were re-checked by skeptics instructed to refute them. One was
+> **refuted**, four needed **correcting**, and several cited statistics were
+> **removed** rather than re-sourced. One recommendation was **reversed** —
+> the first draft told you not to build approve/deny from the device, and
+> that was wrong. Corrections are marked ⚠️ in place rather than quietly
+> patched, so you can see what changed and why. Details in
+> [Verification pass](#verification-pass) at the end.
+
 The brief was: *find features that make this a companion for vibe coders,
 not just a mirror of numbers I can already see — and be certain they're not
 redundant or too much.* Then: *can the screen answer back?*
@@ -28,23 +37,34 @@ Between May and August 2026 the "agent numbers on a small screen" lane went
 from empty to crowded. This matters more than any individual feature idea,
 so it goes first.
 
-| What shipped | Overlap |
-|---|---|
-| **[Token Monitor](https://tokenmonitor.dev/)** — €99 Kickstarter, **480×480, ESP32-S3**, quota + session limits + reset timers + cost for Claude Code, Codex **and** Antigravity | Everything on the Usage and Burn Rate pages |
-| **[Clawdmeter](https://www.hackster.io/news/keep-tabs-on-claude-with-the-cute-animated-clawdmeter-744383d44094)** — same Waveshare board, animated mascot, session + weekly | The original inspiration; VibePulse already differentiates |
-| **[anthropics/claude-desktop-buddy](https://github.com/anthropics/claude-desktop-buddy)** — **official** local BLE API, reference firmware where **A = approve, B = reject** on a pending permission request | NEEDS YOU, *and* the approve-from-device idea |
-| **[AgentDeck](https://github.com/puritysb/AgentDeck)** — 26 surfaces, per-session keys, "see which agent is waiting on you", YES/NO/ALWAYS, STOP, mode cycling | The live header, NEEDS YOU, and two-way control |
-| AgentMeter, Hermes Meter, ClaudeGauge, m5stack-claude-code-buddy | Usage and alerting |
+Each row below was adversarially re-verified after this document's first
+draft, and each of the three headline competitors needed correcting.
+
+| Who | Real status | Overlap |
+|---|---|---|
+| **[Token Monitor](https://tokenmonitor.dev/)** (Fractal Manifold) | **A live Kickstarter campaign since ~7 Aug 2026, not a shipping product.** Goal €25 000, first units estimated Nov 2026, funding outcome unverified. €99 is the Super Early Bird tier — first 50 backers, ex shipping and tax; standard Early Bird is €120. | 4-inch 480×480 **IPS** (*not* AMOLED): quota, session limits, token counts, reset timers, estimated cost. Local Apache-2.0 broker written in Go. Its broker's device registry documents Claude Code, Codex CLI and **Gemini** CLI — Antigravity appears in marketing copy but not in the repo. |
+| **[Clawdmeter](https://www.hackster.io/news/keep-tabs-on-claude-with-the-cute-animated-clawdmeter-744383d44094)** | Shipped | Same Waveshare board, animated mascot, session + weekly. Claude-only. The original inspiration. |
+| **[anthropics/claude-desktop-buddy](https://github.com/anthropics/claude-desktop-buddy)** | Real Anthropic-owned repo (MIT, "Copyright 2026 Anthropic, PBC", ~2.5 k stars) — but Anthropic states it **"isn't an officially supported product feature"**, and it needs Developer Mode. | BLE over Nordic UART Service. The M5StickC Plus reference firmware is genuinely bidirectional: a pending permission puts the pet in an `attention` state; button A sends `{"cmd":"permission",…,"decision":"once"}`, button B denies. |
+| **[AgentDeck](https://github.com/puritysb/AgentDeck)** | Real and active (~194 stars, 26 surfaces exactly) | Per-session keys, working/waiting/idle, "which agent is waiting on you". **But** YES/NO/ALWAYS, STOP and mode cycling work only from its *interactive* surfaces and only for PTY-managed sessions. **Hook-observed sessions are display-only, and every shipping ESP32 board is output-only apart from touch** (exceptions: a T-Embed knob and a 10.1-inch touch model). |
+| AgentMeter, Hermes Meter, ClaudeGauge, m5stack-claude-code-buddy | Various | Usage and alerting |
 
 Plus, on the software side, `ccusage` covers **16 agent sources** for tokens
 and cost; `claude-monitor` has done burn-rate depletion prediction in a rich
 TUI since 2025; there are at least five macOS menu-bar apps doing 5-hour +
 weekly + Opus-week; and there are official Grafana dashboards.
 
-**Read it honestly:** three of the five pages — Usage, Burn Rate, and
-arguably the live header — are now table stakes. Adding a seventh page of
-numbers walks further into a fight that can't be won on novelty, against a
-funded €99 product on the identical panel.
+⚠️ **Sourcing:** tokenmonitor.dev, Kickstarter, cnx-software and hackster are
+all blocked by this session's egress proxy, so Token Monitor's specs and
+pricing are second-hand from search summaries. Its GitHub facts, and
+everything about claude-desktop-buddy and AgentDeck, come from the
+repositories themselves.
+
+**Read it honestly, with the corrections applied:** the direction holds —
+this is no longer an empty niche, and Usage and Burn Rate are table stakes
+*as ideas*. But the intensity was overstated. The nearest competitor has not
+shipped, and it isn't on the identical panel — same 480×480 resolution,
+different display technology, and AMOLED true black is the thing this
+project's whole design language is built on.
 
 The good news is that the crowd is all standing in the same place. **Every
 one of these tools measures what you are *spending*. Not one measures what
@@ -56,8 +76,11 @@ agent-driven work is *costing* you.**
 
 VibePulse today is a **status mirror**: it shows quota, it shows agent state.
 Both real, both useful, both available elsewhere. The value it adds is
-*placement*, not information — and placement alone is what the most-cited
-Tidbyt review calls *"a fun desk accessory in need of a purpose"*.
+*placement*, not information — and placement alone is what earned The Verge's
+August 2022 Tidbyt review its headline: *"a fun desk accessory in need of a
+purpose"*. (A headline, not a line from the review body — the reviewer also
+called it "an excellent delivery system for quick bits of ambient
+information", which is exactly the needle this document is trying to thread.)
 
 A device earns its shelf space when it shows something **you would never open
 a dashboard to see**. That's the test, and it's a sharp one:
@@ -315,24 +338,64 @@ another approve button.
 
 **"Your agents waited 34 minutes on you today."**
 
-This is the strongest idea in the report, and the reason is that **nobody
-measures it — not one tool, on any surface.** Every agent-latency dashboard
-in existence measures the machine: time-to-first-token, tool call time,
-retries. Human approval time appears only as "a source of deadlock in the
-critical path." The telescope has never been turned around.
+Still the strongest idea here — but this document's first draft claimed
+"nobody measures it, not one tool, on any surface", and that was **wrong**.
+Adversarial verification found the counterexample in the most damaging
+possible place: Claude Code itself.
 
-It is also well-evidenced as *the* real cost. METR's RCT found experienced
-developers were **19% slower** with AI tools, and — the detail that matters —
-*they could not report time-on-task because they kept switching to unrelated
-work while waiting for the agent.* The waiting-and-switching behaviour broke
-the research instrument. DORA 2025 names the same thing as new waste: time
-lost to AI latency, context re-explanation, tool hopping.
+> ⚠️ **Correction.** Claude Code's OpenTelemetry tracing emits a span called
+> `claude_code.tool.blocked_on_user`, a child of `claude_code.tool`, whose
+> `duration_ms` attribute is documented as *"Time spent waiting for the
+> permission decision"* — with a `source` attribute (`config`, `hook`,
+> `user_permanent`, `user_temporary`, `user_abort`, `user_reject`) that
+> separates auto-decisions from genuine human latency. That is not an
+> approximation of the metric, it *is* the metric. Confirmed independently
+> against the shipped binary, which contains
+> `startSpan("claude_code.tool.blocked_on_user", …)`.
 
-**VibePulse is uniquely positioned:** it already generates the NEEDS YOU
-event and already knows when it's dismissed. The measurement is two
-timestamps it already has. No new data source, no OTEL, no git parsing.
+So drop the primacy-of-measurement claim entirely. **The honest position is
+primacy of *surfacing*.** What remains true, and is enough:
 
-Show "blocked right now: 4m 12s" and a daily total. It's also
+- It is **beta and off by default** — traces need both
+  `CLAUDE_CODE_ENABLE_TELEMETRY=1` and
+  `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` plus a traces exporter, and the
+  docs warn span names may change between releases.
+- It is a **trace span, not an aggregated metric**. There is no
+  `blocked_on_user` counter; the metrics list has only
+  `code_edit_tool.decision` (accept/reject counts, no duration).
+- Consequently **no shipping dashboard panels it.** The published Grafana
+  dashboards for Claude Code chart sessions, tokens, cost, active time,
+  lines of code, commits and PRs. None has a wait-time panel.
+- Seeing it today therefore means running a collector, enabling two beta
+  flags, and opening a dashboard — which is precisely the thing nobody does
+  for a number like this.
+
+**This is better news than it first looks.** The signal has *official
+semantics*, which means VibePulse can consume a defined span instead of
+inferring from its own NEEDS YOU raise/dismiss timestamps — better fidelity,
+and `source` distinguishes a real human decision from an auto-approval for
+free. The fallback path also still exists: the device already generates the
+alert and knows when it was dismissed, so it can derive the number with no
+OTel at all. Ship the fallback first; adopt the span when it leaves beta.
+
+Be clear-eyed about the moat, though: it is the **delivery** — zero config,
+ambient, physical, glanceable, in the moment the agent is actually blocked —
+not the measurement. A competitor doesn't have to invent this metric, only
+render it. That is a weaker and more copyable position than the first draft
+implied, and worth knowing before betting the product on it.
+
+Supporting evidence, stated carefully: METR's 2025 randomised controlled
+trial found 16 experienced open-source developers took **19% longer** on
+tasks in their own repositories when allowed to use AI tools — while
+estimating afterwards that AI had made them ~20% *faster*. The
+waiting-and-switching detail this document originally attributed to that
+trial actually comes from METR's February 2026 experiment-redesign post,
+where developers found time-on-task hard to report because they would work
+an unrelated task while waiting for the agent. METR now treats the 19% as
+historical and possibly not generalisable to current agentic tools, so cite
+it as a 2025 result, not as today's state of play.
+
+Show "blocked right now: 4m 12s" and a daily total. It stays
 **Goodhart-safe by construction** — a number you can only game *downward*,
 unlike every token metric in the ecosystem.
 
@@ -342,10 +405,15 @@ it argues for — the screen itself — not to guilt.
 
 ### 2. Review debt *(protect)*
 
-**Unverified agent output piling up.** DORA, METR and eBay's ReviewDebt
-framework all name this as *the* bottleneck of agent-driven work: code
-production is now exponential, human review capacity is linear, and the delta
-is unverified risk. **There is no ambient display of it anywhere.**
+**Unverified agent output piling up.** The framing comes from a talk by
+Sachin Gupta of eBay, "ReviewDebt: a practical framework for scoring every
+pull request" — coding agents ship PRs faster than humans can trust them, so
+code production is exponential while human review capacity stays linear and
+the delta is unverified risk. (One engineer's conference talk, not an
+adopted eBay-wide standard — don't overstate it.) DORA's 2025 report
+documents the adjacent friction: validating AI-generated output, re-establishing
+lost context, fragmentation across tools. **There is no ambient display of
+any of it.**
 
 Locally computable and content-free: uncommitted diff lines in agent-touched
 repos, unpushed commits, age of the oldest, and AI-authored share via
@@ -397,10 +465,22 @@ failures of the same tool on the same target, tuned high, and label it
 ### 5. Fragmentation / WIP *(protect)*
 
 AgentDeck shows *which* agents are running. Nobody shows **whether that's too
-many.** WIP-limit evidence is strong (reported +40% throughput, −60% delivery
-time; sweet spot around ⅔–¾ of capacity) and the mapping is exact: one
-developer running four parallel agents is running 4 WIP against a review
-capacity of 1.
+many.** The mapping to WIP limits is exact: one developer running four
+parallel agents is running 4 WIP against a review capacity of 1, and
+queueing theory gives the rationale directly — by Little's Law, cycle time
+rises with work in progress.
+
+⚠️ **Do not quote improvement percentages here.** An earlier draft of this
+document cited "+40% throughput, −60% delivery time" and a "two-thirds to
+three-quarters of team size" sweet spot. Both were removed on verification:
+the percentage pair traces to an SEO content page with no sample, method or
+population behind it, and the heuristic appears in no source at all — the
+ones that do circulate ("two to three items per person", "team size plus
+one") point the *other* way. The one empirical study of WIP in Kanban teams
+(ESEM 2018) found no single optimal limit, with different WIP levels
+improving some performance variables while degrading others. The argument
+stands on the structure; it does not need a number, and the numbers on offer
+don't survive contact.
 
 In-flight count against a self-set limit, plus daily distinct-project
 switches. "You touched 6 projects today" is more actionable than any token
@@ -414,11 +494,17 @@ Max Tracker is the one page nobody else has. It is also the page most exposed
 to the vanity-metric critique, and this needs saying plainly:
 
 **"Days you maxed out" is a tokenmaxxing metric wearing a heatmap. It rewards
-burn.** In April 2026 a Meta engineer built an internal token leaderboard;
-engineers competed for "Token Legend" status; Meta killed it after backlash.
-The consensus verdict was that *token usage is the lines-of-code metric of
-the AI era — easy to measure, easy to game, disconnected from productivity.*
-A red cell currently means "good job hitting the ceiling."
+burn.** In April 2026 *The Information* reported that a Meta employee had
+built an internal leaderboard — "Claudeonomics" — ranking the company's
+~85,000 employees by token consumption, with badges including "Token Legend".
+It came down within two days. ⚠️ Correcting this document's first draft: it
+was **not** killed by Meta after public backlash. The stated reason was that
+the dashboard's data had been shared externally, and Meta went on record
+saying the employee took it down at their own discretion and that Meta did
+not request it. The cautionary value survives — token burn is the
+lines-of-code metric of the AI era, easy to measure and easy to game — but
+the story does not carry "and the company disowned it", so don't lean on
+that. A red cell currently means "good job hitting the ceiling."
 
 **Keep the grid** — it is genuinely good and glanceable in a way a table
 isn't. **Change what a cell means** to an outcome you'd be happy to be judged
@@ -426,10 +512,21 @@ on: days ending with zero unreviewed agent diff, days finished before 19:00,
 days with median agent-wait under two minutes. Same pixels, same streak
 mechanic, opposite incentive.
 
-**And add grace days.** Streaks reliably backfire at the moment they break —
-the abstinence-violation effect makes people quit rather than resume.
-Duolingo's own data showed that reducing loss-anxiety *increased* long-term
-engagement. One streak is a habit tracker; five is a slot machine.
+**And add grace days** — but for the right reason. A broken streak is the
+highest-risk moment in any streak system, and the *mechanism* is plausible:
+the abstinence-violation effect (Marlatt & Gordon) describes a single lapse
+being reframed as total failure. ⚠️ Two corrections to this document's first
+draft. It said streaks "reliably backfire" and that users "quit rather than
+resume" — that word is not supportable, because the effect is borrowed from
+relapse research and has not been demonstrated for streak mechanics. And it
+claimed Duolingo found that *reducing loss-anxiety* increased long-term
+engagement, which has the mechanism backwards: Duolingo deliberately relies
+on loss aversion, and their reported win was that giving new users **two**
+streak freezes raised the rate at which lapsed users came back. The effect is
+bounded — three freezes performed no better than two — and their "Earn Back"
+feature exists precisely because broken-streak users demonstrably *can* be
+recovered. Grace days are worth adding as a recovery path, not as anxiety
+reduction. One streak is a habit tracker; five is a slot machine.
 
 ---
 
@@ -441,11 +538,21 @@ engagement. One streak is a habit tracker; five is a slot machine.
   chart calls good. Anthropic exposes accept rate only to Team/Enterprise
   admins; individuals cannot see their own.
 - **The stop cue.** `claude_code.active_time.total` plus commit-hour drift.
-  Late-night commits are both an evidence-backed burnout biomarker and an
-  evidence-backed bug source (midnight–04:00 commits are measurably buggier).
-  A fixed-cue state change is the highest-evidence intervention available to
-  a passive display, and it's the one thing a menu bar structurally cannot do
-  — you're not looking at your Mac when you should stop.
+  The solid half: commits between midnight and 04:00 are measurably buggier
+  than those made between 07:00 and noon (Eyolfson, Tan & Lam, MSR 2011, on
+  the Linux kernel and PostgreSQL). ⚠️ The *burnout* half of this argument
+  was removed on verification. An earlier draft called rising night commits
+  "an evidence-backed burnout biomarker" and cited a 2025 Empirical Software
+  Engineering study of 4,549 repositories. That study does find a consistent
+  decade-long rise in nighttime and early-morning commits — but reads it as
+  **a shift toward flexible, asynchronous working**, close to the opposite
+  valence, and it measures population drift over ten years rather than an
+  individual's trend. Using it to flag one developer's late nights is both a
+  misframing and a level-of-analysis error. So pitch this feature on the bug
+  evidence, or find a real wellbeing citation; don't pitch it on that paper.
+  What survives regardless: a fixed-cue state change is the one intervention
+  a menu bar structurally cannot deliver, because you aren't looking at your
+  Mac when you should stop.
 - **Cross-session context pressure.** Everyone shows context for the
   *focused* session. With four agents running, nobody shows which is about to
   compact.
@@ -464,10 +571,22 @@ engagement. One streak is a habit tracker; five is a slot machine.
 
 ## Deliberately not building
 
-- **More tokens, cost, or quota windows.** `ccusage` owns tokens and cost
-  across 16 agents and it is not close. Menu-bar apps and
+- **More tokens, cost, or quota windows.** `ccusage` owns historical
+  token/cost accounting across exactly **16** agent sources (amp, claude,
+  codebuff, codex, copilot, droid, gemini, goose, grok, hermes, kilo, kimi,
+  openclaw, opencode, pi, qwen, as of v20.0.19 — verified by cloning the
+  repo, not from its README alone). Menu-bar apps and
   `coding_agent_usage_tracker` already do 5+ providers' quota. Adding more is
   a treadmill, not a differentiator.
+  One precision worth keeping, since the first draft said flatly that ccusage
+  shows no quota: it has no concept of *plan* quota, but it isn't quota-blind
+  either. It records `usageLimitResetTime`, scraped from the "usage limit
+  reached" error *after* you are already throttled (Claude adapter only), and
+  `ccusage blocks -t` prints percent-of-limit against a token budget **you**
+  supply or your own historical maximum — not your real plan quota. Its live
+  dashboard was removed in v18.0.0, so v20 has no real-time view at all.
+  That is exactly the gap VibePulse fills, and it's a sharper argument than
+  "ccusage doesn't do quota."
 - **Better burn-rate prediction.** `claude-monitor` has done this in a rich
   TUI since 2025. Confidence intervals are invisible ROI.
 - **Context-window % for the focused session.** Statusline scripts,
@@ -481,14 +600,22 @@ engagement. One streak is a habit tracker; five is a slot machine.
   reframe above.
 - **A clock, date, weather, or generic info row.** Explicitly a rule
   violation per `ui-spec.md`.
-- **Winning a feature race on generic approve/reject.** Anthropic ships it
-  officially over BLE and AgentDeck does it across 26 surfaces with encoders
-  and mode cycling. Build the approve path because it's cheap and because you
-  want it — but position the *cost-of-work* metrics as the differentiator,
-  not this. (Hardware note: the board's `radio.bluetooth-le` is
-  `board_wired: yes` but **`firmware_enabled: no`**, so matching the
-  first-party BLE route would also mean a BLE/WiFi coexistence budget —
-  `ble-provisioning` in `spec/hardware-opportunities.md`.)
+- ~~**Winning a feature race on generic approve/reject.**~~ ⚠️ **This entry
+  was wrong and is withdrawn.** The first draft said don't bother, because
+  "Anthropic ships it officially over BLE and AgentDeck does it across 26
+  surfaces." Verification took both legs out from under that:
+  claude-desktop-buddy is an explicitly **unsupported** developer feature
+  behind Developer Mode, over BLE, on an M5StickC — not a product; and
+  AgentDeck's **shipping ESP32 boards are output-only apart from touch**,
+  with its approval UI living on Stream Deck, phone and desktop. On a
+  WiFi-attached ESP32 AMOLED panel answering over LAN, **nobody has actually
+  shipped this.** It is an open surface, not a crowded one — see the two-way
+  section above, where it moves to *build*. The one piece of the original
+  entry that survives: approve/deny is the more *copyable* idea, so the
+  cost-of-work metrics should still carry the positioning. (Hardware note:
+  the board's `radio.bluetooth-le` is `board_wired: yes` but
+  **`firmware_enabled: no`** — a reason to stay on WiFi/LAN rather than
+  chase the first-party BLE route, which would need a coexistence budget.)
 - **Lovable.** No local surface exists — the agent runs in the cloud, credits
   are dashboard-only, there is no usage endpoint and no lifecycle webhook.
   It's a feature request to Lovable, not an integration. Worth saying plainly
@@ -501,14 +628,23 @@ engagement. One streak is a habit tracker; five is a slot machine.
   `speaker: unknown`. Only **two** capabilities on this board are
   `unit_verified: yes` — the panel and 2.4 GHz WiFi. Gated until someone
   confirms a speaker is physically attached.
-- **OpenTelemetry as the unifying integration.** Tempting and wrong for the
-  *alert*: every `gen_ai.*` convention is still "Development", they moved to
-  a separate repo (semconv v1.42.0 deprecated them, v1.43.0 ships none), and
-  decisively **there is no convention for "agent is blocked awaiting human
-  input"** — the one signal this product is built on. Claude Code's *own*
-  OTel export is a different matter and is genuinely useful (below), but it
-  emits **no quota or rate-limit state at all**, so it complements the
-  tokenserver rather than replacing it.
+- **OpenTelemetry as the *cross-vendor* unifying integration.** Tempting and
+  wrong, but be precise about why, because the two OTel stories here point
+  in opposite directions.
+  - **Vendor-neutral GenAI semantic conventions: not usable.** Every
+    `gen_ai.*` convention is still "Development", they moved to a separate
+    repo (semconv v1.42.0 deprecated them, v1.43.0 ships none), and there is
+    **no cross-vendor convention for "agent is blocked awaiting human
+    input"** — so it cannot be the thing that unifies four providers behind
+    one alert. The hook contract does that job instead.
+  - **Claude Code's own OTel export: genuinely useful, and it *does* carry
+    the blocked signal** — `claude_code.tool.blocked_on_user` with a
+    `duration_ms` of "time spent waiting for the permission decision". That
+    is a reason to *adopt* it later for the latency meter, not to dismiss
+    it. Its real limits are that it is beta-gated, off by default, a trace
+    span rather than an aggregated metric, and that it emits **no quota or
+    rate-limit state at all** — so it complements the tokenserver rather
+    than replacing it, and it wants a collector where a hook wants nothing.
 
 ---
 
@@ -548,14 +684,32 @@ Telemetry writes straight to a **local file** — no collector:
                  "outfile": ".gemini/telemetry.log" } }
 ```
 
+Verified at source level against `google-gemini/gemini-cli` at HEAD. The
+`outfile` path is real — `sdk.ts` gates it with
+`const useOtlp = !!parsedEndpoint && !telemetryOutfile`, so setting an
+outfile suppresses OTLP entirely and writes via file exporters. Note the
+docs moved to `docs/cli/telemetry.md`.
+
 Two traps. **`logPrompts` defaults to `true`** — it must be explicitly
 disabled or the integration writes user prompts to disk, violating this
-project's privacy contract on day one. And **there is no programmatic
-remaining-quota surface**: the honest options are counting requests against a
-known daily cap (free 1000/day, AI Pro 1500, Ultra 2000, API-key free 250) or
-showing a dash. Those caps have changed repeatedly, so they belong in config,
-not constants — and a *derived* percentage from a *configured* cap deserves a
-hard look from the honesty invariant before it reaches the glass.
+project's privacy contract on day one.
+
+And on quota, a refinement worth having: Gemini CLI **does** track remaining
+quota in-process — `Config.getQuotaRemaining()`, `getQuotaLimit()`,
+`getQuotaResetTime()`, backed by the Code Assist `retrieveUserQuota`
+endpoint (buckets carrying `remainingAmount`, `remainingFraction`,
+`resetTime`), plus a `QuotaChanged` event. **But none of it reaches an
+external observer:** quota appears nowhere in the telemetry output or the
+hooks payloads, and it is only populated for Code Assist / OAuth logins, not
+API-key auth. So the practical conclusion is unchanged — a service reading
+the telemetry file from outside the process must count requests against a
+known daily cap (free 1000/day, AI Pro 1500, Ultra 2000, API-key free 250)
+or show a dash. The gap is *exposure, not existence*, which is worth knowing
+because an upstream change adding quota to telemetry would remove the need
+for the estimate entirely. Those caps have changed repeatedly, so they
+belong in config, not constants — and a *derived* percentage from a
+*configured* cap deserves a hard look from the honesty invariant before it
+reaches the glass.
 
 ### The seams, concretely
 
@@ -677,11 +831,51 @@ Measured here, so it can be re-checked:
   at `unit_verified: yes`; `radio.bluetooth-le` is wired but not
   firmware-enabled; KEY3 is firmware-enabled and only switches apps.
 
-Hook schemas for Claude Code were verified against the **shipped v2.1.231
-binary**, not only the docs — which matters, because the `decision` object
-shape differs from how the docs summarise it. Codex claims come from source
-at `openai/codex @ 1da59ad2571`. Claims about Cursor, Lovable, OpenCode, Amp
-and OpenTelemetry come from search summaries and third-party writeups because
-those domains were blocked by this session's egress proxy — **the Cursor
-Admin API surface and the Lovable "no usage endpoint" conclusion are the two
-most worth confirming by hand** before either is promised to anyone.
+## Verification pass
+
+After the first draft was published, its load-bearing claims were put
+through an adversarial pass — one skeptic per claim, each instructed to
+*refute* rather than confirm, and to mark a claim unverifiable rather than
+guess when a domain was blocked. **Nine claims went in; four came back
+needing correction and one came back outright refuted.** Every correction
+above is marked with ⚠️ in place rather than quietly patched, so the changed
+reasoning stays visible.
+
+**Confirmed against primary sources**
+
+| Claim | How |
+|---|---|
+| `PermissionRequest` hook, all eight sub-claims | Official docs **and** the shipped v2.1.231 binary. Extracted schema shows `decision` as a discriminated union object — `Ss([be({behavior:It("allow")…}), be({behavior:It("deny")…})])` — confirming that the docs *summary* is misleading. Input carries no `tool_use_id` while the adjacent `PostToolUse` schema does. `type:It("http")` documented in-binary as "URL to POST the hook input JSON to". `timeout is 600`. |
+| Deny rules beat a hook's `allow` | The binary contains the runtime string `Hook returned '…' for …, but deny rule overrides:`. The safety backstop is enforced in code, not just promised in prose — the single most important confirmation here. |
+| Codex `PermissionRequest` | Source clone. `approvals.rs:467` — "Approval precedence is: 1. Hooks 2. …Guardian. Else, user." `discovery.rs:687` — `timeout_sec.unwrap_or(600)`. `output_parser.rs:388-401` explicitly rejects `updatedInput`, `updatedPermissions` and `interrupt:true` as unsupported. |
+| statusLine `rate_limits` | Docs, plus `rate_limits` / `five_hour` / `seven_day` present in the binary. |
+| Repo seams | Read directly: `usage_history.py:133` does a bare `continue` on an unknown provider — silent, no raise, no log. `tokens_parse.c:219` skips unknown top-level keys rather than rejecting. |
+
+**Corrected** — Token Monitor (a campaign, not a shipped product; IPS not
+AMOLED; €99 is a capped early-bird tier; Antigravity is marketing copy),
+claude-desktop-buddy ("isn't an officially supported product feature"),
+AgentDeck (its ESP32 boards are output-only), Gemini quota (exists
+in-process, just never exposed), ccusage (not entirely quota-blind), and
+six cited statistics.
+
+**Refuted** — "nobody measures agent-blocked-on-human time." Claude Code's
+own `claude_code.tool.blocked_on_user` span measures exactly that. The
+feature survives; the novelty claim did not.
+
+**Statistics removed rather than re-sourced** — the WIP "+40% / −60%" pair
+and its "two-thirds to three-quarters" heuristic (traced to an SEO content
+page; the heuristic appears in no source at all), and the framing of night
+commits as a burnout biomarker (the cited paper reads the trend as flexible
+working). Where a number could not be stood up, the argument was rewritten
+to stand without it.
+
+**Still second-hand, and flagged as such** — everything about Cursor,
+OpenCode, Amp, and Token Monitor's hardware specs and pricing, because
+cursor.com, opencode.ai, ampcode.com, tokenmonitor.dev, Kickstarter, arxiv,
+metr.org, dora.dev and theverge.com were all blocked by this session's
+egress proxy. Lovable's "no usage endpoint" conclusion rests on doc excerpts
+surfaced through search rather than a direct read of docs.lovable.dev, which
+is also blocked — the conclusion held up under a second attempt to refute
+it, but it is the one "don't build" call resting on the weakest evidence.
+**Confirm the Cursor Admin API surface and the Lovable conclusion by hand**
+before either is promised to anyone.

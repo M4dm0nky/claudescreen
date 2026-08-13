@@ -111,6 +111,13 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
   -o /tmp/torget-ota-policy-test
 /tmp/torget-ota-policy-test
 
+cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/torget_ota/button_policy.c \
+  test_ota_button_policy.c \
+  -lm \
+  -o /tmp/torget-ota-button-policy-test
+/tmp/torget-ota-button-policy-test
+
 "$PYTHON_BIN" test_agent_demo_wiring.py
 "$PYTHON_BIN" test_agent_net_wiring.py
 "$PYTHON_BIN" test_target_tls_memory.py

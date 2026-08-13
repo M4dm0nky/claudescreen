@@ -3,6 +3,19 @@
 Notable changes to VibePulse. Release notes for tagged versions are published
 on the [releases page](https://github.com/niclasvestlund-YT/vibepulse/releases).
 
+## Unreleased
+
+### Added
+
+- The completion alert finally pulses. The accent outline and icon ring
+  breathe (full → 39 % → full, ease-in-out, four 1200 ms cycles filling the
+  PULSE phase exactly) and then rest; text and the provider icon stay solid
+  for readability. Proven pixel-by-pixel in the simulator and reviewed on
+  the physical panel
+  ([review](docs/superpowers/reviews/2026-08-14-completion-pulse-physical-motion.md)).
+  The static attention gate now permits exactly this one animation and pins
+  its shape.
+
 ## v0.2.1 — 2026-08-13
 
 Server fixes verified live on a real installation the same evening; the

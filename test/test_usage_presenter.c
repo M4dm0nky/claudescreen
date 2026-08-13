@@ -106,15 +106,15 @@ int main(void) {
                "LIVE") == 0);
   check("live agent context replaces live",
         strcmp(usage_presenter_quota_status_text(
-                   true, false, "WORKING · 2 CHATS"),
-               "WORKING · 2 CHATS") == 0);
+                   true, false, "WORKING · 2 AGENTS"),
+               "WORKING · 2 AGENTS") == 0);
   check("retained quota is stale despite agent context",
         strcmp(usage_presenter_quota_status_text(
-                   true, true, "WORKING · 2 CHATS"),
+                   true, true, "WORKING · 2 AGENTS"),
                "STALE") == 0);
   check("missing quota wins over stale and agent context",
         strcmp(usage_presenter_quota_status_text(
-                   false, true, "WORKING · 2 CHATS"),
+                   false, true, "WORKING · 2 AGENTS"),
                "NO DATA") == 0);
 
   tk_tokens forecasts = {0};

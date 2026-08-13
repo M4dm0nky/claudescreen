@@ -205,7 +205,7 @@ assert "render_rail" not in monitor
 assert "mon.rail" not in monitor
 for copy in (
     "NEEDS YOU", "ERROR", "DONE", "CLAUDE IS WAITING", "CODEX IS WAITING",
-    "CHATS WAITING", "NEEDS ATTENTION", "FINISHED", "TAP TO DISMISS",
+    "AGENTS WAITING", "NEEDS ATTENTION", "FINISHED", "TAP TO DISMISS",
 ):
     assert copy in monitor, f"missing attention copy: {copy}"
 
@@ -233,10 +233,24 @@ for removed_codex_layer in (
     assert removed_codex_layer not in monitor_codex_icon
 
 for forbidden in (
-    "lv_anim", "lv_timer", "lv_canvas", "lv_obj_set_style_transform",
+    "lv_timer", "lv_canvas", "lv_obj_set_style_transform",
     "lv_obj_set_style_opa",
 ):
     assert forbidden not in monitor, f"static attention gate forbids {forbidden}"
+
+# Motion-undantaget: completion-pulsen är den ENDA tillåtna animationen i
+# attention-lagret — den andas i border-opacitet på befintliga element,
+# fyller PULSE-fasen exakt och återställer full opacitet vid stopp.
+# Lättnaden (lv_anim borttagen ur förbudslistan ovan) får nå main först
+# tillsammans med en fysisk motion-granskning enligt AMOLED-skillen.
+assert "completion_pulse_start" in monitor
+assert "completion_pulse_stop" in monitor
+assert "#define COMPLETION_PULSE_CYCLE_MS 1200U" in monitor
+assert "TK_COMPLETION_PULSE_MS / COMPLETION_PULSE_CYCLE_MS" in monitor, \
+    "pulse repeat count must fill the PULSE phase exactly"
+assert monitor.count("lv_anim_start") == 1, "one pulse animation, no more"
+assert monitor.count("lv_obj_set_style_border_opa") >= 4, \
+    "pulse must drive outline and ring, and stop must restore both"
 
 for interaction in (
     "mon.suppress_click = true;", "if (mon.suppress_click)",

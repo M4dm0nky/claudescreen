@@ -2,10 +2,14 @@
 # komponenter (components/app_*) och dras in via REQUIRES — registry.c
 # refererar deras torget_app_t. Fonterna bor i torget_app-komponenten
 # (designsystemet är plattformens, och apparna länkar dem den vägen).
-# Vibbe/Buddy är frivillig: finns ~/Buddy dras komponenten in och
-# TORGET_HAVE_BUDDY grindar dess registerpost i registry.c.
-set(TORGET_MAIN_REQUIRES torget_app app_solelkollen app_tokens)
-if(EXISTS "$ENV{HOME}/Buddy/components/app_buddy")
+# Companion-apparna (Solelkollen, Vibbe/Buddy) är frivilliga: finns de
+# utcheckade dras komponenten in och TORGET_HAVE_* grindar registerposten i
+# registry.c. En färsk klon utifrån bygger bara VibePulse.
+set(TORGET_MAIN_REQUIRES torget_app app_tokens)
+if(EXISTS "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
+  list(APPEND TORGET_MAIN_REQUIRES app_solelkollen)
+endif()
+if(EXISTS "${TORGET_BUDDY_DIR}/app_buddy")
   list(APPEND TORGET_MAIN_REQUIRES app_buddy)
 endif()
 
@@ -23,7 +27,10 @@ idf_component_register(
            esp_event
            esp_timer)
 
-if(EXISTS "$ENV{HOME}/Buddy/components/app_buddy")
+if(EXISTS "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE TORGET_HAVE_SOLELKOLLEN)
+endif()
+if(EXISTS "${TORGET_BUDDY_DIR}/app_buddy")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE TORGET_HAVE_BUDDY)
 endif()
 

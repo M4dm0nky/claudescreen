@@ -24,16 +24,26 @@
 
 #include "lvgl.h"
 
-#include "app_solelkollen.h"
 #include "app_tokens.h"
 #include "agent_monitor.h"
 #include "agent_monitor_policy.h"
 #include "agent_status_parse.h"
-#include "glance_parse.h"
 #include "max_tracker_parse.h"
 #include "tokens_parse.h"
 #include "torget.h"
 #include "usage_screen.h"
+
+/* VibePulse är det här repots app och ligger ALLTID först i registret, så
+ * launchern och den obevakade rundan pekar på samma index oavsett vilka
+ * companion-appar som råkar vara utcheckade. */
+#define SIM_APP_VIBEPULSE 0
+
+/* Solelkollen är en companion-app i ett eget repo: finns den utcheckad drar
+ * bygget in den och sätter TORGET_HAVE_SOLELKOLLEN, annars kör simulatorn
+ * bara VibePulse — precis som targetet. */
+#ifdef TORGET_HAVE_SOLELKOLLEN
+#include "app_solelkollen.h"
+#include "glance_parse.h"
 
 typedef struct { const char *file; const char *name; uint32_t hold_ms; } fixture_t;
 
@@ -46,6 +56,7 @@ static const fixture_t FIXTURES[] = {
 
 static int fixture_idx = -1;
 static lv_timer_t *cycle_timer;
+#endif /* TORGET_HAVE_SOLELKOLLEN */
 
 static const char *const AGENT_FIXTURES[] = {
   "agent-status-idle.json",
@@ -154,6 +165,7 @@ static void dump_frame(const char *tag) {
   lv_draw_buf_destroy(buf);
 }
 
+#ifdef TORGET_HAVE_SOLELKOLLEN
 /* Sex halvsekunderssteg per fixtur: dumpa vy 1-4 i tur och ordning och gå
  * tillbaka. Lämnar torget-<fixtur>-<vy>.bmp för alla Solelkollen-vyer. */
 static int dump_stage;
@@ -174,6 +186,7 @@ static void dump_seq_cb(lv_timer_t *t) {
   }
   lv_timer_set_period(t, 500);
 }
+#endif /* TORGET_HAVE_SOLELKOLLEN */
 
 /* ---------------------------------------------------------------- fixtures */
 
@@ -193,6 +206,7 @@ static char *read_fixture(const char *file, size_t *len_out) {
   return buf;
 }
 
+#ifdef TORGET_HAVE_SOLELKOLLEN
 /* En "hämtning" åt Solelkollen: läs filen, parsa med den delade parsern.
  * Ett parsfel beter sig exakt som på enheten: gamla värden står kvar och
  * appens egen stale-tröskel tar hand om resten. */
@@ -222,6 +236,7 @@ static void apply_fixture(int idx) {
   lv_timer_t *seq = lv_timer_create(dump_seq_cb, 2000, (void *)(intptr_t)fixture_idx);
   lv_timer_set_repeat_count(seq, 8);
 }
+#endif /* TORGET_HAVE_SOLELKOLLEN */
 
 static void feed_tokens_file(const char *file) {
   size_t len = 0;
@@ -386,10 +401,12 @@ static tk_agent_snapshot two_waiting_snapshot(void) {
   return snapshot;
 }
 
+#ifdef TORGET_HAVE_SOLELKOLLEN
 static void next_fixture(lv_timer_t *t) {
   (void)t;
   apply_fixture(fixture_idx + 1);
 }
+#endif
 
 /* Plattformsrundan efter fixturdumparna: deterministiska statiska
  * VibePulse-vyer för bildgranskningen före AMOLED-grinden. */
@@ -399,7 +416,7 @@ static void platform_tour_cb(lv_timer_t *t) {
   switch (stage++) {
     case 0: torget_launcher_open(); break;
     case 1: dump_frame("launcher"); break;
-    case 2: torget_app_show(1); tokens_show_view(VIEW_CLAUDE_FABLE); break;
+    case 2: torget_app_show(SIM_APP_VIBEPULSE); tokens_show_view(VIEW_CLAUDE_FABLE); break;
     case 3: apply_agent_fixture(1); break;
     case 4: dump_frame("vibepulse-claude-static"); break;
     case 5: apply_agent_fixture(2); break;
@@ -450,16 +467,20 @@ static void poll_keys(lv_timer_t *t) {
   for (int i = 0; i < 11; i++) {
     bool down = ks[keys[i]];
     if (down && !held[i]) {
-      if (i < 4) apply_fixture(i);
+      if (i < 4) {
+#ifdef TORGET_HAVE_SOLELKOLLEN
+        apply_fixture(i);
+#endif
+      }
       else if (i == 4) feed_tokens();
       else if (i == 5) {
-        torget_app_show(1);
+        torget_app_show(SIM_APP_VIBEPULSE);
         apply_agent_fixture(agent_fixture_idx + 1);
       }
       else if (i == 6) torget_launcher_open();
       else if (i == 7) torget_app_next();
       else if (i == 8 || i == 9) {
-        torget_app_show(1);
+        torget_app_show(SIM_APP_VIBEPULSE);
         int view = usage_screen_current_view() + (i == 8 ? -1 : 1);
         if (view < 0) view = TK_USAGE_SCREEN_VIEWS - 1;
         if (view >= TK_USAGE_SCREEN_VIEWS) view = 0;
@@ -473,7 +494,7 @@ static void poll_keys(lv_timer_t *t) {
 
 static int run_vibepulse_static_qa(void) {
   capture_failures = 0;
-  torget_app_show(1);
+  torget_app_show(SIM_APP_VIBEPULSE);
 
   feed_tokens();
   tk_agent_snapshot single = static_working_snapshot(
@@ -705,7 +726,7 @@ static int run_vibepulse_static_qa(void) {
 }
 
 static void run_vibepulse_completion_qa(void) {
-  torget_app_show(1);
+  torget_app_show(SIM_APP_VIBEPULSE);
   tokens_show_view(VIEW_CLAUDE_FABLE);
   apply_agent_file("agent-status-idle.json");
 
@@ -734,6 +755,7 @@ int main(int argc, char **argv) {
 
   torget_ui_create(); /* bygger apparna via registret, går in i app 0 */
 
+#ifdef TORGET_HAVE_SOLELKOLLEN
   /* Sverige-vyn (P23): en hämtning vid start, genom samma parser som
    * targetet — settlement rör sig inte på en simulatorsession. */
   {
@@ -748,6 +770,7 @@ int main(int argc, char **argv) {
     }
     free(json);
   }
+#endif
 
   if (argc == 2 && strcmp(argv[1], "--vibepulse-static-qa") == 0) {
     return run_vibepulse_static_qa();
@@ -762,8 +785,10 @@ int main(int argc, char **argv) {
     return 0;
   }
 
+#ifdef TORGET_HAVE_SOLELKOLLEN
   cycle_timer = lv_timer_create(next_fixture, 20000, NULL);
   apply_fixture(0);
+#endif
   lv_timer_create(poll_keys, 50, NULL);
 
   /* Plattformsrundan: efter Solelkollen-dumparna (klara ~5,5 s in), dumpa

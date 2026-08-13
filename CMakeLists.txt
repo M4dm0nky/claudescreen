@@ -13,10 +13,27 @@ cmake_minimum_required(VERSION 3.16)
 # där"). Utan ~/Buddy (en färsk klon utifrån) byggs plattformen med två
 # appar — registry.c grindas på TORGET_HAVE_BUDDY.
 set(EXTRA_COMPONENT_DIRS third_party)
-if(EXISTS "$ENV{HOME}/Buddy/components/app_buddy")
-  list(APPEND EXTRA_COMPONENT_DIRS "$ENV{HOME}/Buddy/components")
+
+# Companion-appar bor i sina EGNA repon och är inte del av det här bygget om
+# de inte finns utcheckade. En färsk klon utifrån bygger bara VibePulse —
+# ingen ska få Solelkollen eller Vibbe på skärmen utan att ha bett om det.
+# Sökvägarna kan pekas om med -DTORGET_SOLELKOLLEN_DIR / -DTORGET_BUDDY_DIR.
+if(NOT DEFINED TORGET_SOLELKOLLEN_DIR)
+  set(TORGET_SOLELKOLLEN_DIR "$ENV{HOME}/Solelkollen/components")
+endif()
+if(NOT DEFINED TORGET_BUDDY_DIR)
+  set(TORGET_BUDDY_DIR "$ENV{HOME}/Buddy/components")
+endif()
+
+if(EXISTS "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
+  list(APPEND EXTRA_COMPONENT_DIRS "${TORGET_SOLELKOLLEN_DIR}")
 else()
-  message(STATUS "Torget: ~/Buddy saknas — bygger utan Vibbe/Buddy (app 3)")
+  message(STATUS "Torget: Solelkollen saknas — bygger utan den (companion-app)")
+endif()
+if(EXISTS "${TORGET_BUDDY_DIR}/app_buddy")
+  list(APPEND EXTRA_COMPONENT_DIRS "${TORGET_BUDDY_DIR}")
+else()
+  message(STATUS "Torget: ~/Buddy saknas — bygger utan Vibbe/Buddy (companion-app)")
 endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(torget)

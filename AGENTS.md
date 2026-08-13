@@ -31,11 +31,21 @@ Plattformen kopierades (flyttades inte) från `~/Documents/Solceller/firmware/`
 och stöptes om enligt granskningens tre krav: (1) versionerat appkontrakt
 `torget_app_t` + appregister i main/registry.c som launchern läser;
 (2) nätverk/hämtning bor i varje apps egen komponent (net.c), plattformen
-äger bara WiFi/SNTP/lås/ljus/rotation; (3) MIT-licens. Tre appar är
-registrerade: Solelkollen (datakontraktet mot solelkollen.se oförändrat),
-VibePulse (Claude/Codex-användning via tools/tokenserver på Macen, platt JSON
-över LAN) och Vibbe/Buddy från companion-repots build input
-`~/Buddy/components` (exakt källrevision i `spec/hardware-sources.yaml`).
+äger bara WiFi/SNTP/lås/ljus/rotation; (3) MIT-licens.
+
+**Det här repot innehåller EN app: VibePulse** (Claude/Codex-användning via
+tools/tokenserver på Macen, platt JSON över LAN). Den ligger först i
+registret, så en färsk klon utifrån bygger en binär som startar i VibePulse
+och ingenting annat.
+
+Solelkollen och Vibbe/Buddy är egna produkter i egna repon och dras in som
+companion-inputs när de finns utcheckade — `TORGET_SOLELKOLLEN_DIR`
+(default `~/Solelkollen/components`) respektive `TORGET_BUDDY_DIR` (default
+`~/Buddy/components`). Byggena sätter `TORGET_HAVE_SOLELKOLLEN` /
+`TORGET_HAVE_BUDDY` och registerposterna i main/registry.c är grindade på
+dem. Exakt källrevision för companion-inputen finns i
+`spec/hardware-sources.yaml`. En skärm = en binär: har du båda utcheckade
+får du alla tre apparna i samma bygge, växlingsbara i launchern.
 
 **Detta repo äger nu glaset.** Den första fysiska flashen gjordes 2026-08-13
 med användarens uttryckliga tillåtelse, från mergad main; den statiska

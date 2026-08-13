@@ -25,26 +25,39 @@ target_link_libraries(lvgl PUBLIC SDL2::SDL2)
 # fixtures i stället) och minus main/ (värdlagret är den här filens main.c).
 file(GLOB FONTS "${CMAKE_CURRENT_SOURCE_DIR}/../platform/fonts/*.c")
 
-# Vibbe delas in fran ~/Buddy (inflytten 2026-08-07) - sjal, ansikte och
-# latenas rena karna; ljudnav/wake ar target-only och kompileras inte har.
-# Utan ~/Buddy (farsk klon utifran) byggs simulatorn med tva appar, precis
-# som targetet — registry.c grindas pa TORGET_HAVE_BUDDY.
-if(EXISTS "$ENV{HOME}/Buddy/components/app_buddy")
+# Companion-apparna bor i sina EGNA repon och delas in harifran nar de finns
+# utcheckade — exakt som targetet. En farsk klon utifran bygger bara
+# VibePulse; registry.c grindas pa TORGET_HAVE_SOLELKOLLEN/TORGET_HAVE_BUDDY.
+if(NOT DEFINED TORGET_SOLELKOLLEN_DIR)
+  set(TORGET_SOLELKOLLEN_DIR "$ENV{HOME}/Solelkollen/components")
+endif()
+if(NOT DEFINED TORGET_BUDDY_DIR)
+  set(TORGET_BUDDY_DIR "$ENV{HOME}/Buddy/components")
+endif()
+
+if(EXISTS "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
+  set(SOLELKOLLEN_SRCS
+    ${TORGET_SOLELKOLLEN_DIR}/app_solelkollen/app.c
+    ${TORGET_SOLELKOLLEN_DIR}/app_solelkollen/glance_parse.c)
+else()
+  set(SOLELKOLLEN_SRCS "")
+  message(STATUS "torget-sim: Solelkollen saknas — bygger utan den (companion-app)")
+endif()
+
+if(EXISTS "${TORGET_BUDDY_DIR}/app_buddy")
   set(BUDDY_SRCS
-    $ENV{HOME}/Buddy/components/app_buddy/app.c
-    $ENV{HOME}/Buddy/components/app_buddy/buddy_soul.c
-    $ENV{HOME}/Buddy/components/app_buddy/buddy_face.c
-    $ENV{HOME}/Buddy/components/app_buddy/vibbe_sounds.c)
+    ${TORGET_BUDDY_DIR}/app_buddy/app.c
+    ${TORGET_BUDDY_DIR}/app_buddy/buddy_soul.c
+    ${TORGET_BUDDY_DIR}/app_buddy/buddy_face.c
+    ${TORGET_BUDDY_DIR}/app_buddy/vibbe_sounds.c)
 else()
   set(BUDDY_SRCS "")
-  message(STATUS "torget-sim: ~/Buddy saknas — bygger utan Vibbe/Buddy (app 3)")
+  message(STATUS "torget-sim: ~/Buddy saknas — bygger utan Vibbe/Buddy (companion-app)")
 endif()
 add_executable(torget-sim
   main.c
   ../platform/torget_ui.c
   ../main/registry.c
-  ../components/app_solelkollen/app.c
-  ../components/app_solelkollen/glance_parse.c
   ../components/app_tokens/app.c
   ../components/app_tokens/tokens_parse.c
   ../components/app_tokens/usage_presenter.c
@@ -62,6 +75,7 @@ add_executable(torget-sim
   ../components/torget_fmt/fmt_sv.c
   ../components/torget_ticker/ticker.c
   ../third_party/cjson/cJSON.c
+  ${SOLELKOLLEN_SRCS}
   ${BUDDY_SRCS}
   ${FONTS})
 
@@ -72,13 +86,17 @@ target_compile_definitions(torget-sim PRIVATE FIXTURES_DIR="${FIXTURES_ABS}")
 target_include_directories(torget-sim PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"
   "${CMAKE_CURRENT_SOURCE_DIR}/../platform"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../components/app_solelkollen"
   "${CMAKE_CURRENT_SOURCE_DIR}/../components/app_tokens"
   "${CMAKE_CURRENT_SOURCE_DIR}/../components/torget_fmt"
   "${CMAKE_CURRENT_SOURCE_DIR}/../components/torget_ticker")
+if(SOLELKOLLEN_SRCS)
+  target_include_directories(torget-sim PRIVATE
+    "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
+  target_compile_definitions(torget-sim PRIVATE TORGET_HAVE_SOLELKOLLEN)
+endif()
 if(BUDDY_SRCS)
   target_include_directories(torget-sim PRIVATE
-    "$ENV{HOME}/Buddy/components/app_buddy")
+    "${TORGET_BUDDY_DIR}/app_buddy")
   target_compile_definitions(torget-sim PRIVATE TORGET_HAVE_BUDDY)
 endif()
 # m: presenterarnas lround/llround. På macOS bor libm i libSystem, så detta

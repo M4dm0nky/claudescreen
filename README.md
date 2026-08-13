@@ -222,12 +222,17 @@ Max Tracker fixtures, `T` re-feeds tokens, `L` opens the launcher.
 
 ## Tweak it
 
-<img src="docs/img/launcher.png" alt="The Torget launcher with two apps" width="300" align="right">
+<img src="docs/img/launcher.png" alt="The Torget launcher showing VibePulse" width="300" align="right">
 
 VibePulse is an app on **Torget**, a deliberately small LVGL 9 app platform
 for this panel. An app is one component exporting
 `torget_app_t { name, icon, create, enter, leave }`; the platform owns WiFi,
 the panel, brightness and the launcher.
+
+This repo ships exactly one app, so that's all you get on the screen — one
+binary, one thing, nothing to wonder about. The platform can hold several
+apps at once (that's what the launcher is for), but any others live in their
+own repos and are only built in if you check them out.
 
 Design rules: true black background, IBM Plex, dashes instead of invented
 zeros, and provider accents locked to Claude `#D97757` and Codex `#6F78FF`.
@@ -237,7 +242,7 @@ zeros, and provider accents locked to Claude `#D97757` and Codex `#6F78FF`.
 ```
 platform/            app contract + launcher + fonts (IBM Plex)
 main/                ESP32 host layer: boot, WiFi, SNTP, app registry
-components/app_*     the apps (VibePulse lives in app_tokens/)
+components/app_*     the app (VibePulse lives in app_tokens/)
 tools/tokenserver/   the Mac service (Python stdlib)
 sim/                 SDL simulator, the whole platform on your Mac
 test/                host tests, run with ./test/run.sh (no ESP-IDF needed)

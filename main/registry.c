@@ -1,11 +1,15 @@
 #include "torget_app.h"
 
-#include "app_solelkollen.h"
 #include "app_tokens.h"
 
-/* Vibbe/Buddy bor i ~/Buddy (companion-repot). Byggena sätter
- * TORGET_HAVE_BUDDY när det är utcheckat; utan det byggs registret med två
- * appar så en färsk klon utifrån alltid går att bygga. */
+/* Det HÄR repot är VibePulse: en färsk klon utifrån bygger exakt en app, och
+ * skärmen startar i den. Solelkollen och Vibbe/Buddy är egna produkter i egna
+ * repon och delas in som companion-inputs när de finns utcheckade —
+ * byggena sätter TORGET_HAVE_* och grindar registerposterna här. Utomstående
+ * ska aldrig få en app de inte bett om. */
+#ifdef TORGET_HAVE_SOLELKOLLEN
+#include "app_solelkollen.h"
+#endif
 #ifdef TORGET_HAVE_BUDDY
 #include "app_buddy.h"
 #endif
@@ -22,8 +26,10 @@
  */
 
 const torget_app_t *const torget_apps[] = {
-  &solelkollen_app,
   &tokens_app,
+#ifdef TORGET_HAVE_SOLELKOLLEN
+  &solelkollen_app,
+#endif
 #ifdef TORGET_HAVE_BUDDY
   &vibbe_app,
 #endif

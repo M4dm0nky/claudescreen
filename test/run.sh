@@ -32,14 +32,6 @@ cc -std=c11 -O1 -c ../third_party/cjson/cJSON.c -o /tmp/torget-cjson.o
 
 cc -std=c11 -Wall -Wextra -Werror -O1 \
   -DFIXTURES_DIR="\"$(cd ../sim-fixtures && pwd)\"" \
-  ../components/app_solelkollen/glance_parse.c \
-  test_parse.c /tmp/torget-cjson.o \
-  -lm \
-  -o /tmp/torget-parse-test
-/tmp/torget-parse-test
-
-cc -std=c11 -Wall -Wextra -Werror -O1 \
-  -DFIXTURES_DIR="\"$(cd ../sim-fixtures && pwd)\"" \
   ../components/app_tokens/tokens_parse.c \
   test_tokens.c /tmp/torget-cjson.o \
   -lm \

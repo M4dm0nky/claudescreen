@@ -33,10 +33,11 @@ components/
   torget_net/             glance-mönstrets HTTP-klient (bara targetet)
   torget_fmt/             sv-SE-formatering, hosttestad
   torget_ticker/          den lokala tickern, hosttestad
-  app_solelkollen/        app 1: fyra vyer, /api/glance + /api/glance-sverige
-  app_tokens/             app 2: VibePulse (agentstatus, Claude/Codex-usage + Max Tracker-heatmap)
+  app_tokens/             app 1: VibePulse (agentstatus, Claude/Codex-usage + Max Tracker-heatmap)
+~/Solelkollen/components/
+  app_solelkollen/        companion: fyra vyer, /api/glance + /api/glance-sverige
 ~/Buddy/components/
-  app_buddy/              app 3: Vibbe/Buddy, companion build input
+  app_buddy/              companion: Vibbe/Buddy, companion build input
 sim/                      SDL-simulatorn: hela plattformen + apparna på Macen
 sim-fixtures/             inspelade API-svar simulatorn och testerna delar
 test/                     hosttester, körs med clang utan ESP-IDF: ./test/run.sh
@@ -45,8 +46,15 @@ spec/                     hardware.md (alla hårdvarufällor) + ui-spec.md (desi
 third_party/cjson/        vendrad cJSON 1.7.18 — samma parser på Macen som på kortet
 ```
 
-Tre registrerade appar är alltså Solelkollen, VibePulse och Vibbe/Buddy.
-Companion-revisionen och build-relationen för `~/Buddy/components` finns i
+Repot innehåller alltså EN app: VibePulse. Solelkollen och Vibbe/Buddy är
+egna produkter i egna repon och byggs bara in när de finns utcheckade —
+peka om med `-DTORGET_SOLELKOLLEN_DIR` / `-DTORGET_BUDDY_DIR`, annars gäller
+`~/Solelkollen/components` och `~/Buddy/components`. Registerposterna är
+grindade på `TORGET_HAVE_SOLELKOLLEN` / `TORGET_HAVE_BUDDY`, så en färsk
+klon utifrån får aldrig en app den inte bett om, medan ett bygge med båda
+utcheckade ger alla tre i samma binär.
+
+Companion-revisionen och build-relationen finns i
 `spec/hardware-sources.yaml`; capability- och enhetsstatus finns i
 `spec/hardware-capabilities.yaml` respektive `spec/device-units.yaml`.
 
@@ -93,13 +101,14 @@ cmake -S sim -B sim/build -G Ninja && ninja -C sim/build
 ./sim/build/torget-sim
 ```
 
-Tangent 1-4 väljer Solelkollen-fixtur, T matar om VibePulse-usage, S cyklar
+Tangent 1-4 väljer Solelkollen-fixtur (bara med companion utcheckad), T matar om VibePulse-usage, S cyklar
 agentstatus, M cyklar Max Tracker-fixtur (Claude- och Codex-sidorna, två av
 VibePulse-vyns sex sidor), N växlar app (KEY3-knappens bänkmotsvarighet), L öppnar launchern (långtryck med
 musen fungerar också — det är enhetens gest). På enheten växlar KEY3
 (GPIO18) app med ett tryck.
-En obevakad körning BMP-dumpar vyerna för Solelkollen, VibePulse och
-Vibbe/Buddy samt launchern till /tmp/torget-*.bmp — pixelverifieringens facit.
+En obevakad körning BMP-dumpar VibePulse-vyerna och launchern (plus
+companion-apparnas vyer när de är utcheckade) till /tmp/torget-*.bmp —
+pixelverifieringens facit.
 
 ## Hosttesterna
 

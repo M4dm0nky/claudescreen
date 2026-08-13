@@ -16,7 +16,7 @@ are required, and the build gates on their absence:
 
 | Reference | What to do |
 |---|---|
-| `~/Buddy/components` (Vibbe/Buddy, "app 3") | Ignore. Absent → the platform builds with two apps and prints `~/Buddy saknas`. Expected. |
+| `~/Solelkollen/components`, `~/Buddy/components` | Ignore. These are separate products in their own repos. Absent → the build prints `saknas` and builds VibePulse only. Expected, and what you want. |
 | The `Solceller` repo, `docs/roadmap-hyllskarmen.md`, "P-numbers" | Ignore. Project history you cannot open. |
 | `spec/*.yaml` hardware registries | Read, never edit. They are validated evidence with their own tests. |
 

@@ -546,25 +546,52 @@ class RepositoryRegistryTests(unittest.TestCase):
             re.DOTALL,
         )
         self.assertIsNotNone(registry_body)
-        app_pointers = re.findall(
-            r"&([a-z0-9_]+),", registry_body.group("body")
-        )
-        self.assertEqual(len(app_pointers), 3)
+        body = registry_body.group("body")
+
+        # This repository is VibePulse: a fresh clone from outside must build
+        # exactly ONE app, and the screen must start in it. Solelkollen and
+        # Vibbe/Buddy are separate products in their own repositories, pulled
+        # in only when checked out, so every companion pointer has to sit
+        # behind its own #ifdef. An unguarded pointer here would ship someone
+        # an app they never asked for.
+        unconditional = []
+        guard_depth = 0
+        guarded = {}
+        for line in body.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#ifdef"):
+                guard_depth += 1
+                current_guard = stripped.split()[-1]
+                continue
+            if stripped.startswith("#endif"):
+                guard_depth -= 1
+                continue
+            pointer = re.match(r"&([a-z0-9_]+),", stripped)
+            if not pointer:
+                continue
+            if guard_depth:
+                guarded[pointer.group(1)] = current_guard
+            else:
+                unconditional.append(pointer.group(1))
+
+        self.assertEqual(unconditional, ["tokens_app"])
         self.assertEqual(
-            set(app_pointers),
-            {"solelkollen_app", "tokens_app", "vibbe_app"},
+            guarded,
+            {
+                "solelkollen_app": "TORGET_HAVE_SOLELKOLLEN",
+                "vibbe_app": "TORGET_HAVE_BUDDY",
+            },
         )
 
-        # The registered-app wording is Swedish governance prose. The root
+        # The companion wording is Swedish governance prose. The root
         # README.md is now an English quickstart; that prose lives in
         # README.sv.md instead, alongside AGENTS.md.
         for name in ("AGENTS.md", "README.sv.md"):
             with self.subTest(document=name):
                 text = (repo / name).read_text(encoding="utf-8")
-                self.assertRegex(text, r"(?i)\btre (?:registrerade )?appar\b")
+                self.assertRegex(text, r"(?i)\bcompanion")
                 for app_name in ("Solelkollen", "VibePulse", "Vibbe/Buddy"):
                     self.assertIn(app_name, text)
-                self.assertIn("~/Buddy/components", text)
                 self.assertIn("spec/hardware-sources.yaml", text)
 
     def test_root_docs_reject_stale_app_and_imu_claims(self):

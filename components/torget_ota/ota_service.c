@@ -438,6 +438,9 @@ void torget_ota_service_start(void) {
   httpd_register_uri_handler(s_server, &status_uri);
   httpd_register_uri_handler(s_server, &firmware_uri);
 
-  xTaskCreate(maintenance_ui_task, "ota-ui", 3072, NULL, 3, NULL);
+  /* 8192, inte 3072: tasken kör lv_label_set_text/layout under UI-låset,
+   * och LVGL:s textmotor åt upp 3 KB på riktig panel — tasken dog med
+   * låset i handen och frös hela glaset (2026-08-14, första fönstret). */
+  xTaskCreate(maintenance_ui_task, "ota-ui", 8192, NULL, 3, NULL);
   ESP_LOGI(TAG, "OTA-lyssnaren uppe på port %d", TG_OTA_HTTP_PORT);
 }

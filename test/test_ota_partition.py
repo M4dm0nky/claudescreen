@@ -226,3 +226,13 @@ assert re.search(
 ), "the OTA listener must start immediately after wifi_start()"
 
 print("OK: OTA service streams to the inactive slot behind token and policy")
+
+# Frysläxan 2026-08-14: en task som gör LVGL-arbete under UI-låset och dör
+# tar hela glaset med sig. ota-ui-tasken renderar text — den får aldrig
+# krympas tillbaka till en stack som textmotorn kan äta upp.
+service_src = (root / "components/torget_ota/ota_service.c").read_text(
+    encoding="utf-8")
+assert '"ota-ui", 8192' in service_src, \
+    "ota-ui task needs 8 KiB: LVGL text layout under the UI lock overflowed 3 KiB on the panel"
+
+print("OK: OTA UI task stack survives LVGL text layout under the lock")

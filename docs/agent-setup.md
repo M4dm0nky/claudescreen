@@ -59,16 +59,18 @@ cp secrets.h.example secrets.h
 Then edit `secrets.h`. Two separate things must be right:
 
 - `TG_WIFI_SSID` / `TG_WIFI_PASS` — their 2.4 GHz network.
-- **Uncomment the `TK_VIBEPULSE_BASE_URL` block** and point it at their Mac.
+- **Replace `DIN-MAC` in `TK_VIBEPULSE_BASE_URL`** with their Mac's Bonjour
+  name.
 
-That second one is the trap. Those `#define`s ship commented out, and
-`components/app_tokens/net.c` guards every fetch behind `#ifdef TK_TOKENS_URL`.
-Leave them commented and the firmware compiles cleanly, boots cleanly,
-connects to WiFi cleanly — and shows dashes forever, with no error anywhere
-to tell you why.
+Those `#define`s ship active on purpose, with an obvious placeholder. Do not
+comment them out or delete them: `components/app_tokens/net.c` guards every
+fetch behind `#ifdef TK_TOKENS_URL`, so an undefined URL compiles the fetch
+out entirely and the firmware then compiles cleanly, boots cleanly, connects
+to WiFi cleanly — and shows dashes forever, with no error anywhere to tell
+you why. A wrong hostname at least shows up in the serial log.
 
-Use the Mac's Bonjour name, not an IP, so the same binary works at home and
-on a phone hotspot:
+Use the Bonjour name, not an IP, so the same binary works at home and on a
+phone hotspot:
 
 ```sh
 scutil --get LocalHostName     # e.g. "Niclas-MacBook" -> Niclas-MacBook.local
@@ -77,11 +79,11 @@ scutil --get LocalHostName     # e.g. "Niclas-MacBook" -> Niclas-MacBook.local
 **Verify:** `secrets.h` has a non-empty SSID, and
 
 ```sh
-grep -q '^#define TK_VIBEPULSE_BASE_URL' secrets.h && echo "URLs live"
+grep -q 'DIN-MAC' secrets.h && echo "PLACEHOLDER STILL THERE" || echo "hostname set"
 ```
 
-prints `URLs live`. While the block is still commented that line begins with
-`/*`, so the check fails — which is the whole point.
+prints `hostname set`. If it still says the placeholder is there, the board
+will look for a host that does not exist and every page will stay on dashes.
 
 Ask the user for the WiFi password. Do not guess it, and do not commit
 `secrets.h` — it is gitignored, keep it that way.
@@ -172,7 +174,7 @@ confirm with the user that real numbers replaced the dashes.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Screen boots, everything is dashes, forever | `TK_VIBEPULSE_BASE_URL` still commented out in `secrets.h` | Uncomment, rebuild, reflash |
+| Screen boots, everything is dashes, forever | `DIN-MAC` never replaced in `secrets.h`, or the `TK_*` defines were removed | Set the real Bonjour name, rebuild, reflash |
 | Dashes, and the Mac's URL is set | tokenserver not running, or Mac asleep, or firewall | Start it; check `curl localhost:8737/` |
 | Dashes only for Claude, Codex fine (or vice versa) | That provider's source is unavailable | Check `claudeProbe`; the other half working is by design |
 | Never joins WiFi | Network is 5 GHz | 2.4 GHz only. iPhone hotspot: enable "Maximize Compatibility" |

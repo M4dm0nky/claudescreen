@@ -98,6 +98,12 @@ def check_server(base_url, checkout_rev=None):
         results.append((VARN, f"okända rate-limit-buckets: {unknown} — "
                               f"uppströms har fått ett nytt fönster; värt en "
                               f"post i docs/observability-backlog.md"))
+    # Saknas nyckeln pratar vi med en äldre server — inget att bedöma då.
+    if root.get("usageComputeOk") is False:
+        secs = root.get("usageComputeFailingForS") or 0
+        results.append((FAIL, f"usage-omräkningen har kraschat (i {secs} s) "
+                              f"— /api/tokens serverar frysta siffror som "
+                              f"ser färska ut; läs loggfilen"))
     return results
 
 

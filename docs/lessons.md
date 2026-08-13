@@ -170,6 +170,23 @@ dedicated PSU; interpret enumeration bouncing as a power symptom first.
 it needs a powered hub or PSU/data split, which also caps how much the
 firmware log can help until solved.
 
+## 2026-08-13 · CI's fresh VM exposed a boot-blind throttle
+
+**What happened:** the first CI run of the new logging failed a test
+that passed everywhere locally: the throttled save-error log never
+fired. Codex's PR review flagged the same line independently. **Root
+cause:** the throttle used `0.0` as "long ago" with `time.monotonic()`
+— which counts from *boot*. On any machine up less than the 5-minute
+window (CI VMs always; a Mac right after restart), `now - 0.0` never
+reaches the threshold, so the **first error after boot is exactly the
+one that gets swallowed** — in production, not just in tests. **The
+rule:** "never happened yet" is a state, not a timestamp zero; with
+monotonic clocks use a `None` sentinel, because monotonic's epoch is
+arbitrary and *recent* on fresh machines. **Guards:** `None` sentinels
+in both error-log throttles; the writer test now exercises the
+first-error path on CI's short-uptime VMs by construction. **Watch
+for:** any new `last_*_logged` / `last_*_at` throttle seeded with `0.0`.
+
 ## 2026-08-13 · Docs drifted from code five times in two days
 
 **What happened:** five separate correction commits: setup steps telling

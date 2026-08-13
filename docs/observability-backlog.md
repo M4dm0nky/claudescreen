@@ -135,7 +135,13 @@ appearing later is the normal case on a fresh Mac), plus
 `ThrottleInterval` in the plist as a backstop for any other fatal error.
 
 ### OBS-08 · A crashed usage recompute freezes the numbers forever, silently
-`server · S · open`
+`server · S · done (2026-08-13)` — a crash now logs (throttled to one
+per 5 min), recovery logs as a transition, `GET /` exposes
+`usageComputeOk`/`usageComputeFailingForS`, and the smoke test FAILs on
+it. Deliberately not done: pushing a stale flag into `/api/tokens`
+itself — the firmware parser is contract-strict, so new fields there
+are OBS-09-scale contract work; until then the *screen* still can't see
+this, only `GET /` and the smoke test can. Original problem:
 `_refresh_usage_totals` swallows any `_compute` exception and keeps
 serving the previous snapshot — while still bumping `_last_computed`, so
 the refresh never retries eagerly and nothing is ever printed

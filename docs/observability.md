@@ -132,6 +132,11 @@ Returns live server state, added after real debugging nights:
 - `ratelimitHeaders` / `unknownRateLimitBuckets` — header names seen by
   the fallback probe. A non-empty `unknownRateLimitBuckets` means
   Anthropic added a bucket we don't map yet: file it.
+- `usageComputeOk` / `usageComputeFailingForS` — whether the recompute
+  behind `/api/tokens` is healthy. `false` means the served token totals
+  are frozen at their last good value while *looking* fresh; the smoke
+  test turns this into a FAIL, and the log has the cause
+  (`usage-omräkningen kraschade`).
 
 Not exposed yet, so invisible from outside: the probe's failure streak
 and slowed interval, and any Codex-side probe status (OBS-18). This
@@ -199,6 +204,7 @@ Verbatim strings worth grepping for, and what they mean:
 | `omstartsorsak PANIK` / `TASKVAKTHUND` / `BROWNOUT` | fw boot banner | the previous run died and this line is the only witness. BROWNOUT → suspect the power supply first. |
 | `hittar inte … — finns Claude Code på den här maskinen?` | server | logged once at boot; the server waits for the directory instead of crash-looping. Seeing it repeatedly means something else is killing the process. |
 | `500 på /api/…` + `Traceback` | server log | a route served the sanitized error-form and this is its cause — a server bug, file it. Any traceback *without* a `500 på` line above it is doubly interesting. |
+| `usage-omräkningen kraschade` | server log | `/api/tokens` is serving frozen totals that look fresh. `usage-omräkningen frisk igen` closes the episode; until it appears, distrust the day/month numbers. |
 | `ratelimit-header: …` | server stdout | the *fallback* probe engaged — the primary usage endpoint returned nothing mappable. Not part of a healthy boot despite what the README implies (OBS-23). |
 | `claudeProbe: usage_http_429 + backoff_until_…` | `GET /` | rate-limited; probe is resting ≥10 min. Do not restart the server to "fix" it — that resets the backoff and feeds the penalty (see lessons: the 429 night). |
 

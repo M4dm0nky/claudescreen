@@ -1551,6 +1551,63 @@ class HandlerErrorLoggingTests(unittest.TestCase):
             handler.log_message("%s", "GET /api/tokens 200")
 
 
+class UsageComputeHealthTests(unittest.TestCase):
+    """OBS-08: en kraschad omräkning får frysa siffrorna (senaste goda
+    serveras vidare) men aldrig tyst — logg vid övergången, strypt
+    upprepning, usageComputeOk på GET /, och återhämtningen loggad."""
+
+    def test_compute_crash_logs_throttled_and_flags_the_root_payload(self):
+        with mock.patch.object(tokenserver, "_compute_failing_since", None), \
+                mock.patch.object(tokenserver, "_last_compute_error_logged",
+                                  None), \
+                mock.patch.object(tokenserver, "_last_result", {"v": 1}), \
+                mock.patch.object(tokenserver, "_last_computed", 0.0), \
+                mock.patch.object(tokenserver, "_snapshot_refreshing", True), \
+                mock.patch.object(tokenserver, "_compute",
+                                  side_effect=RuntimeError("boom")):
+            with self.assertLogs("tokenserver", level="ERROR") as captured:
+                tokenserver._refresh_usage_totals(Path("/x"))
+            self.assertIn("frysta siffror", "\n".join(captured.output))
+            # Ihållande fel stryps — ingen ny rad inom fönstret.
+            with self.assertNoLogs("tokenserver"):
+                tokenserver._refresh_usage_totals(Path("/x"))
+            self.assertIsNotNone(tokenserver._compute_failing_since)
+            # Senaste goda snapshotet serveras vidare — det är avsikten.
+            self.assertEqual(tokenserver._last_result, {"v": 1})
+
+            handler = tokenserver.Handler.__new__(tokenserver.Handler)
+            handler.path = "/"
+            handler._send = mock.Mock()
+            handler.do_GET()
+            payload = handler._send.call_args.args[1]
+            self.assertFalse(payload["usageComputeOk"])
+            self.assertIsInstance(payload["usageComputeFailingForS"], int)
+
+    def test_recovery_logs_the_transition_and_clears_the_flag(self):
+        with mock.patch.object(tokenserver, "_compute_failing_since",
+                               time.monotonic() - 42.0), \
+                mock.patch.object(tokenserver, "_last_compute_error_logged",
+                                  time.monotonic()), \
+                mock.patch.object(tokenserver, "_last_result", None), \
+                mock.patch.object(tokenserver, "_last_computed", 0.0), \
+                mock.patch.object(tokenserver, "_snapshot_refreshing", True), \
+                mock.patch.object(tokenserver, "_compute",
+                                  return_value={"v": 2}):
+            with self.assertLogs("tokenserver", level="INFO") as captured:
+                tokenserver._refresh_usage_totals(Path("/x"))
+            self.assertIn("frisk igen", "\n".join(captured.output))
+            self.assertIsNone(tokenserver._compute_failing_since)
+            self.assertEqual(tokenserver._last_result, {"v": 2})
+
+            handler = tokenserver.Handler.__new__(tokenserver.Handler)
+            handler.path = "/"
+            handler._send = mock.Mock()
+            handler.do_GET()
+            payload = handler._send.call_args.args[1]
+            self.assertTrue(payload["usageComputeOk"])
+            self.assertIsNone(payload["usageComputeFailingForS"])
+
+
 class MaxTrackerLiveHookTests(unittest.TestCase):
     """get_snapshot()'s observe_quota wiring: session/week windows, the
     *Stale: false gate, and Codex's natively-carried window_minutes."""
@@ -1836,7 +1893,10 @@ class MaxTrackerDirtyWriterTests(unittest.TestCase):
         )
         tokenserver._max_tracker_dirty = False
         tokenserver._max_tracker_writer_running = False
-        tokenserver._last_save_error_logged = 0.0
+        # None = "aldrig loggat" — 0.0 hade svalt första felet på en maskin
+        # med kort uptime, eftersom monotonic räknar från boot (CI fällde
+        # exakt det).
+        tokenserver._last_save_error_logged = None
 
     def tearDown(self):
         (tokenserver._max_tracker_dirty,

@@ -146,6 +146,15 @@ _file_cache = {}   # path -> stat, parsed offset, month and compact records
 _last_result = None
 _last_computed = 0.0
 _snapshot_refreshing = False
+# Omräkningens hälsa: kraschar _compute serveras förra snapshotet vidare —
+# rätt beteende, men det får inte ske TYST (då fryser siffrorna för alltid
+# och ser färska ut). failing_since driver usageComputeOk på GET / och
+# röktestets FAIL; loggen får övergången plus ett strypt fel.
+# None = aldrig loggat. Inte 0.0: time.monotonic() räknar från boot, så på
+# en nystartad maskin är "nu - 0.0" MINDRE än strypfönstret och första
+# felet skulle sväljas — CI:ns färska VM fällde exakt det.
+_compute_failing_since = None
+_last_compute_error_logged = None
 _history_lock = threading.Lock()
 _default_usage_history = None
 _quota_cache_lock = threading.Lock()
@@ -1241,8 +1250,10 @@ def _persist_quota_records_async(cache, records):
 _max_tracker_writer_lock = threading.Lock()
 _max_tracker_dirty = False
 _max_tracker_writer_running = False
-_SAVE_ERROR_LOG_INTERVAL_S = 300.0
-_last_save_error_logged = 0.0
+_ERROR_LOG_THROTTLE_S = 300.0  # ihållande fel: en loggrad per 5 min räcker
+_last_save_error_logged = None  # None = aldrig loggat (0.0 sväljer första
+                                # felet på en nystartad maskin — monotonic
+                                # räknar från boot)
 
 
 def _max_tracker_writer(store):
@@ -1262,7 +1273,8 @@ def _max_tracker_writer(store):
             # försöker igen — ingen het loop, ingen tyst dataförlust.
             # Loggen är strypt: ett trasigt skrivmål ska inte fylla filen.
             now = time.monotonic()
-            if now - _last_save_error_logged >= _SAVE_ERROR_LOG_INTERVAL_S:
+            if (_last_save_error_logged is None or
+                    now - _last_save_error_logged >= _ERROR_LOG_THROTTLE_S):
                 _last_save_error_logged = now
                 log.exception(
                     "max-tracker: save misslyckades — observationerna står "
@@ -1355,11 +1367,25 @@ def _add_forecast(result, prefix, forecast):
 
 
 def _refresh_usage_totals(projects_dir, max_tracker_store=None):
-    global _last_result, _last_computed, _snapshot_refreshing
+    global _last_result, _last_computed, _snapshot_refreshing, \
+        _compute_failing_since, _last_compute_error_logged
     try:
         refreshed = _compute(projects_dir, max_tracker_store)
     except Exception:
         refreshed = None
+        now = time.monotonic()
+        if _compute_failing_since is None:
+            _compute_failing_since = now
+        if (_last_compute_error_logged is None or
+                now - _last_compute_error_logged >= _ERROR_LOG_THROTTLE_S):
+            _last_compute_error_logged = now
+            log.exception("usage-omräkningen kraschade — /api/tokens "
+                          "serverar frysta siffror tills den lyckas igen")
+    else:
+        if _compute_failing_since is not None:
+            log.info("usage-omräkningen frisk igen efter %.0f s",
+                     time.monotonic() - _compute_failing_since)
+            _compute_failing_since = None
     with _cache_lock:
         if refreshed is not None:
             _last_result = refreshed
@@ -1601,7 +1627,16 @@ class Handler(BaseHTTPRequestHandler):
                                  "claudeProbe": _probe_status,
                                  "ratelimitHeaders": _probe_headers,
                                  "unknownRateLimitBuckets":
-                                     _probe_unknown_buckets})
+                                     _probe_unknown_buckets,
+                                 # GET / parsas aldrig av skärmen — fältet
+                                 # kan läggas till utan kontraktsrisk.
+                                 "usageComputeOk":
+                                     _compute_failing_since is None,
+                                 "usageComputeFailingForS":
+                                     (int(time.monotonic() -
+                                          _compute_failing_since)
+                                      if _compute_failing_since is not None
+                                      else None)})
         else:
             self._send(404, {"error": "not found"})
 

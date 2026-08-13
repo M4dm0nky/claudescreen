@@ -27,6 +27,8 @@ HEALTHY_ROOT = {
     "claudeProbe": "usage_http_200 + ok",
     "ratelimitHeaders": [],
     "unknownRateLimitBuckets": [],
+    "usageComputeOk": True,
+    "usageComputeFailingForS": None,
 }
 HEALTHY_TOKENS = {"v": 1, "dayTokens": 1, "claudeWeekStale": False,
                   "codexWeekStale": False}
@@ -98,6 +100,25 @@ class ServerCheckTests(unittest.TestCase):
         with canned_server({"/": {"service": "annan"}}) as base:
             results = smoke.check_server(base, checkout_rev="abc1234")
         self.assertEqual(levels(results), [smoke.FAIL])
+
+    def test_frozen_usage_compute_is_fail(self):
+        # OBS-08: siffror som fryst men ser färska ut är värsta sortens fel
+        # — röktestet ska skrika, inte viska.
+        root = dict(HEALTHY_ROOT, usageComputeOk=False,
+                    usageComputeFailingForS=612)
+        with canned_server({"/": root}) as base:
+            results = smoke.check_server(base, checkout_rev="abc1234")
+        fails = [text for level, text in results if level == smoke.FAIL]
+        self.assertEqual(len(fails), 1)
+        self.assertIn("frysta siffror", fails[0])
+        self.assertIn("612", fails[0])
+
+    def test_older_server_without_compute_field_is_not_judged(self):
+        root = {k: v for k, v in HEALTHY_ROOT.items()
+                if not k.startswith("usageCompute")}
+        with canned_server({"/": root}) as base:
+            results = smoke.check_server(base, checkout_rev="abc1234")
+        self.assertEqual(levels(results), [smoke.OK, smoke.OK])
 
 
 class EndpointCheckTests(unittest.TestCase):

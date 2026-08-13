@@ -155,7 +155,29 @@ def _read_server_rev():
         return "unknown"
 
 
+def _read_source_fingerprint():
+    """Innehållshash av tjänstens källfiler, tagen vid start. Rev räcker
+    inte för "kör servern det som ligger här?": en smutsig worktree, eller
+    en redigering EFTER att processen startade, delar HEAD med checkouten
+    och låter rev-jämförelsen ljuga "aktuell". Röktestet räknar om samma
+    hash från disken och jämför. test_* och smoke.py ingår inte — tjänsten
+    laddar dem aldrig, och en redigerad smoke ska inte se ut som en
+    föråldrad server."""
+    try:
+        digest = hashlib.sha256()
+        base = Path(os.path.dirname(os.path.abspath(__file__)))
+        for f in sorted(base.glob("*.py")):
+            if f.name.startswith("test_") or f.name == "smoke.py":
+                continue
+            digest.update(f.name.encode())
+            digest.update(f.read_bytes())
+        return digest.hexdigest()[:12]
+    except Exception:
+        return "unknown"
+
+
 _SERVER_REV = _read_server_rev()
+_SERVER_SRC = _read_source_fingerprint()
 _SERVER_STARTED = datetime.now().astimezone().isoformat(timespec="seconds")
 MAX_TRACKER_BACKFILL_TICK_S = 0.5  # samma kadens som agent_status.POLL_S
 # Claude bär aldrig fönstrets minuttal i klartext (bara namnen "5h"/"7d") --
@@ -1679,6 +1701,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/":
             self._reply(lambda: {"service": "torget-tokenserver",
                                  "rev": _SERVER_REV,
+                                 "srcFingerprint": _SERVER_SRC,
                                  "startedAt": _SERVER_STARTED,
                                  "endpoint": "/api/tokens",
                                  "endpoints": ["/api/tokens",

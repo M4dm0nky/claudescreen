@@ -2288,6 +2288,20 @@ class LogRotationTests(unittest.TestCase):
                 Path(tmp) / "finns-inte.log", stderr_fd=2))
 
 
+class SourceFingerprintTests(unittest.TestCase):
+    def test_fingerprint_is_stable_and_served_on_root(self):
+        first = tokenserver._read_source_fingerprint()
+        self.assertRegex(first, r"^[0-9a-f]{12}$")
+        self.assertEqual(first, tokenserver._read_source_fingerprint())
+
+        handler = tokenserver.Handler.__new__(tokenserver.Handler)
+        handler.path = "/"
+        handler._send = mock.Mock()
+        handler.do_GET()
+        payload = handler._send.call_args.args[1]
+        self.assertEqual(payload["srcFingerprint"], tokenserver._SERVER_SRC)
+
+
 class LogRotationWatchTests(unittest.TestCase):
     def test_watch_keeps_checking_until_stopped(self):
         # Startrotationen räcker inte för en långlivad process — vakten ska

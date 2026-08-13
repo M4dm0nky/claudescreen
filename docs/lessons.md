@@ -60,9 +60,11 @@ service was quietly running from a different checkout than the one being
 edited. **Root cause:** the plist hardcodes its `WorkingDirectory`; no
 artifact said which code was live. **The rule:** every long-running
 artifact must be able to answer "what revision are you?" in one command.
-**Guards:** `GET /` reports `rev` + `startedAt` (`8f6b8bd`); the smoke
-test compares `rev` to your checkout; the firmware boot banner logs its
-build time and reset reason (OBS-01, done). **Watch for:** the plist's
+**Guards:** `GET /` reports `rev` + `startedAt` (`8f6b8bd`) and a
+startup `srcFingerprint` (content hash — catches dirty worktrees and
+post-start edits that share HEAD with the checkout); the smoke test
+compares both against your checkout; the firmware boot banner logs its
+version and reset reason (OBS-01, done). **Watch for:** the plist's
 hardcoded `WorkingDirectory` is still the root cause waiting to recur —
 the guards make it visible, not impossible.
 

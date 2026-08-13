@@ -120,6 +120,28 @@ class ServerCheckTests(unittest.TestCase):
                 self.assertEqual(levels(results), [smoke.FAIL])
                 self.assertIn("fel tjänst", results[0][1])
 
+    def test_source_fingerprint_mismatch_warns_about_edited_code(self):
+        # Rev kan inte se en smutsig worktree eller en redigering efter
+        # start — fingerprintet kan. Jämförs bara när bägge sidor finns.
+        root = dict(HEALTHY_ROOT, srcFingerprint="aaaa11112222")
+        with canned_server({"/": root}) as base:
+            results = smoke.check_server(base, checkout_rev="abc1234",
+                                         checkout_src="bbbb33334444")
+        warn = [text for level, text in results if level == smoke.VARN]
+        self.assertEqual(len(warn), 1)
+        self.assertIn("annan källkod", warn[0])
+
+        with canned_server({"/": root}) as base:
+            results = smoke.check_server(base, checkout_rev="abc1234",
+                                         checkout_src="aaaa11112222")
+        self.assertEqual(levels(results), [smoke.OK, smoke.OK])
+
+    def test_missing_fingerprint_on_older_server_is_not_judged(self):
+        with canned_server({"/": HEALTHY_ROOT}) as base:
+            results = smoke.check_server(base, checkout_rev="abc1234",
+                                         checkout_src="bbbb33334444")
+        self.assertEqual(levels(results), [smoke.OK, smoke.OK])
+
     def test_frozen_usage_compute_is_fail(self):
         # OBS-08: siffror som fryst men ser färska ut är värsta sortens fel
         # — röktestet ska skrika, inte viska.

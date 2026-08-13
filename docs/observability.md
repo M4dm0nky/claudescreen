@@ -121,9 +121,13 @@ curl -s http://localhost:8737/ | python3 -m json.tool
 
 Returns live server state, added after real debugging nights:
 
-- `rev` + `startedAt` — which code is actually serving, since when.
-  `rev` should equal `git -C <repo> rev-parse --short HEAD`. A recent
-  `startedAt` you didn't cause means crash-looping (see comb step 2).
+- `rev` + `srcFingerprint` + `startedAt` — which code is actually
+  serving, since when. `rev` should equal
+  `git -C <repo> rev-parse --short HEAD`; `srcFingerprint` is a content
+  hash of the loaded source taken at startup, which catches what rev
+  cannot — a dirty worktree, or files edited after the process started
+  (the smoke test compares both). A recent `startedAt` you didn't cause
+  means crash-looping (see comb step 2).
 - `claudeProbe` — the quota probe's status string. The full
   value→meaning→action table lives in
   [agent-setup.md](agent-setup.md); headline values:

@@ -23,9 +23,11 @@ import urllib.request
 from pathlib import Path
 
 if __package__:
-    from .tokenserver import DEFAULT_LOG_PATH, _LOG_CAP_BYTES
+    from .tokenserver import (DEFAULT_LOG_PATH, _LOG_CAP_BYTES,
+                              _read_source_fingerprint)
 else:  # direktkörning: python3 tools/tokenserver/smoke.py
-    from tokenserver import DEFAULT_LOG_PATH, _LOG_CAP_BYTES
+    from tokenserver import (DEFAULT_LOG_PATH, _LOG_CAP_BYTES,
+                             _read_source_fingerprint)
 
 DEFAULT_BASE_URL = "http://localhost:8737"
 STATE_DIR = Path.home() / "Library" / "Application Support" / "VibePulse"
@@ -112,8 +114,9 @@ def repo_rev():
         return None
 
 
-def check_server(base_url, checkout_rev=None):
-    """Kamsteg 1–2: identitet, rev och probestatus från GET /."""
+def check_server(base_url, checkout_rev=None, checkout_src=None):
+    """Kamsteg 1–2: identitet, rev, källfingerprint och probestatus från
+    GET /. Jämförelser görs bara när båda sidor finns (None hoppar)."""
     try:
         status, root = _get_json(f"{base_url}/")
     except Exception as e:
@@ -140,6 +143,14 @@ def check_server(base_url, checkout_rev=None):
     else:
         results.append((OK, f"torget-tokenserver rev {rev}, igång sedan "
                             f"{started}"))
+    # Fingerprint fångar det rev inte kan: smutsig worktree vid start,
+    # eller filer redigerade EFTER start — bägge delar HEAD med checkouten.
+    src = root.get("srcFingerprint")
+    if src and checkout_src and src != checkout_src:
+        results.append((VARN, f"servern kör annan källkod än checkouten "
+                              f"(fingerprint {src} ≠ {checkout_src}) — "
+                              f"redigerad efter start eller smutsig "
+                              f"worktree; starta om tjänsten"))
     probe = root.get("claudeProbe", "saknas")
     if probe == PROBE_OK:
         results.append((OK, f"claude-proben: {probe}"))
@@ -287,8 +298,10 @@ def run(base_url=DEFAULT_BASE_URL, log_path=None, state_dir=None,
         checkout_rev=None, out=None):
     out = out or sys.stdout
     results = []
-    server_results = check_server(base_url,
-                                  checkout_rev if checkout_rev else repo_rev())
+    server_results = check_server(
+        base_url,
+        checkout_rev if checkout_rev else repo_rev(),
+        checkout_src=_read_source_fingerprint())
     results += server_results
     # Hoppa över endpointkollen BARA när ingen riktig tokenserver svarar
     # (onåbar, fel tjänst, fel status — då är första raden ett FAIL). En

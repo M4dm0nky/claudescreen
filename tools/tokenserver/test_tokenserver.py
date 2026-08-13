@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 from datetime import datetime
 from pathlib import Path
 from unittest import mock
@@ -36,6 +37,22 @@ class StubHistory:
 
     def forecast(self, provider, window, reset_at, now=None):
         return self.forecasts.get(provider, Forecast(state="unavailable"))
+
+
+class _FakeUsageResponse:
+    """Minsta möjliga urlopen-svar: kontexthanterare med en read()."""
+
+    def __init__(self, payload):
+        self._payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+    def read(self):
+        return json.dumps(self._payload).encode()
 
 
 class ClaudeLimitHeaderTests(unittest.TestCase):
@@ -96,10 +113,14 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
 
         with mock.patch.object(tokenserver.subprocess, "run",
                                side_effect=run):
-            token, expires_at = tokenserver._read_oauth_token()
+            candidates = tokenserver._read_oauth_candidates()
 
-        self.assertEqual(token, "fresh-process-token")
-        self.assertIsNone(expires_at)
+        # Processtokenen först, men den utgångna nyckelringsposten står kvar
+        # som reserv — probens utgångsspärr sorterar bort den vid behov.
+        self.assertEqual(candidates, [
+            ("fresh-process-token", None),
+            ("expired-keychain-token", 1),
+        ])
 
     def test_unrelated_process_token_is_ignored(self):
         unrelated_command = (
@@ -124,10 +145,10 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
 
         with mock.patch.object(tokenserver.subprocess, "run",
                                side_effect=run):
-            token, expires_at = tokenserver._read_oauth_token()
+            candidates = tokenserver._read_oauth_candidates()
 
-        self.assertEqual(token, "keychain-token")
-        self.assertEqual(expires_at, 1_900_000_000_000)
+        self.assertEqual(
+            candidates, [("keychain-token", 1_900_000_000_000)])
 
     def test_keychain_remains_fallback_without_desktop_process(self):
         keychain = json.dumps({
@@ -146,10 +167,64 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
 
         with mock.patch.object(tokenserver.subprocess, "run",
                                side_effect=run):
-            token, expires_at = tokenserver._read_oauth_token()
+            candidates = tokenserver._read_oauth_candidates()
 
-        self.assertEqual(token, "standalone-token")
-        self.assertEqual(expires_at, 1_900_000_000_000)
+        self.assertEqual(
+            candidates, [("standalone-token", 1_900_000_000_000)])
+
+    def test_probe_falls_back_to_keychain_when_process_token_rejected(self):
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append((req.get_full_url(),
+                          req.get_header("Authorization")))
+            if req.get_header("Authorization") == "Bearer stale-process-token":
+                raise urllib.error.HTTPError(
+                    req.get_full_url(), 401, "Unauthorized", None, None)
+            return _FakeUsageResponse({"limits": [
+                {"kind": "session", "percent": 12,
+                 "resets_at": "2100-01-01T00:00:00+00:00"},
+                {"kind": "weekly_all", "percent": 47,
+                 "resets_at": "2100-01-02T00:00:00+00:00"},
+            ]})
+
+        with mock.patch.object(
+                tokenserver, "_read_oauth_candidates",
+                return_value=[("stale-process-token", None),
+                              ("fresh-keychain-token", None)]), \
+                mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                  side_effect=fake_urlopen):
+            found = tokenserver._probe_limits()
+
+        self.assertEqual(tokenserver._probe_status, "usage_http_200 + ok")
+        self.assertEqual(found["sessionPct"], 12.0)
+        self.assertEqual([auth for _, auth in calls],
+                         ["Bearer stale-process-token",
+                          "Bearer fresh-keychain-token"])
+
+    def test_probe_gives_up_when_every_candidate_is_rejected(self):
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(req.get_full_url())
+            raise urllib.error.HTTPError(
+                req.get_full_url(), 401, "Unauthorized", None, None)
+
+        with mock.patch.object(
+                tokenserver, "_read_oauth_candidates",
+                return_value=[("stale-a", None), ("stale-b", None)]), \
+                mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                  side_effect=fake_urlopen):
+            found = tokenserver._probe_limits()
+
+        self.assertIsNone(found)
+        self.assertEqual(tokenserver._probe_status, "usage_http_401")
+        # Båda källorna provades mot usage-kontraktet, och den döda tokenen
+        # skickades aldrig vidare till header-proben.
+        self.assertEqual(calls, [
+            "https://api.anthropic.com/api/oauth/usage",
+            "https://api.anthropic.com/api/oauth/usage",
+        ])
 
     def _headers(self, model_bucket):
         return {

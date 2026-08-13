@@ -335,15 +335,8 @@ def _read_process_oauth_token():
     return None
 
 
-def _read_oauth_token():
-    """Claude Codes active accessToken as ``(token, expires_at_ms)``.
-
-    Prefer Claude Desktop's refreshed process token. Standalone Claude Code
-    continues to use the macOS keychain fallback.
-    """
-    process_token = _read_process_oauth_token()
-    if process_token:
-        return process_token, None
+def _read_keychain_oauth():
+    """Nyckelringsposten som ``(token, expires_at_ms)`` — det ``/login`` skrev."""
     try:
         raw = subprocess.run(
             ["security", "find-generic-password",
@@ -354,6 +347,27 @@ def _read_oauth_token():
         return oauth.get("accessToken"), oauth.get("expiresAt")
     except Exception:
         return None, None
+
+
+def _read_oauth_candidates():
+    """Distinct token candidates as ``[(token, expires_at_ms), ...]``.
+
+    Claude Desktop's injected process token is listed first (Desktop
+    refreshes OAuth itself while the keychain record can lag), but ``ps eww``
+    shows the environment as of process launch: a Desktop child that outlives
+    its token keeps serving the frozen, expired value even after a fresh
+    ``/login`` has updated the keychain. Neither source is reliably the
+    freshest, so the probe must try them in order rather than trust the
+    first.
+    """
+    candidates = []
+    process_token = _read_process_oauth_token()
+    if process_token:
+        candidates.append((process_token, None))
+    keychain_token, expires_at = _read_keychain_oauth()
+    if keychain_token and keychain_token != process_token:
+        candidates.append((keychain_token, expires_at))
+    return candidates
 
 
 def _parse_reset_minutes(value: str, now_ts: float):
@@ -511,33 +525,54 @@ def _probe_limits():
     """Ett minimalt API-anrop; returnerar {sessionPct, sessionResetMin,
     weekPct, weekResetMin} eller None om något saknas på vägen."""
     global _probe_status, _probe_headers, _probe_unknown_buckets
-    token, expires_at = _read_oauth_token()
-    if not token:
+    candidates = _read_oauth_candidates()
+    if not candidates:
         _probe_status = "no_claude_oauth_token"
         return None
-    if expires_at and expires_at / 1000 < time.time():
-        # Tokenen har gått ut; Claude Code förnyar den i nyckelringen nästa
-        # gång den pratar med API:t — vi behöver bara vänta och läsa om.
-        _probe_status = (f"token_expired_"
-                         f"{datetime.fromtimestamp(expires_at / 1000):%H:%M}")
-        return None
 
-    # The read-only usage contract is the only observed source that names an
-    # active scoped weekly pool (for example Fable) and its reset explicitly.
-    try:
-        with urllib.request.urlopen(_usage_request(token), timeout=15) as resp:
-            usage = json.load(resp)
-        found = _parse_usage_limits(usage, time.time())
-        if "sessionPct" in found:
-            _probe_status = "usage_http_200 + ok"
-            _probe_headers = []
-            _probe_unknown_buckets = []
-            return found
-        _probe_status = "usage_http_200 + no_mapped_limits"
-    except urllib.error.HTTPError as error:
-        _probe_status = f"usage_http_{error.code}"
-    except Exception as error:
-        _probe_status = f"usage_request_failed: {type(error).__name__}"
+    token = None
+    for candidate, expires_at in candidates:
+        if expires_at and expires_at / 1000 < time.time():
+            # Tokenen har gått ut; Claude Code förnyar den i nyckelringen
+            # nästa gång den pratar med API:t — vänta och läs om.
+            _probe_status = (f"token_expired_"
+                             f"{datetime.fromtimestamp(expires_at / 1000):%H:%M}")
+            continue
+
+        # The read-only usage contract is the only observed source that names
+        # an active scoped weekly pool (for example Fable) and its reset
+        # explicitly.
+        try:
+            with urllib.request.urlopen(
+                    _usage_request(candidate), timeout=15) as resp:
+                usage = json.load(resp)
+        except urllib.error.HTTPError as error:
+            _probe_status = f"usage_http_{error.code}"
+            if error.code in (401, 403):
+                # Avvisad token säger inget om nästa källa — prova den innan
+                # vi ger upp.
+                continue
+            token = candidate
+            break
+        except Exception as error:
+            _probe_status = f"usage_request_failed: {type(error).__name__}"
+            token = candidate
+            break
+        else:
+            found = _parse_usage_limits(usage, time.time())
+            if "sessionPct" in found:
+                _probe_status = "usage_http_200 + ok"
+                _probe_headers = []
+                _probe_unknown_buckets = []
+                return found
+            _probe_status = "usage_http_200 + no_mapped_limits"
+            token = candidate
+            break
+
+    if token is None:
+        # Alla källor avvisade eller utgångna — header-proben med samma
+        # tokens vore samma svar till högre kostnad.
+        return None
 
     body = json.dumps({
         "model": "claude-haiku-4-5",  # billigaste proben; headrarna är desamma

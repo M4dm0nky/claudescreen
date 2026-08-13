@@ -3,7 +3,10 @@
 Notable changes to VibePulse. Release notes for tagged versions are published
 on the [releases page](https://github.com/niclasvestlund-YT/vibepulse/releases).
 
-## Unreleased
+## v0.2.1 — 2026-08-13
+
+Server fixes verified live on a real installation the same evening; the
+firmware alert fix reaches a device on its next flash.
 
 ### Fixed
 

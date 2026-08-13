@@ -1,34 +1,34 @@
-# Torget — appplattform för hyllskärmen
+# VibePulse — firmware för hyllskärmen
 
-(Arbetsnamn — Niclas kan döpa om.) Torget äger den fysiska skärmen
-(Waveshare ESP32-S3-Touch-AMOLED-2.16, 480×480) och producerar DEN enda
-firmware-binär som flashas. Appar pluggar in som ESP-IDF-komponenter och kan
-bo i egna repon. En skärm = en binär = ett bygge här. MIT-licens.
+**Setting this repo up for someone? Follow
+[docs/agent-setup.md](docs/agent-setup.md), not this file.** It is in
+English, step by step, with a verification after every step and a
+symptom→fix table. This file is maintainer context for working *on* the
+platform, and it is mostly Swedish.
 
-Struktur, byggkommandon och hur man skriver en app: **README.md** (läs den
-först). Hårdvarusanningen routas under `Hardware-aware work` nedan; läs den
-kanoniska femfilslistan där före hårdvaruarbete. Designsystemet:
-**spec/ui-spec.md**. Historiken och P-numren: Solceller-repots
-`docs/roadmap-hyllskarmen.md` — P25 + P25-VISION är detta repos
-födelseattest.
+Det här repot är **VibePulse**: appen som visar Claude Code- och
+Codex-kvoter på en Waveshare ESP32-S3-Touch-AMOLED-2.16 (480×480). Appen kör
+på **Torget**, en liten LVGL-appplattform som bor i samma repo och äger
+panelen, WiFi, ljuset och launchern — därav alla `torget_*`-namn i koden och
+`torget.bin` som byggresultat. En skärm = en binär = ett bygge här.
+MIT-licens.
 
-## New here? Setting this repo up for someone
+**En färsk klon utifrån bygger EN app: VibePulse.** Det är hela innehållet.
+Ser du referenser till Solelkollen eller Vibbe/Buddy i den här filen är det
+underhållarens egna sidoprojekt, som bor i egna repon och bara byggs in om
+de råkar finnas utcheckade — se `## Status`. Du behöver dem inte, och deras
+frånvaro är det normala.
 
-**If you were handed this repo to _set it up_** — fill in secrets, build,
-flash, start the service — follow
-**[docs/agent-setup.md](docs/agent-setup.md)**, not this file. It is in
-English, step-by-step, with a verification after every step and a
-symptom→fix table.
-
-The rest of AGENTS.md is maintainer context for working *on* the platform.
-It refers to things you do not have and do not need: `~/Buddy/components`
-(app 3) and the Solceller repo's roadmap. Both builds gate on their absence
-and simply build two apps instead of three.
+Struktur, byggkommandon och hur man skriver en app: **README.md**.
+Designsystemet: **spec/ui-spec.md**. Hårdvarusanningen routas under
+`Hardware-aware work` nedan; läs den kanoniska femfilslistan där före
+hårdvaruarbete.
 
 ## Status (2026-08-13, första flashen gjord)
 
-Plattformen kopierades (flyttades inte) från `~/Documents/Solceller/firmware/`
-och stöptes om enligt granskningens tre krav: (1) versionerat appkontrakt
+Plattformen bröts ut ur underhållarens tidigare solcells-firmware (den
+historiken ligger i ett privat repo och är inget du behöver) och stöptes om
+enligt granskningens tre krav: (1) versionerat appkontrakt
 `torget_app_t` + appregister i main/registry.c som launchern läser;
 (2) nätverk/hämtning bor i varje apps egen komponent (net.c), plattformen
 äger bara WiFi/SNTP/lås/ljus/rotation; (3) MIT-licens.
@@ -68,7 +68,7 @@ interaktionsprotokollet i AMOLED-skillen, mätt på panelen först.
   (torget_fmt, torget_ticker, torget_net skördades när VibePulse, då kallad
   Tokenmätaren, blev andra användaren — det är mallen).
 - **Ärlighetsinvarianten:** aldrig påhittade nollor — utan data visas
-  streck; räknare backar aldrig; eSett är AVRÄKNAD el och copyn säger det.
+  streck; räknare backar aldrig; copyn säger vad siffran faktiskt mäter.
 
 ## AMOLED visual work
 
@@ -96,8 +96,9 @@ authorization for the physical install.
 
 ## Medvetet SENARE (bygg inte förrän triggern slår)
 
-Vibbe/Buddy är redan app 3 via companion-inputen `~/Buddy/components`.
-`audio.microphones`, `audio.speaker-output` och `usb.device` är
+Vibbe/Buddy är underhållarens companion-app via `~/Buddy/components` och
+ingår inte i en färsk klon. `audio.microphones`, `audio.speaker-output` och
+`usb.device` är
 firmware-enabled genom det build-inputet; exakt revision och evidens finns i
 `spec/hardware-sources.yaml`. Fysisk mikrofon-/högtalarfunktion är fortfarande
 overifierad.

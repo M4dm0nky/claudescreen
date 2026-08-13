@@ -98,7 +98,9 @@ idf.py build
 
 **Verify:** the build ends with a `torget.bin` size/partition summary and no
 error (the CMake project is `torget`, the platform; VibePulse is an app
-inside it). A `~/Buddy saknas` status line is expected, not a problem.
+inside it). Status lines saying `Solelkollen saknas` and `~/Buddy saknas`
+are expected on a fresh clone — that is the build telling you it found none
+of the maintainer's companion apps, which is exactly what you want.
 
 ## Step 3 — flash (only with the user's go-ahead)
 

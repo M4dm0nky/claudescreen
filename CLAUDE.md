@@ -11,6 +11,15 @@ exact 480 x 480 output at meaningful stages. Review the static physical AMOLED
 before motion. Studio approval never authorizes a flash; obtain explicit user
 authorization for the physical install.
 
+## Logs, errors, and learning from mistakes
+
+`docs/observability.md` maps every log the system generates and contains the
+periodic comb routine — follow it when asked to comb, audit, or investigate
+logs or odd behavior. Findings go to `docs/observability-backlog.md`. Read
+`docs/lessons.md` before touching pollers, parsers, staleness logic, or the
+launchd setup: most sharp edges here have a story, and fixes with a
+root-cause story add an entry there.
+
 ## Hardware-aware work
 
 Before proposing external hardware, declaring a device limitation, or designing

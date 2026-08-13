@@ -295,8 +295,18 @@ cp se.torget.tokenserver.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/se.torget.tokenserver.plist
 ```
 
-Plisten antar att repot bor i `~/Torget` — redigera sökvägen annars.
-Loggen hamnar i `/tmp/torget-tokenserver.log`.
+Plisten antar att repot bor i `~/Torget` och användaren `niclasvestlund` —
+redigera sökvägarna annars. Loggen hamnar i
+`~/Library/Logs/torget-tokenserver.log` (syns i Konsol-appen, överlever
+omstart; servern roterar den själv vid start om den vuxit förbi ~5 MB, med
+svansen bevarad i `.old`). Raderna har tidsstämplar och loggar övergångar,
+inte tillstånd: en frisk vecka är några rader, inte tusen.
+
+Snabbaste hälsokollen är röktestet — kamrutinens steg 1–4 som ett kommando:
+
+```
+python3 tools/tokenserver/smoke.py
+```
 
 ## Ärlighetsnoter
 

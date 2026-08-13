@@ -15,10 +15,12 @@
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 
+#include "esp_app_desc.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "nvs_flash.h"
@@ -374,7 +376,39 @@ esp_err_t torget_display_rotation_set(bsp_display_rotation_t rotation) {
 
 /* ------------------------------------------------------------------- start */
 
+static const char *reset_reason_name(esp_reset_reason_t r) {
+  switch (r) {
+  case ESP_RST_POWERON: return "strömpåslag";
+  case ESP_RST_SW: return "mjukvaruomstart";
+  case ESP_RST_PANIC: return "PANIK";
+  case ESP_RST_INT_WDT: return "AVBROTTSVAKTHUND";
+  case ESP_RST_TASK_WDT: return "TASKVAKTHUND";
+  case ESP_RST_WDT: return "annan vakthund";
+  case ESP_RST_BROWNOUT: return "BROWNOUT — misstänk strömförsörjningen";
+  case ESP_RST_DEEPSLEEP: return "djupsömn";
+  case ESP_RST_EXT: return "extern reset";
+  case ESP_RST_USB: return "USB-reset";
+  case ESP_RST_JTAG: return "JTAG";
+  case ESP_RST_SDIO: return "SDIO";
+  case ESP_RST_EFUSE: return "efuse-fel";
+  case ESP_RST_PWR_GLITCH: return "spänningsglitch";
+  case ESP_RST_CPU_LOCKUP: return "CPU-låsning";
+  default: return "okänd";
+  }
+}
+
 void app_main(void) {
+  /* Bootbanderollen svarar på två frågor loggen annars inte kan:
+   * "kör kortet det jag just flashade?" (versionen är git describe via
+   * ESP-IDF:s appdeskriptor, plus byggtiden) och "varför startade det om?"
+   * (orsaken — en nattlig panik/brownout är annars osynlig i efterhand).
+   * Serverns motsvarighet är rev/startedAt på GET /. */
+  const esp_app_desc_t *app = esp_app_get_description();
+  esp_reset_reason_t rr = esp_reset_reason();
+  ESP_LOGI(TAG, "boot: %s %s (byggd %s %s, IDF %s), omstartsorsak %s (%d)",
+           app->project_name, app->version, app->date, app->time,
+           app->idf_ver, reset_reason_name(rr), (int)rr);
+
   esp_err_t nvs = nvs_flash_init();
   if (nvs == ESP_ERR_NVS_NO_FREE_PAGES || nvs == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     ESP_ERROR_CHECK(nvs_flash_erase());

@@ -5,7 +5,7 @@ Skannar sessionsloggarna i ~/.claude/projects/**/*.jsonl (samma källa som
 usage-verktyg i ccusage-familjen läser), summerar tokens per dag och serverar
 glance-mönstrets kontrakt på /api/tokens:
 
-    {"v": 1, "dayTokens": ..., "dayTokensPerHour": ..., "daySessions": ...,
+    {"v": 2, "dayTokens": ..., "dayTokensPerHour": ..., "daySessions": ...,
      "monthTokens": ...}
 
 Designregler, ärvda från Solelkollens /api/glance:
@@ -34,12 +34,14 @@ Autostart: se README.md härintill (launchd-plist medföljer).
 import argparse
 import hashlib
 import json
+import logging
 import math
 import os
 import re
 import select
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -64,6 +66,81 @@ else:  # direktkörning: python3 tools/tokenserver/tokenserver.py
 RECOMPUTE_EVERY_S = 30
 LIMITS_EVERY_S = 120  # rate-limit-proben: snäll mot API:t, färsk nog för hyllan
 
+# Diagnostiken går via logging till stderr med tidsstämplar (basicConfig i
+# main; launchd samlar bägge strömmarna i loggfilen, se plisten). Regeln är
+# ÖVERGÅNGAR, inte tillstånd: en statusändring loggas en gång och sedan är
+# det tyst tills läget ändras igen — filen ska vara läsbar över veckor.
+log = logging.getLogger("tokenserver")
+
+# Loggfilen under launchd (plistens StandardOut/ErrorPath). ~/Library/Logs
+# överlever omstart och syns i Konsol-appen — /tmp gjorde ingetdera. launchd
+# har ingen egen rotation, så servern tar den vid start: se
+# _maybe_rotate_own_log.
+DEFAULT_LOG_PATH = Path.home() / "Library" / "Logs" / "torget-tokenserver.log"
+_LOG_CAP_BYTES = 5 * 1024 * 1024
+_LOG_TAIL_KEEP_BYTES = 256 * 1024
+
+
+def _maybe_rotate_own_log(path=None, stderr_fd=2):
+    """Trunkera loggfilen vid start när den vuxit förbi taket, med svansen
+    bevarad i <namn>.old.
+
+    Bara när stderr faktiskt ÄR filen (launchd-fallet): fstat/stat-jämförelsen
+    skyddar terminalkörningar från att röra en fil de inte skriver till.
+    Trunkering i stället för rename: launchd håller fd:n öppen med O_APPEND,
+    så en rename hade bara fått processen att skriva vidare i den flyttade
+    filen medan den nya förblev tom.
+
+    Hela läs-kopiera-trunkera-sekvensen hålls under root-loggerns
+    handlerlås (RLock — vår egen "roterad"-rad kan fortfarande skrivas), så
+    en loggrad från en annan tråd inte kan landa mellan svansläsningen och
+    trunkeringen och raderas ur bägge filerna. Råa stderr-skrivningar
+    (agent_status-diagnostiken) går utanför låset; det kvarvarande fönstret
+    är millisekunder mot en strypt rad per 30 s, en gång per 5 MB."""
+    path = Path(path) if path else DEFAULT_LOG_PATH
+    try:
+        st = path.stat()
+    except OSError:
+        return False  # ingen fil (terminalkörning, färsk installation)
+    handlers = list(logging.getLogger().handlers)
+    for handler in handlers:
+        handler.acquire()
+    try:
+        if st.st_size <= _LOG_CAP_BYTES:
+            return False
+        own = os.fstat(stderr_fd)
+        if (own.st_dev, own.st_ino) != (st.st_dev, st.st_ino):
+            return False
+        with open(path, "rb+") as fh:
+            fh.seek(max(0, st.st_size - _LOG_TAIL_KEEP_BYTES))
+            tail = fh.read()  # läser till FAKTISKT EOF — även nyare rader
+            path.with_name(path.name + ".old").write_bytes(tail)
+            fh.truncate(0)
+        log.info("loggfilen roterad (%d byte > taket %d; svansen ligger i "
+                 "%s.old)", st.st_size, _LOG_CAP_BYTES, path.name)
+        return True
+    except Exception:
+        # Rotering får aldrig fälla tjänsten; att den misslyckades ska synas.
+        log.warning("logrotering av %s misslyckades", path, exc_info=True)
+        return False
+    finally:
+        for handler in reversed(handlers):
+            handler.release()
+
+
+_LOG_ROTATE_CHECK_S = 3600.0
+
+
+def _run_log_rotation_watch(stop_event, interval_s=None):
+    """Timvis rotationsvakt: startrotationen räcker inte för en process som
+    lever länge — en ihållande felande deltjänst kan annars skriva förbi
+    taket tills en orelaterad omstart råkar städa. Samma fstat-vakt som vid
+    start, så terminalkörningar förblir orörda; tråden sover resten av
+    tiden."""
+    interval = _LOG_ROTATE_CHECK_S if interval_s is None else interval_s
+    while not stop_event.wait(interval):
+        _maybe_rotate_own_log()
+
 
 def _read_server_rev():
     """Git-revisionen som faktiskt serverar — gör 'fel kod kör' synligt i en
@@ -78,7 +155,29 @@ def _read_server_rev():
         return "unknown"
 
 
+def _read_source_fingerprint():
+    """Innehållshash av tjänstens källfiler, tagen vid start. Rev räcker
+    inte för "kör servern det som ligger här?": en smutsig worktree, eller
+    en redigering EFTER att processen startade, delar HEAD med checkouten
+    och låter rev-jämförelsen ljuga "aktuell". Röktestet räknar om samma
+    hash från disken och jämför. test_* och smoke.py ingår inte — tjänsten
+    laddar dem aldrig, och en redigerad smoke ska inte se ut som en
+    föråldrad server."""
+    try:
+        digest = hashlib.sha256()
+        base = Path(os.path.dirname(os.path.abspath(__file__)))
+        for f in sorted(base.glob("*.py")):
+            if f.name.startswith("test_") or f.name == "smoke.py":
+                continue
+            digest.update(f.name.encode())
+            digest.update(f.read_bytes())
+        return digest.hexdigest()[:12]
+    except Exception:
+        return "unknown"
+
+
 _SERVER_REV = _read_server_rev()
+_SERVER_SRC = _read_source_fingerprint()
 _SERVER_STARTED = datetime.now().astimezone().isoformat(timespec="seconds")
 MAX_TRACKER_BACKFILL_TICK_S = 0.5  # samma kadens som agent_status.POLL_S
 # Claude bär aldrig fönstrets minuttal i klartext (bara namnen "5h"/"7d") --
@@ -96,6 +195,15 @@ _file_cache = {}   # path -> stat, parsed offset, month and compact records
 _last_result = None
 _last_computed = 0.0
 _snapshot_refreshing = False
+# Omräkningens hälsa: kraschar _compute serveras förra snapshotet vidare —
+# rätt beteende, men det får inte ske TYST (då fryser siffrorna för alltid
+# och ser färska ut). failing_since driver usageComputeOk på GET / och
+# röktestets FAIL; loggen får övergången plus ett strypt fel.
+# None = aldrig loggat. Inte 0.0: time.monotonic() räknar från boot, så på
+# en nystartad maskin är "nu - 0.0" MINDRE än strypfönstret och första
+# felet skulle sväljas — CI:ns färska VM fällde exakt det.
+_compute_failing_since = None
+_last_compute_error_logged = None
 _history_lock = threading.Lock()
 _default_usage_history = None
 _quota_cache_lock = threading.Lock()
@@ -303,6 +411,7 @@ _probe_headers = []
 _probe_unknown_buckets = []
 _probe_cooldown_until = 0.0
 _probe_failure_streak = 0
+_probe_status_logged = None  # senast loggade status — övergångar loggas, tillstånd inte
 
 
 _CLAUDE_DESKTOP_PROCESS = re.compile(
@@ -653,7 +762,7 @@ def _probe_limits():
         _headers_logged = True
         for name in sorted(headers):
             if "ratelimit" in name.lower():
-                print(f"ratelimit-header: {name}")
+                log.info("ratelimit-header: %s", name)
     # Tre fönster, samma som Claudes egen usage-panel: 5-timmars, veckan
     # (alla modeller) och veckan för tyngsta modellen (Fable/Opus). Fönster-
     # namnet i headern varierar ("5h", "7d", "7d_opus", ...) — mappa på
@@ -681,11 +790,27 @@ def _probe_interval_s():
 
 def _refresh_limits():
     global _last_limits, _last_probed, _limits_refreshing, \
-        _probe_failure_streak
+        _probe_failure_streak, _probe_status_logged, _probe_status
     try:
         refreshed = _probe_limits()
-    except Exception:
+    except Exception as e:
         refreshed = None
+        # Kraschar proben INNAN den hunnit sätta status skulle den gamla
+        # strängen stå kvar — i värsta fall "usage_http_200 + ok" medan
+        # värdena försvinner. En krasch är en bugg (ingen vanlig felväg):
+        # sätt en egen status och logga traceback en gång per episod.
+        crashed = f"probe_crashed: {type(e).__name__}"
+        if _probe_status != crashed:
+            log.exception("claude-proben kraschade (status var %s)",
+                          _probe_status)
+        _probe_status = crashed
+    # Övergångsloggen: 401 som dyker upp, 429-backoff, återhämtningen.
+    # Läses här på probetråden (enda skrivaren), efter att statussträngen
+    # är färdigbyggd — samma läge står stilla utan att skriva en rad till.
+    if _probe_status != _probe_status_logged:
+        log.info("claude-probe: %s -> %s",
+                 _probe_status_logged or "start", _probe_status)
+        _probe_status_logged = _probe_status
     with _limits_lock:
         _probe_failure_streak = 0 if refreshed else _probe_failure_streak + 1
         _last_limits = refreshed
@@ -1183,10 +1308,15 @@ def _persist_quota_records_async(cache, records):
 _max_tracker_writer_lock = threading.Lock()
 _max_tracker_dirty = False
 _max_tracker_writer_running = False
+_ERROR_LOG_THROTTLE_S = 300.0  # ihållande fel: en loggrad per 5 min räcker
+_last_save_error_logged = None  # None = aldrig loggat (0.0 sväljer första
+                                # felet på en nystartad maskin — monotonic
+                                # räknar från boot)
 
 
 def _max_tracker_writer(store):
-    global _max_tracker_dirty, _max_tracker_writer_running
+    global _max_tracker_dirty, _max_tracker_writer_running, \
+        _last_save_error_logged
     while True:
         with _max_tracker_writer_lock:
             if not _max_tracker_dirty:
@@ -1195,8 +1325,28 @@ def _max_tracker_writer(store):
             _max_tracker_dirty = False
         try:
             store.save()
+            if _last_save_error_logged is not None:
+                # Lyckad skrivning stänger felepisoden: logga slutet och
+                # nollställ strypningen, så nästa fel (en NY episod) loggar
+                # direkt i stället för att ärva gamla fönstret.
+                log.info("max-tracker: save lyckades igen")
+                _last_save_error_logged = None
         except Exception:
-            pass
+            # En misslyckad skrivning får inte tappa dirty-signalen: markera
+            # om och avsluta, så NÄSTA observation (eller slutflushen)
+            # försöker igen — ingen het loop, ingen tyst dataförlust.
+            # Loggen är strypt: ett trasigt skrivmål ska inte fylla filen.
+            now = time.monotonic()
+            if (_last_save_error_logged is None or
+                    now - _last_save_error_logged >= _ERROR_LOG_THROTTLE_S):
+                _last_save_error_logged = now
+                log.exception(
+                    "max-tracker: save misslyckades — observationerna står "
+                    "kvar i minnet och nästa försök kommer")
+            with _max_tracker_writer_lock:
+                _max_tracker_dirty = True
+                _max_tracker_writer_running = False
+            return
 
 
 def _mark_max_tracker_dirty(store):
@@ -1281,11 +1431,28 @@ def _add_forecast(result, prefix, forecast):
 
 
 def _refresh_usage_totals(projects_dir, max_tracker_store=None):
-    global _last_result, _last_computed, _snapshot_refreshing
+    global _last_result, _last_computed, _snapshot_refreshing, \
+        _compute_failing_since, _last_compute_error_logged
     try:
         refreshed = _compute(projects_dir, max_tracker_store)
     except Exception:
         refreshed = None
+        now = time.monotonic()
+        if _compute_failing_since is None:
+            _compute_failing_since = now
+        if (_last_compute_error_logged is None or
+                now - _last_compute_error_logged >= _ERROR_LOG_THROTTLE_S):
+            _last_compute_error_logged = now
+            log.exception("usage-omräkningen kraschade — /api/tokens "
+                          "serverar frysta siffror tills den lyckas igen")
+    else:
+        if _compute_failing_since is not None:
+            log.info("usage-omräkningen frisk igen efter %.0f s",
+                     time.monotonic() - _compute_failing_since)
+            _compute_failing_since = None
+            # Återhämtningen stänger episoden: nästa fel är en NY episod
+            # och ska logga direkt, inte ärva gamla strypfönstret.
+            _last_compute_error_logged = None
     with _cache_lock:
         if refreshed is not None:
             _last_result = refreshed
@@ -1491,37 +1658,82 @@ class Handler(BaseHTTPRequestHandler):
             quota_snapshot.get("codexWeekStale"))
         return payload
 
+    def _reply(self, produce):
+        """Svara 200 med produce(), annars 500 {"error": ...} — skärmen
+        avvisar error-formen per kontrakt och behåller senaste goda värden.
+        Orsaken ska ändå alltid synas i loggen: ett tyst 500 var så
+        max-tracker-buggarna förblev osynliga.
+
+        Producenten och svarsskrivningen bedöms VAR FÖR SIG: ett
+        ConnectionError/TimeoutError från producenten är ett serverfel som
+        ska loggas och bli 500 — bara under själva skrivningen betyder det
+        att klienten försvann."""
+        try:
+            payload = produce()
+        except Exception:
+            log.exception("500 på %s", self.path)
+            try:
+                self._send(500, {"error": "internal server error"})
+            except OSError:
+                pass
+            return
+        try:
+            self._send(200, payload)
+        except (ConnectionError, TimeoutError):
+            pass  # klienten försvann mitt i svaret — inte ett serverfel
+        except Exception:
+            # T.ex. oserialiserbar payload — serverfel, inte klientens.
+            log.exception("500 på %s (svarsskrivningen)", self.path)
+            try:
+                self._send(500, {"error": "internal server error"})
+            except OSError:
+                pass
+
     def do_GET(self):
         if self.path == "/api/tokens":
-            try:
-                self._send(200, get_snapshot(
-                    self.projects_dir,
-                    max_tracker_store=self.max_tracker_store))
-            except Exception:  # skärmen avvisar error-formen per kontrakt
-                self._send(500, {"error": "internal server error"})
+            self._reply(lambda: get_snapshot(
+                self.projects_dir,
+                max_tracker_store=self.max_tracker_store))
         elif self.path == "/api/agent-status":
-            self._send(200, self.agent_status.snapshot())
+            self._reply(lambda: self.agent_status.snapshot())
         elif self.path == "/api/max-tracker":
-            try:
-                self._send(200, self._max_tracker_payload())
-            except Exception:  # skärmen avvisar error-formen per kontrakt
-                self._send(500, {"error": "internal server error"})
+            self._reply(self._max_tracker_payload)
         elif self.path == "/":
-            self._send(200, {"service": "torget-tokenserver",
-                             "rev": _SERVER_REV,
-                             "startedAt": _SERVER_STARTED,
-                             "endpoint": "/api/tokens",
-                             "endpoints": ["/api/tokens", "/api/agent-status",
-                                          "/api/max-tracker"],
-                             "claudeProbe": _probe_status,
-                             "ratelimitHeaders": _probe_headers,
-                             "unknownRateLimitBuckets":
-                                 _probe_unknown_buckets})
+            self._reply(self._root_payload)
         else:
             self._send(404, {"error": "not found"})
 
+    def _root_payload(self):
+        # EN läsning av failing_since — ok-flaggan och varaktigheten måste
+        # komma ur samma ögonblick. Två läsningar lät en återhämtning mitt
+        # emellan ge None i subtraktionen (500 på själva diagnostikrutten)
+        # och en nystartad episod ge ok=true med varaktighet bredvid.
+        failing_since = _compute_failing_since
+        return {"service": "torget-tokenserver",
+                "rev": _SERVER_REV,
+                "srcFingerprint": _SERVER_SRC,
+                "startedAt": _SERVER_STARTED,
+                "endpoint": "/api/tokens",
+                "endpoints": ["/api/tokens", "/api/agent-status",
+                              "/api/max-tracker"],
+                "claudeProbe": _probe_status,
+                "ratelimitHeaders": _probe_headers,
+                "unknownRateLimitBuckets": _probe_unknown_buckets,
+                # GET / parsas aldrig av skärmen — fält kan läggas till
+                # utan kontraktsrisk.
+                "usageComputeOk": failing_since is None,
+                "usageComputeFailingForS":
+                    (int(time.monotonic() - failing_since)
+                     if failing_since is not None else None)}
+
     def log_message(self, fmt, *args):
         pass  # 30 s-pollning ska inte fylla loggen
+
+    def log_error(self, fmt, *args):
+        # BaseHTTPRequestHandler ruttar log_error genom log_message, så den
+        # tystade accessloggen tystade felen med sig. Accessloggen ska vara
+        # tyst; felen ska inte.
+        log.warning("http %s: %s", self.address_string(), fmt % args)
 
 
 def _build_arg_parser():
@@ -1565,15 +1777,45 @@ def main():
     ap = _build_arg_parser()
     args = ap.parse_args()
 
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    _maybe_rotate_own_log()
+    threading.Thread(
+        target=_run_log_rotation_watch,
+        args=(threading.Event(),),
+        name="log-rotation-watch",
+        daemon=True,
+    ).start()
+    log.info("startar: rev %s", _SERVER_REV)
+
     Handler.projects_dir = Path(args.dir)
     if not Handler.projects_dir.is_dir():
-        raise SystemExit(f"hittar inte {Handler.projects_dir} — finns Claude Code på den här maskinen?")
+        # Var: SystemExit. Under launchd (KeepAlive utan ThrottleInterval)
+        # blev det en tyst respawn var ~10:e sekund som fyllde loggen.
+        # Vänta i stället — katalogen dyker upp när Claude Code körts en
+        # första gång på maskinen.
+        log.warning("hittar inte %s — finns Claude Code på den här "
+                    "maskinen? Väntar på att katalogen dyker upp "
+                    "(Ctrl-C avbryter).", Handler.projects_dir)
+        try:
+            while not Handler.projects_dir.is_dir():
+                time.sleep(30)
+        except KeyboardInterrupt:
+            raise SystemExit(1)
+        log.info("%s finns nu — fortsätter starten.", Handler.projects_dir)
 
     t0 = time.monotonic()
     snap = get_snapshot(Handler.projects_dir)
-    print(f"förstaskanning {time.monotonic() - t0:.1f} s: "
-          f"{snap['dayTokens']:,} tokens idag, {snap['daySessions']} sessioner, "
-          f"{snap['monthTokens']:,} denna månad".replace(",", " "))
+    log.info("förstaskanning %.1f s: %s tokens idag, %d sessioner, "
+             "%s denna månad",
+             time.monotonic() - t0,
+             f"{snap['dayTokens']:,}".replace(",", " "),
+             snap["daySessions"],
+             f"{snap['monthTokens']:,}".replace(",", " "))
 
     status_service = AgentStatusService(
         projects_dir=Handler.projects_dir,
@@ -1602,9 +1844,9 @@ def main():
     srv = None
     try:
         srv = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
-        print(f"serverar http://0.0.0.0:{args.port}/api/tokens, "
-              f"/api/agent-status och /api/max-tracker "
-              f"(LAN — exponera inte utåt)")
+        log.info("serverar http://0.0.0.0:%d/api/tokens, "
+                 "/api/agent-status och /api/max-tracker "
+                 "(LAN — exponera inte utåt)", args.port)
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
@@ -1614,7 +1856,8 @@ def main():
         try:
             max_tracker_store.save()  # slutlig flush, samma som stop()-flödet
         except Exception:
-            pass
+            log.exception("max-tracker: slutlig flush misslyckades — "
+                          "dagens toppar kan saknas efter omstart")
         status_service.stop()
         if srv is not None:
             srv.server_close()

@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import logging
 import tempfile
 import threading
 import time
@@ -1475,15 +1476,20 @@ class HandlerPrivacyTests(unittest.TestCase):
         handler._send = mock.Mock()
         return handler
 
-    def test_tokens_error_is_sanitized(self):
+    def test_tokens_error_is_sanitized_but_cause_reaches_the_local_log(self):
         handler = self._handler("/api/tokens")
         with mock.patch.object(
                 tokenserver, "get_snapshot",
-                side_effect=RuntimeError("/private/source/path secret")):
+                side_effect=RuntimeError("/private/source/path secret")), \
+                self.assertLogs("tokenserver", level="ERROR") as captured:
             handler.do_GET()
 
+        # Över LAN:et: bara kontraktets sanerade form. I den lokala loggen:
+        # hela orsaken — ett tyst 500 var så serverfel förblev osynliga.
         handler._send.assert_called_once_with(
             500, {"error": "internal server error"})
+        self.assertIn("/private/source/path secret",
+                      "\n".join(captured.output))
 
     def test_root_diagnostics_contain_names_but_no_header_values_or_body(self):
         handler = self._handler("/")
@@ -1500,6 +1506,138 @@ class HandlerPrivacyTests(unittest.TestCase):
         self.assertEqual(payload["ratelimitHeaders"], [
             "anthropic-ratelimit-unified-7d-utilization"])
         self.assertEqual(payload["unknownRateLimitBuckets"], ["7d_haiku"])
+
+
+class HandlerErrorLoggingTests(unittest.TestCase):
+    """500-kontraktet plus loggning: felen ska synas lokalt, aldrig på LAN:et,
+    och en försvunnen klient är inte ett serverfel."""
+
+    def _handler(self, path):
+        handler = tokenserver.Handler.__new__(tokenserver.Handler)
+        handler.path = path
+        handler.projects_dir = Path("/private/source/path")
+        handler.agent_status = mock.Mock()
+        handler.client_address = ("192.0.2.10", 4711)
+        handler._send = mock.Mock()
+        return handler
+
+    def test_agent_status_route_keeps_the_error_contract(self):
+        # Rutten saknade try/except: ett fel läckte som rå traceback över
+        # HTTP i stället för kontraktets {"error": ...}.
+        handler = self._handler("/api/agent-status")
+        handler.agent_status.snapshot.side_effect = RuntimeError("trasig")
+        with self.assertLogs("tokenserver", level="ERROR") as captured:
+            handler.do_GET()
+
+        handler._send.assert_called_once_with(
+            500, {"error": "internal server error"})
+        self.assertIn("trasig", "\n".join(captured.output))
+
+    def test_client_disconnect_is_quiet_and_not_a_500(self):
+        handler = self._handler("/api/agent-status")
+        handler.agent_status.snapshot.return_value = {"v": 1}
+        handler._send.side_effect = BrokenPipeError()
+        with self.assertNoLogs("tokenserver"):
+            handler.do_GET()
+
+        handler._send.assert_called_once()  # inget 500-försök till ett lik
+
+    def test_producer_connection_error_is_a_server_error_not_a_disconnect(self):
+        # ConnectionError FRÅN producenten är ett serverfel och ska logga +
+        # 500 — bara under svarsskrivningen betyder det att klienten dog.
+        handler = self._handler("/api/agent-status")
+        handler.agent_status.snapshot.side_effect = ConnectionError("inuti")
+        with self.assertLogs("tokenserver", level="ERROR") as captured:
+            handler.do_GET()
+
+        handler._send.assert_called_once_with(
+            500, {"error": "internal server error"})
+        self.assertIn("inuti", "\n".join(captured.output))
+
+    def test_unwritable_payload_logs_and_falls_back_to_500(self):
+        handler = self._handler("/api/agent-status")
+        handler.agent_status.snapshot.return_value = {"v": 1}
+        handler._send.side_effect = [TypeError("oserialiserbar"), None]
+        with self.assertLogs("tokenserver", level="ERROR") as captured:
+            handler.do_GET()
+
+        self.assertEqual(handler._send.call_count, 2)
+        self.assertEqual(handler._send.call_args.args[0], 500)
+        self.assertIn("svarsskrivningen", "\n".join(captured.output))
+
+    def test_log_error_reaches_the_log_while_access_log_stays_muted(self):
+        handler = self._handler("/api/tokens")
+        with self.assertLogs("tokenserver", level="WARNING") as captured:
+            handler.log_error("code %d, message %s", 400, "Bad request")
+        self.assertIn("Bad request", "\n".join(captured.output))
+
+        with self.assertNoLogs("tokenserver"):
+            handler.log_message("%s", "GET /api/tokens 200")
+
+
+class UsageComputeHealthTests(unittest.TestCase):
+    """OBS-08: en kraschad omräkning får frysa siffrorna (senaste goda
+    serveras vidare) men aldrig tyst — logg vid övergången, strypt
+    upprepning, usageComputeOk på GET /, och återhämtningen loggad."""
+
+    def test_compute_crash_logs_throttled_and_flags_the_root_payload(self):
+        with mock.patch.object(tokenserver, "_compute_failing_since", None), \
+                mock.patch.object(tokenserver, "_last_compute_error_logged",
+                                  None), \
+                mock.patch.object(tokenserver, "_last_result", {"v": 1}), \
+                mock.patch.object(tokenserver, "_last_computed", 0.0), \
+                mock.patch.object(tokenserver, "_snapshot_refreshing", True), \
+                mock.patch.object(tokenserver, "_compute",
+                                  side_effect=RuntimeError("boom")):
+            with self.assertLogs("tokenserver", level="ERROR") as captured:
+                tokenserver._refresh_usage_totals(Path("/x"))
+            self.assertIn("frysta siffror", "\n".join(captured.output))
+            # Ihållande fel stryps — ingen ny rad inom fönstret.
+            with self.assertNoLogs("tokenserver"):
+                tokenserver._refresh_usage_totals(Path("/x"))
+            self.assertIsNotNone(tokenserver._compute_failing_since)
+            # Senaste goda snapshotet serveras vidare — det är avsikten.
+            self.assertEqual(tokenserver._last_result, {"v": 1})
+
+            handler = tokenserver.Handler.__new__(tokenserver.Handler)
+            handler.path = "/"
+            handler._send = mock.Mock()
+            handler.do_GET()
+            payload = handler._send.call_args.args[1]
+            self.assertFalse(payload["usageComputeOk"])
+            self.assertIsInstance(payload["usageComputeFailingForS"], int)
+
+    def test_recovery_logs_the_transition_and_clears_the_flag(self):
+        with mock.patch.object(tokenserver, "_compute_failing_since",
+                               time.monotonic() - 42.0), \
+                mock.patch.object(tokenserver, "_last_compute_error_logged",
+                                  time.monotonic()), \
+                mock.patch.object(tokenserver, "_last_result", None), \
+                mock.patch.object(tokenserver, "_last_computed", 0.0), \
+                mock.patch.object(tokenserver, "_snapshot_refreshing", True), \
+                mock.patch.object(tokenserver, "_compute",
+                                  return_value={"v": 2}):
+            with self.assertLogs("tokenserver", level="INFO") as captured:
+                tokenserver._refresh_usage_totals(Path("/x"))
+            self.assertIn("frisk igen", "\n".join(captured.output))
+            self.assertIsNone(tokenserver._compute_failing_since)
+            self.assertEqual(tokenserver._last_result, {"v": 2})
+
+            handler = tokenserver.Handler.__new__(tokenserver.Handler)
+            handler.path = "/"
+            handler._send = mock.Mock()
+            handler.do_GET()
+            payload = handler._send.call_args.args[1]
+            self.assertTrue(payload["usageComputeOk"])
+            self.assertIsNone(payload["usageComputeFailingForS"])
+
+            # Återhämtningen stänger episoden: ett NYTT fel inom gamla
+            # strypfönstret ska logga direkt, inte tigas ihjäl.
+            self.assertIsNone(tokenserver._last_compute_error_logged)
+            with mock.patch.object(tokenserver, "_compute",
+                                   side_effect=RuntimeError("ny episod")), \
+                    self.assertLogs("tokenserver", level="ERROR"):
+                tokenserver._refresh_usage_totals(Path("/x"))
 
 
 class MaxTrackerLiveHookTests(unittest.TestCase):
@@ -1783,13 +1921,26 @@ class MaxTrackerDirtyWriterTests(unittest.TestCase):
         self.previous = (
             tokenserver._max_tracker_dirty,
             tokenserver._max_tracker_writer_running,
+            tokenserver._last_save_error_logged,
         )
         tokenserver._max_tracker_dirty = False
         tokenserver._max_tracker_writer_running = False
+        # None = "aldrig loggat" — 0.0 hade svalt första felet på en maskin
+        # med kort uptime, eftersom monotonic räknar från boot (CI fällde
+        # exakt det).
+        tokenserver._last_save_error_logged = None
 
     def tearDown(self):
         (tokenserver._max_tracker_dirty,
-         tokenserver._max_tracker_writer_running) = self.previous
+         tokenserver._max_tracker_writer_running,
+         tokenserver._last_save_error_logged) = self.previous
+
+    def _wait_for_writer_stop(self):
+        for _ in range(50):
+            if not tokenserver._max_tracker_writer_running:
+                return
+            time.sleep(0.01)
+        self.fail("writer-tråden stannade aldrig")
 
     def test_marking_dirty_eventually_saves_off_the_calling_thread(self):
         store = mock.Mock()
@@ -1833,6 +1984,50 @@ class MaxTrackerDirtyWriterTests(unittest.TestCase):
         # Coalesced into (at most) one trailing save after the in-flight
         # one, never a save per dirty mark.
         self.assertLessEqual(store.save.call_count, 2)
+
+    def test_failed_save_keeps_dirty_so_the_next_mark_retries(self):
+        # Var: dirty nollades FÖRE save() och felet svaldes — en disk- eller
+        # rättighetsmiss slängde observationerna tyst tills någon orelaterad
+        # händelse råkade markera om (OBS-10 i observability-backloggen).
+        store = mock.Mock()
+        store.save.side_effect = OSError("disken full")
+
+        with self.assertLogs("tokenserver", level="ERROR") as captured:
+            tokenserver._mark_max_tracker_dirty(store)
+            for _ in range(50):
+                if store.save.called:
+                    break
+                time.sleep(0.01)
+            self._wait_for_writer_stop()
+
+        store.save.assert_called_once()
+        self.assertTrue(tokenserver._max_tracker_dirty)
+        self.assertIn("save misslyckades", "\n".join(captured.output))
+
+        # Nästa markering försöker igen — signalen överlevde felet, och
+        # den lyckade skrivningen stänger episoden i loggen.
+        store.save.side_effect = None
+        with self.assertLogs("tokenserver", level="INFO") as recovered:
+            tokenserver._mark_max_tracker_dirty(store)
+            for _ in range(50):
+                if store.save.call_count == 2:
+                    break
+                time.sleep(0.01)
+            self._wait_for_writer_stop()
+        self.assertEqual(store.save.call_count, 2)
+        self.assertFalse(tokenserver._max_tracker_dirty)
+        self.assertIn("lyckades igen", "\n".join(recovered.output))
+        # Episoden är stängd: ett nytt fel loggar direkt trots att gamla
+        # strypfönstret inte hunnit löpa ut.
+        store.save.side_effect = OSError("disken full igen")
+        with self.assertLogs("tokenserver", level="ERROR"):
+            tokenserver._mark_max_tracker_dirty(store)
+            for _ in range(50):
+                if store.save.call_count == 3:
+                    break
+                time.sleep(0.01)
+            self._wait_for_writer_stop()
+        self.assertTrue(tokenserver._max_tracker_dirty)
 
 
 class MaxTrackerBackfillLoopTests(unittest.TestCase):
@@ -1961,7 +2156,8 @@ class MaxTrackerEndpointTests(unittest.TestCase):
         handler = self._handler(mock.Mock())
         with mock.patch.object(
                 tokenserver, "get_snapshot",
-                side_effect=RuntimeError("/private/source/path secret")):
+                side_effect=RuntimeError("/private/source/path secret")), \
+                self.assertLogs("tokenserver", level="ERROR"):
             handler.do_GET()
 
         handler._send.assert_called_once_with(
@@ -2004,6 +2200,194 @@ class ArgumentParsingTests(unittest.TestCase):
         args = parser.parse_args([])
         self.assertIsNone(args.claude_plan)
         self.assertIsNone(args.codex_plan)
+
+
+class LogRotationTests(unittest.TestCase):
+    """_maybe_rotate_own_log: trunkera bara launchd-loggen, bara över taket,
+    och bevara svansen — utan att någonsin röra en fil stderr inte äger."""
+
+    def _big_file(self, tmp):
+        path = Path(tmp) / "torget-tokenserver.log"
+        filler = b"x" * (tokenserver._LOG_CAP_BYTES + 4096)
+        path.write_bytes(filler[:-8] + b"SVANSEN\n")
+        return path
+
+    def test_rotates_when_stderr_is_the_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._big_file(tmp)
+            fd = os.open(path, os.O_WRONLY | os.O_APPEND)
+            try:
+                rotated = tokenserver._maybe_rotate_own_log(
+                    path, stderr_fd=fd)
+            finally:
+                os.close(fd)
+
+            self.assertTrue(rotated)
+            self.assertEqual(path.stat().st_size, 0)
+            old = path.with_name(path.name + ".old")
+            tail = old.read_bytes()
+            self.assertEqual(len(tail), tokenserver._LOG_TAIL_KEEP_BYTES)
+            self.assertTrue(tail.endswith(b"SVANSEN\n"))
+
+    def test_rotation_holds_the_logging_handler_locks(self):
+        # En loggrad mellan svansläsningen och trunkeringen skulle raderas
+        # ur BÅDA filerna — rotationen ska hålla handlerlåsen så att
+        # logging-skrivningar inte kan interfoliera.
+        class CountingHandler(logging.Handler):
+            def __init__(self):
+                super().__init__()
+                self.acquisitions = 0
+
+            def acquire(self):
+                self.acquisitions += 1
+                super().acquire()
+
+            def emit(self, record):
+                pass
+
+        counting = CountingHandler()
+        root = logging.getLogger()
+        root.addHandler(counting)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = self._big_file(tmp)
+                fd = os.open(path, os.O_WRONLY | os.O_APPEND)
+                try:
+                    rotated = tokenserver._maybe_rotate_own_log(
+                        path, stderr_fd=fd)
+                finally:
+                    os.close(fd)
+            self.assertTrue(rotated)
+            self.assertGreaterEqual(counting.acquisitions, 1)
+        finally:
+            root.removeHandler(counting)
+
+    def test_terminal_run_never_touches_the_file(self):
+        # stderr_fd=2 är testkörarens stderr, inte filen — fstat/stat-vakten
+        # ska vägra, oavsett storlek.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._big_file(tmp)
+            size_before = path.stat().st_size
+            self.assertFalse(
+                tokenserver._maybe_rotate_own_log(path, stderr_fd=2))
+            self.assertEqual(path.stat().st_size, size_before)
+
+    def test_under_cap_and_missing_file_are_noops(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "liten.log"
+            path.write_bytes(b"kort\n")
+            fd = os.open(path, os.O_WRONLY | os.O_APPEND)
+            try:
+                self.assertFalse(
+                    tokenserver._maybe_rotate_own_log(path, stderr_fd=fd))
+            finally:
+                os.close(fd)
+            self.assertEqual(path.read_bytes(), b"kort\n")
+
+            self.assertFalse(tokenserver._maybe_rotate_own_log(
+                Path(tmp) / "finns-inte.log", stderr_fd=2))
+
+
+class SourceFingerprintTests(unittest.TestCase):
+    def test_fingerprint_is_stable_and_served_on_root(self):
+        first = tokenserver._read_source_fingerprint()
+        self.assertRegex(first, r"^[0-9a-f]{12}$")
+        self.assertEqual(first, tokenserver._read_source_fingerprint())
+
+        handler = tokenserver.Handler.__new__(tokenserver.Handler)
+        handler.path = "/"
+        handler._send = mock.Mock()
+        handler.do_GET()
+        payload = handler._send.call_args.args[1]
+        self.assertEqual(payload["srcFingerprint"], tokenserver._SERVER_SRC)
+
+
+class LogRotationWatchTests(unittest.TestCase):
+    def test_watch_keeps_checking_until_stopped(self):
+        # Startrotationen räcker inte för en långlivad process — vakten ska
+        # titta om och om igen och dö snyggt på stoppsignalen.
+        stop = threading.Event()
+        calls = []
+        with mock.patch.object(tokenserver, "_maybe_rotate_own_log",
+                               side_effect=lambda: calls.append(1)):
+            watcher = threading.Thread(
+                target=tokenserver._run_log_rotation_watch,
+                args=(stop,), kwargs={"interval_s": 0.01}, daemon=True)
+            watcher.start()
+            for _ in range(200):
+                if len(calls) >= 2:
+                    break
+                time.sleep(0.01)
+            stop.set()
+            watcher.join(timeout=2)
+        self.assertGreaterEqual(len(calls), 2)
+        self.assertFalse(watcher.is_alive())
+
+
+class ProbeTransitionLogTests(unittest.TestCase):
+    """Övergångsloggen: en rad när probestatusen ändras, tystnad medan
+    samma läge står — loggfilen ska vara läsbar över veckor."""
+
+    def test_status_change_logs_once_then_stays_quiet(self):
+        with mock.patch.object(tokenserver, "_probe_status",
+                               "usage_http_401"), \
+                mock.patch.object(tokenserver, "_probe_status_logged", None), \
+                mock.patch.object(tokenserver, "_last_limits", None), \
+                mock.patch.object(tokenserver, "_last_probed", 0.0), \
+                mock.patch.object(tokenserver, "_limits_refreshing", False), \
+                mock.patch.object(tokenserver, "_probe_failure_streak", 0), \
+                mock.patch.object(tokenserver, "_probe_limits",
+                                  return_value=None):
+            with self.assertLogs("tokenserver", level="INFO") as captured:
+                tokenserver._refresh_limits()
+            self.assertIn("start -> usage_http_401",
+                          "\n".join(captured.output))
+
+            with self.assertNoLogs("tokenserver"):
+                tokenserver._refresh_limits()
+
+    def test_probe_crash_replaces_stale_ok_status_and_logs_once(self):
+        # Kraschar proben innan den satt status fick "usage_http_200 + ok"
+        # stå kvar och ljuga medan värdena försvann — kraschen ska bli en
+        # egen status (syns på GET / och i röktestet) med traceback en
+        # gång per episod.
+        with mock.patch.object(tokenserver, "_probe_status",
+                               "usage_http_200 + ok"), \
+                mock.patch.object(tokenserver, "_probe_status_logged",
+                                  "usage_http_200 + ok"), \
+                mock.patch.object(tokenserver, "_last_limits", None), \
+                mock.patch.object(tokenserver, "_last_probed", 0.0), \
+                mock.patch.object(tokenserver, "_limits_refreshing", False), \
+                mock.patch.object(tokenserver, "_probe_failure_streak", 0), \
+                mock.patch.object(tokenserver, "_probe_limits",
+                                  side_effect=RuntimeError("boom")):
+            with self.assertLogs("tokenserver", level="INFO") as captured:
+                tokenserver._refresh_limits()
+            out = "\n".join(captured.output)
+            self.assertEqual(tokenserver._probe_status,
+                             "probe_crashed: RuntimeError")
+            self.assertIn("kraschade", out)
+            self.assertIn("-> probe_crashed: RuntimeError", out)
+
+            # Samma krasch igen: samma episod, ingen ny rad.
+            with self.assertNoLogs("tokenserver"):
+                tokenserver._refresh_limits()
+
+    def test_recovery_is_a_transition_too(self):
+        with mock.patch.object(tokenserver, "_probe_status",
+                               "usage_http_200 + ok"), \
+                mock.patch.object(tokenserver, "_probe_status_logged",
+                                  "usage_http_401"), \
+                mock.patch.object(tokenserver, "_last_limits", None), \
+                mock.patch.object(tokenserver, "_last_probed", 0.0), \
+                mock.patch.object(tokenserver, "_limits_refreshing", False), \
+                mock.patch.object(tokenserver, "_probe_failure_streak", 3), \
+                mock.patch.object(tokenserver, "_probe_limits",
+                                  return_value={"weekPct": 60.0}):
+            with self.assertLogs("tokenserver", level="INFO") as captured:
+                tokenserver._refresh_limits()
+            self.assertIn("usage_http_401 -> usage_http_200 + ok",
+                          "\n".join(captured.output))
 
 
 if __name__ == "__main__":

@@ -151,6 +151,7 @@ are not arriving:
 | `usage_http_200 + no_mapped_limits` | Authenticated, but nothing in the usage response mapped (a `; fallback_…` suffix records the header-probe outcome) | Plan may not expose limits; Codex half still works |
 | `usage_request_failed: …` | Network/DNS failure from the Mac | Check the Mac's own connectivity |
 | `usage_http_429 + backoff_until_HH:MM` | Rate-limited by the API; the probe rests until the shown time | Wait — it retries by itself |
+| `probe_crashed: <Type>` | The probe itself hit a bug (crash before it could classify the failure) | Read the traceback in `~/Library/Logs/torget-tokenserver.log`; worth filing |
 
 Codex is read separately from its local app-server, so a bad `claudeProbe`
 never explains missing Codex numbers, and vice versa.

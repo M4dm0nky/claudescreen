@@ -269,26 +269,37 @@ def check_log_file(path):
         return [(VARN, f"ingen loggfil på {path} — normalt vid "
                        f"terminalkörning; under launchd betyder det att "
                        f"tjänsten aldrig startat")]
+    def tail_text(p, cap=2 * 1024 * 1024):
+        # Läs bara svansen på en stor fil — röktestet ska vara snabbt.
+        n = p.stat().st_size
+        with open(p, "r", encoding="utf-8", errors="replace") as fh:
+            if n > cap:
+                fh.seek(n - cap)
+            return fh.read()
+
     results = []
     size = path.stat().st_size
+    # Rotationen flyttar den senaste svansen till .old — direkt efter en
+    # rotation bor de färska bevisen DÄR, inte i den nytrunkerade filen.
+    old = path.with_name(path.name + ".old")
+    old_text = tail_text(old) if old.exists() else ""
+    suffix = " (+ roterad svans i .old)" if old_text else ""
     if size > _LOG_CAP_BYTES:
         results.append((VARN, f"loggfilen är {size} byte (> taket "
-                              f"{_LOG_CAP_BYTES}) — startrotationen har inte "
+                              f"{_LOG_CAP_BYTES}) — rotationen har inte "
                               f"fått köra; står tjänsten still?"))
     else:
-        results.append((OK, f"loggfil {path.name}: {size} byte"))
-    # Läs bara svansen på en stor fil — röktestet ska vara snabbt.
-    with open(path, "r", encoding="utf-8", errors="replace") as fh:
-        if size > 2 * 1024 * 1024:
-            fh.seek(size - 2 * 1024 * 1024)
-        text = fh.read()
-    tracebacks = text.count("Traceback (most recent call last)")
+        results.append((OK, f"loggfil {path.name}: {size} byte{suffix}"))
+    text = tail_text(path)
+    tracebacks = (text.count("Traceback (most recent call last)")
+                  + old_text.count("Traceback (most recent call last)"))
     if tracebacks:
-        results.append((VARN, f"{tracebacks} traceback i loggen — grep -n "
-                              f"Traceback {path}"))
-    starts = text.count("serverar http://")
+        results.append((VARN, f"{tracebacks} traceback i loggen{suffix} — "
+                              f"grep -n Traceback {path}*"))
+    starts = (text.count("serverar http://")
+              + old_text.count("serverar http://"))
     if starts >= RESPAWN_SUSPICION_COUNT:
-        results.append((VARN, f"{starts} startrader i loggen — "
+        results.append((VARN, f"{starts} startrader i loggen{suffix} — "
                               f"respawn-loop? (launchd startar om var 30 s "
                               f"vid tidig död)"))
     return results

@@ -275,6 +275,21 @@ class LogFileCheckTests(unittest.TestCase):
         self.assertIn("traceback", results[1][1])
         self.assertIn("respawn", results[2][1])
 
+    def test_rotated_tail_evidence_is_still_seen(self):
+        # Direkt efter en rotation bor de färska bevisen i .old — en ren
+        # nytrunkerad fil får inte dölja dem.
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "t.log"
+            f.write_text("serverar http://0.0.0.0:8737\n")
+            (Path(tmp) / "t.log.old").write_text(
+                "Traceback (most recent call last)\n boom\n" +
+                "serverar http://0.0.0.0:8737\n" * 11)
+            results = smoke.check_log_file(f)
+        self.assertEqual(levels(results),
+                         [smoke.OK, smoke.VARN, smoke.VARN])
+        self.assertIn(".old", results[1][1])
+        self.assertIn("respawn", results[2][1])
+
 
 VALID_STATE = {
     "usage-history.json": '{"v": 1, "samples": []}',

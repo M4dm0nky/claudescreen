@@ -37,13 +37,15 @@ Between May and August 2026 the "agent numbers on a small screen" lane went
 from empty to crowded. This matters more than any individual feature idea,
 so it goes first.
 
-Each row below was adversarially re-verified after this document's first
-draft, and each of the three headline competitors needed correcting.
+The three headline competitors below were adversarially re-verified after
+this document's first draft, and all three needed correcting. The Clawdmeter
+and "various" rows were **not** re-verified — see the note after the table,
+because the Clawdmeter row turns out to matter more than any of them.
 
 | Who | Real status | Overlap |
 |---|---|---|
 | **[Token Monitor](https://tokenmonitor.dev/)** (Fractal Manifold) | **A live Kickstarter campaign since ~7 Aug 2026, not a shipping product.** Goal €25 000, first units estimated Nov 2026, funding outcome unverified. €99 is the Super Early Bird tier — first 50 backers, ex shipping and tax; standard Early Bird is €120. | 4-inch 480×480 **IPS** (*not* AMOLED): quota, session limits, token counts, reset timers, estimated cost. Local Apache-2.0 broker written in Go. Its broker's device registry documents Claude Code, Codex CLI and **Gemini** CLI — Antigravity appears in marketing copy but not in the repo. |
-| **[Clawdmeter](https://www.hackster.io/news/keep-tabs-on-claude-with-the-cute-animated-clawdmeter-744383d44094)** | Shipped | Same Waveshare board, animated mascot, session + weekly. Claude-only. The original inspiration. |
+| **[Clawdmeter](https://www.hackster.io/news/keep-tabs-on-claude-with-the-cute-animated-clawdmeter-744383d44094)** | **Shipped**, and per this repo's own README it uses the **same Waveshare AMOLED board** | Animated mascot, session + weekly. Claude-only. The original inspiration — and the row that matters most for the argument below. |
 | **[anthropics/claude-desktop-buddy](https://github.com/anthropics/claude-desktop-buddy)** | Real Anthropic-owned repo (MIT, "Copyright 2026 Anthropic, PBC", ~2.5 k stars) — but Anthropic states it **"isn't an officially supported product feature"**, and it needs Developer Mode. | BLE over Nordic UART Service. The M5StickC Plus reference firmware is genuinely bidirectional: a pending permission puts the pet in an `attention` state; button A sends `{"cmd":"permission",…,"decision":"once"}`, button B denies. |
 | **[AgentDeck](https://github.com/puritysb/AgentDeck)** | Real and active (~194 stars, 26 surfaces exactly) | Per-session keys, working/waiting/idle, "which agent is waiting on you". **But** YES/NO/ALWAYS, STOP and mode cycling work only from its *interactive* surfaces and only for PTY-managed sessions. **Hook-observed sessions are display-only, and every shipping ESP32 board is output-only apart from touch** (exceptions: a T-Embed knob and a 10.1-inch touch model). |
 | AgentMeter, Hermes Meter, ClaudeGauge, m5stack-claude-code-buddy | Various | Usage and alerting |
@@ -51,7 +53,10 @@ draft, and each of the three headline competitors needed correcting.
 Plus, on the software side, `ccusage` covers **16 agent sources** for tokens
 and cost; `claude-monitor` has done burn-rate depletion prediction in a rich
 TUI since 2025; there are at least five macOS menu-bar apps doing 5-hour +
-weekly + Opus-week; and there are official Grafana dashboards.
+weekly + Opus-week; and there are Grafana dashboards for Claude Code on
+grafana.com. (⚠️ An earlier draft called those "official". Verification only
+established that community dashboards exist — don't cut scope on the strength
+of a word you can't support.)
 
 ⚠️ **Sourcing:** tokenmonitor.dev, Kickstarter, cnx-software and hackster are
 all blocked by this session's egress proxy, so Token Monitor's specs and
@@ -61,14 +66,32 @@ repositories themselves.
 
 **Read it honestly, with the corrections applied:** the direction holds —
 this is no longer an empty niche, and Usage and Burn Rate are table stakes
-*as ideas*. But the intensity was overstated. The nearest competitor has not
-shipped, and it isn't on the identical panel — same 480×480 resolution,
-different display technology, and AMOLED true black is the thing this
-project's whole design language is built on.
+*as ideas*.
+
+⚠️ **And a self-contradiction worth killing rather than hiding.** A middle
+draft tried to rescue the situation by saying "the nearest competitor hasn't
+shipped, and isn't on the identical panel." That argument is refuted by the
+Clawdmeter row two lines above it: Clawdmeter **has** shipped and **is** on
+the same Waveshare AMOLED board. The IPS-versus-AMOLED distinction is a real
+correction about *Token Monitor specifically* — but it does not generalise
+into "AMOLED is a differentiator", because the shipped competitor already
+has the same glass. Two rows of that table were also never adversarially
+re-verified (Clawdmeter and the short "various" row), so the line claiming
+every row was is itself too strong.
+
+The honest version: **the panel is not the moat and neither is the quota
+page.** What remains defensible is what the device *does* with the panel —
+which is the argument the rest of this document has to carry on its own.
 
 The good news is that the crowd is all standing in the same place. **Every
-one of these tools measures what you are *spending*. Not one measures what
-agent-driven work is *costing* you.**
+one of these tools shows you what you are *spending*. None of them puts what
+agent-driven work is *costing* you in front of you.**
+
+⚠️ Stated that carefully on purpose. An earlier draft said "not one
+*measures* it", which is false and is contradicted later in this document —
+Claude Code itself measures the biggest piece of it (see the human-latency
+meter). The defensible claim is about **surfacing**, not measurement, and
+that distinction runs through the rest of this document.
 
 ---
 
@@ -106,7 +129,7 @@ Three verbs organise everything below.
 
 ---
 
-## Can the screen answer back? Yes — and it's a weekend, not a research project
+## Can the screen answer back? Yes — and it's supported, not a research project
 
 This was the strongest idea in the brief, and the answer is better than
 expected. **Do not build terminal keystroke injection.** There is a
@@ -138,6 +161,24 @@ request and return the verdict with no shell script at all**:
   }
 }
 ```
+
+⚠️ **Two gates that will otherwise cost an evening**, both confirmed in the
+shipped binary:
+
+- **`allowedHttpHookUrls`** — described in-binary as an *"Allowlist of URL
+  patterns that HTTP hooks may target"*, with the runtime refusal
+  `HTTP hook blocked: <url> does not match any pattern in
+  allowedHttpHookUrls`. On a managed or enterprise-configured Mac, the whole
+  Act feature silently never fires and the setup gives no clue why. There is
+  also an `allowManagedPermissionRulesOnly` setting that can force managed
+  hooks only, ignoring user, project and local hooks entirely.
+- **Address restriction.** The binary also carries
+  `HTTP hook blocked: <url> resolves to … (private/link-local address).
+  Loopback (127.0…` — so the hook URL should stay on **loopback**, exactly
+  as in the snippet above. This is not a limitation for this design: the
+  *hook* talks to the tokenserver on `127.0.0.1`, and the *device* talks to
+  it over the LAN on a separate listener. But pointing the hook at the Mac's
+  LAN address instead would be blocked.
 
 Claude Code POSTs the event and parses the **response body**. The server
 holds the connection open until the device taps. `tokenserver.py:1604`
@@ -280,7 +321,13 @@ effect of turning on hooks.
 
 ### Shipping order
 
-**v1 (a weekend).** Claude Code only. One `PermissionRequest` HTTP hook, one
+**v1.** Claude Code only. (⚠️ A middle draft put "a weekend" in the section
+heading. Nothing verified that, and the v1 scope below is a POST endpoint,
+long-poll connection parking, HMAC device auth, LAN binding, a shared secret,
+a three-button UI with truncation logic, a freshness window, a verdict log
+and a separately-gated privacy switch. Treat it as a small project, not a
+weekend — and note the contrary evidence: AgentDeck ships 26 surfaces and
+still kept its whole ESP32 fleet output-only.) One `PermissionRequest` HTTP hook, one
 new endpoint on the existing threading server, long-poll for pending, verdict
 POST with HMAC, three buttons: **APPROVE / DENY / LEAVE IT** — where LEAVE IT
 returns no decision immediately and punts to the terminal. Timeout 120 s, not
@@ -290,7 +337,13 @@ already distinguishes `waiting_approval` from `waiting_input`, so the state
 model largely exists.
 
 **v1.1.** `Notification` with matcher `idle_prompt` for the "finished, no
-question" case — this also patches a real gap, see the fixes below.
+question" case — ⚠️ but check the preconditions before relying on it.
+`idle_prompt` fires only about **60 seconds** after Claude finishes, and only
+if you haven't typed since; `agent_completed` needs v2.1.198+, fires only
+while the agent view is open in a terminal, and applies to background
+sessions. For an ordinary interactive session with someone at the keyboard,
+this produces nothing for a minute and often nothing at all. Real, but much
+weaker than "the fix" — this also patches a real gap, see the fixes below.
 
 **v2.** Codex `PermissionRequest`. Same endpoint, near-identical wire format
 — but budget for its **startup hook-trust review** (first run prompts the
@@ -329,6 +382,27 @@ real without asking anyone to trust a kitchen button with `rm -rf`.
 
 A physical kill switch for your agents is also, bluntly, a better story than
 another approve button.
+
+> ⚠️ **Hardware honesty, applied where it actually bites.** This document
+> gates the speaker carefully and then quietly assumes the input path, which
+> is exactly backwards. Both controls the Act features ride on are
+> **`unit_verified: unknown`** in the registry:
+> - `touch.controller` — and it carries an unresolved conflict: *"Waveshare
+>   board documentation identifies CST9220 while locked BSP 2.0.1
+>   instantiates the CST9217 driver; controller silicon has not been
+>   physically inspected."*
+> - `input.key3` — `confidence: source_inspected`, with the conflict
+>   *"locked BSP advertises no generic button capability; Torget handles
+>   GPIO18 directly."*
+>
+> Both demonstrably *work* today — touch dismisses alerts, KEY3 switches
+> apps — so this is not a claim they're broken. It is that the registry has
+> never been updated to say they were confirmed on `torget-home-01`, and a
+> feature whose entire safety story is "one tap denies, a physical button
+> confirms" should not be planned on an input path the project's own truth
+> file marks unverified. **Cheapest possible first step: a structured
+> multi-state physical check of touch and KEY3, and promote them in the
+> registry — or don't, and find out during the flash.**
 
 ---
 
@@ -652,16 +726,26 @@ reduction. One streak is a habit tracker; five is a slot machine.
 
 ### The architecture finding
 
-Claude Code, Codex, Cursor and Gemini CLI have **independently converged on
-the same hook contract**: JSON config keyed by event name,
+Claude Code, Codex, Cursor and Gemini CLI have **converged on a similar hook
+contract**: JSON config keyed by event name,
 `{"type":"command","command":"…"}` handlers, a JSON blob on stdin carrying
 `session_id` / `transcript_path` / `cwd` / `hook_event_name`, and a
-`hookSpecificOutput` return. Codex's event enum is close to a copy of Claude
-Code's.
+`hookSpecificOutput` return.
 
 **So: one hook receiver plus a per-provider event-name mapping table — not
 four integrations.** Activity and blocked-on-input come nearly free per
 provider after the first.
+
+⚠️ **How strong is that actually? One of three, not four.** Only **Codex** is
+verified as near-identical — its event enum is close to a copy of Claude
+Code's, and its wire format is deliberately compatible. **Gemini's leg is
+weaker than this framing suggests**: its equivalent returns only
+`{suppressOutput, systemMessage}` — no `hookSpecificOutput`, no decision, no
+return channel at all — and its activity data comes from a telemetry *log
+file* rather than a hook payload. **Cursor was never verified.** The
+receiver-plus-mapping-table design is still right, but budget for a real
+adapter per provider rather than a table row, and don't let steps 6–7 of the
+order below inherit confidence they haven't earned.
 
 **Quota does not converge**, and for some providers it doesn't exist locally
 at all. Model quota as a capability that can be *absent* — the dash
@@ -756,8 +840,15 @@ Read the top level, fall back to nested so both layouts work.
 `_compute()` (`tokenserver.py:199`) walks only `projects_dir`. Codex volume
 never enters `dayTokens`, `monthTokens`, `daySessions` or
 `dayTokensPerHour` — though Codex's `token_count` events carry it in
-`payload.info`, and `codex_rollout.py` already opens exactly those lines and
-discards `info`. A generic name over a provider-specific number is the
+`payload.info`. ⚠️ **Verify this before implementing it.** `codex_rollout.py`
+contains no reference to `info` at all — it accepts only
+`{"type":"event_msg","payload":{"type":"token_count","rate_limits":{…}}}` and
+returns `rate_limits`. And every measured number in this document comes from
+a *Claude* transcript; not one came from a Codex rollout file. So the shape
+of `payload.info` is an assumption here, not an observation. Open a real
+rollout and confirm the field exists and carries what you need before
+treating this as a one-line fix — it is the first thing anyone will try to
+build from this list. A generic name over a provider-specific number is the
 honesty invariant's own third clause. Adding Codex volume is the better fix
 and the parser is already at the right line.
 
@@ -788,7 +879,10 @@ record types in a live session: `assistant`, `user`, `attachment`,
 `queue-operation`, `last-prompt`. No `result`. The `done`/`error` branch in
 `classify_claude` is effectively dead outside SDK mode, and "done" can only
 ever be inferred from `stop_reason == "end_turn"`. The `Notification` hook
-with matcher `idle_prompt` / `agent_completed` is the real fix.
+with matcher `idle_prompt` / `agent_completed` is the nearest real signal —
+but see the preconditions noted under v1.1: for an interactive session with a
+human at the keyboard it may never fire. A genuinely reliable "done" for
+interactive sessions is still an open problem, not a solved one.
 
 ---
 
@@ -820,6 +914,11 @@ Measured here, so it can be re-checked:
 - Live-transcript record types — `assistant`, `user`, `attachment`,
   `queue-operation`, `last-prompt`. No `result`.
 - `gitBranch` — 126/126 records. `tool_result.is_error` — 2 in ten minutes.
+- ⚠️ **All of these come from one session, one user, one project.** They are
+  enough to prove a field *exists* and is populated, which is what they are
+  used for. They are not enough to tune a threshold: the thrash detector's
+  "N consecutive failures, tuned high" has a sample of one to tune against,
+  and none of it comes from a Codex rollout.
 - Tool durations — 36 pairs derived from timestamps; `durationMs` on 1 of
   142 records.
 - Server — one `do_GET` at `tokenserver.py:1494`, `ThreadingHTTPServer` on
@@ -861,6 +960,24 @@ six cited statistics.
 **Refuted** — "nobody measures agent-blocked-on-human time." Claude Code's
 own `claude_code.tool.blocked_on_user` span measures exactly that. The
 feature survives; the novelty claim did not.
+
+**Then a completeness critique** asked what the nine *didn't* cover, and
+found more. Acted on here: a self-contradiction between the Clawdmeter row
+and the paragraph rescuing the competitive position; the "not one measures"
+line contradicting the accepted `blocked_on_user` correction; `touch` and
+`KEY3` both sitting at `unit_verified: unknown` while every Act feature is
+planned on them; `allowedHttpHookUrls` and the loopback restriction gating
+HTTP hooks entirely; the `Notification` matchers' preconditions making the
+"real fix" much weaker than claimed; the Codex `payload.info` fix resting on
+an assumption rather than an observation; "official" Grafana dashboards;
+"a weekend" in a section heading; and single-session sample sizes presented
+as if they could tune a threshold.
+
+**Still unchecked, and worth knowing:** ten cited sources went through the
+statistics pass, but Cursor remains entirely unverified while carrying two
+steps of the suggested order, and the four-way hook-convergence claim is
+really a one-of-three sample — only Codex is confirmed near-identical, the
+Gemini leg has no return channel at all, and Cursor was never checked.
 
 **Statistics removed rather than re-sourced** — the WIP "+40% / −60%" pair
 and its "two-thirds to three-quarters" heuristic (traced to an SEO content

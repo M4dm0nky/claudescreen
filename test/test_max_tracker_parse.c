@@ -18,7 +18,13 @@ static char *read_file(const char *path, size_t *len_out) {
   long n = ftell(f);
   fseek(f, 0, SEEK_SET);
   char *buf = malloc((size_t)n + 1);
-  fread(buf, 1, (size_t)n, f);
+  if (!buf || fread(buf, 1, (size_t)n, f) != (size_t)n) {
+    printf("FAIL kan inte läsa %s\n", path);
+    failures++;
+    free(buf);
+    fclose(f);
+    return NULL;
+  }
   buf[n] = '\0';
   fclose(f);
   if (len_out) *len_out = (size_t)n;

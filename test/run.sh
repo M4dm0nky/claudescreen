@@ -23,6 +23,7 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
   ../components/torget_fmt/fmt_sv.c \
   ../components/torget_ticker/ticker.c \
   test_solglance.c \
+  -lm \
   -o /tmp/torget-core-test
 /tmp/torget-core-test
 
@@ -33,6 +34,7 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
   -DFIXTURES_DIR="\"$(cd ../sim-fixtures && pwd)\"" \
   ../components/app_solelkollen/glance_parse.c \
   test_parse.c /tmp/torget-cjson.o \
+  -lm \
   -o /tmp/torget-parse-test
 /tmp/torget-parse-test
 
@@ -40,6 +42,7 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
   -DFIXTURES_DIR="\"$(cd ../sim-fixtures && pwd)\"" \
   ../components/app_tokens/tokens_parse.c \
   test_tokens.c /tmp/torget-cjson.o \
+  -lm \
   -o /tmp/torget-tokens-test
 /tmp/torget-tokens-test
 
@@ -47,6 +50,7 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
   -DFIXTURES_DIR="\"$(cd ../sim-fixtures && pwd)\"" \
   ../components/app_tokens/max_tracker_parse.c \
   test_max_tracker_parse.c /tmp/torget-cjson.o \
+  -lm \
   -o /tmp/torget-max-tracker-test
 /tmp/torget-max-tracker-test
 
@@ -60,6 +64,7 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
 cc -std=c11 -Wall -Wextra -Werror -O1 \
   ../components/app_tokens/usage_presenter.c \
   test_usage_presenter.c \
+  -lm \
   -o /tmp/torget-usage-presenter-test
 /tmp/torget-usage-presenter-test
 
@@ -67,6 +72,7 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
   -DFIXTURES_DIR="\"$(cd ../sim-fixtures && pwd)\"" \
   ../components/app_tokens/agent_status_parse.c \
   test_agent_status.c /tmp/torget-cjson.o \
+  -lm \
   -o /tmp/torget-agent-status-test
 /tmp/torget-agent-status-test
 
@@ -80,6 +86,7 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
 cc -std=c11 -Wall -Wextra -Werror -O1 \
   ../components/app_tokens/agent_monitor_policy.c \
   test_agent_monitor_policy.c \
+  -lm \
   -o /tmp/torget-agent-monitor-policy-test
 /tmp/torget-agent-monitor-policy-test
 
@@ -94,12 +101,14 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
 cc -std=c11 -Wall -Wextra -Werror -O1 \
   ../components/app_tokens/agent_completion_policy.c \
   test_agent_completion_policy.c \
+  -lm \
   -o /tmp/torget-agent-completion-policy-test
 /tmp/torget-agent-completion-policy-test
 
 cc -std=c11 -Wall -Wextra -Werror -O1 \
   ../components/app_tokens/agent_net_policy.c \
   test_agent_net_policy.c \
+  -lm \
   -o /tmp/torget-agent-net-policy-test
 /tmp/torget-agent-net-policy-test
 

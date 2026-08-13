@@ -2,25 +2,129 @@
 
 [![CI](https://github.com/niclasvestlund-YT/vibepulse/actions/workflows/ci.yml/badge.svg)](https://github.com/niclasvestlund-YT/vibepulse/actions/workflows/ci.yml)
 
-A little always-on screen for your shelf that shows what your AI agents are
-up to: **Claude Code and Codex usage, live agent activity, and a full-screen
-heads-up when an agent is waiting for you.**
+![VibePulse: quota, a NEEDS YOU alert, and the Max Tracker heatmap](docs/img/hero.png)
 
-| | | |
-|---|---|---|
-| ![Claude weekly quota](docs/img/vibepulse-claude-week.png) | ![An agent needs you](docs/img/vibepulse-needs-you.png) | ![Burn rate forecast](docs/img/vibepulse-burn-rate.png) |
+**A little always-on screen for your shelf that shows what your AI coding
+agents are doing — and taps you on the shoulder when one is stuck waiting
+for you.**
 
-*Exact 480×480 frames. The simulator renders the same pixels as the panel.*
+Claude Code and Codex usage, live agent activity, and a full-screen
+**NEEDS YOU** alert. A ~$30 ESP32-S3 panel plus a pure-stdlib Python service
+on your Mac. No cloud, no accounts, no API keys on the device. Nothing
+leaves your LAN.
 
-**How it works:** a tiny Python service on your Mac reads your local Claude
-Code / Codex logs and rate-limit headers and serves plain numbers over your
-LAN. The screen polls it every 30 seconds. No cloud, no accounts, no API
-keys on the device, nothing leaves your network.
+## The problem
+
+When you run coding agents all day, two things are invisible:
+
+- **How much quota is left.** You usually find out you're at the wall when a
+  long task dies halfway through — not before you start it.
+- **When an agent stopped.** It asks one yes/no question and then just sits
+  there. You're in another window. Sometimes for twenty minutes.
+
+Both answers already exist, buried in a terminal you're not looking at.
+VibePulse moves them onto a screen you can't miss: one glance from across
+the room, no window to switch to, no menu bar to squint at.
 
 > **Status:** work in progress. This is an ongoing project for me and plenty
 > of tweaks are still on the list, but enough people asked about it that I'm
 > opening it up now rather than when it feels "done". Expect rough edges and
 > frequent commits.
+
+## What's on screen
+
+Six pages, swipe or auto-rotate. Every image below is an exact 480×480
+frame — the simulator renders the same pixels as the panel.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/vibepulse-claude-week.png" alt="Claude weekly quota at 73%" width="100%"></td>
+<td valign="top">
+
+**Usage** — Claude's 5-hour session, weekly, and heaviest-model-weekly
+quota, plus Codex's weekly quota. Each with a reset countdown and how much
+you've burned today.
+
+</td>
+</tr>
+<tr>
+<td><img src="docs/img/vibepulse-needs-you.png" alt="Full-screen NEEDS YOU alert" width="100%"></td>
+<td valign="top">
+
+**NEEDS YOU** — when an agent blocks on your input, the whole screen turns
+into the alert, in that provider's colour, naming the project it's waiting
+on. Tap to dismiss.
+
+</td>
+</tr>
+<tr>
+<td><img src="docs/img/vibepulse-agent-working.png" alt="Live header showing the working model and effort" width="100%"></td>
+<td valign="top">
+
+**Live agent monitor** — the header shows which agents are working right
+now, with model and effort, on every page. `2 CHATS ACTIVE` when several
+are running.
+
+</td>
+</tr>
+<tr>
+<td><img src="docs/img/vibepulse-burn-rate.png" alt="Burn rate forecast" width="100%"></td>
+<td valign="top">
+
+**Burn rate** — a forecast per provider: on pace, running out early (and
+when), or how much head-room is left at reset.
+
+</td>
+</tr>
+<tr>
+<td><img src="docs/img/vibepulse-max-tracker.png" alt="Max Tracker heatmap for Codex" width="100%"></td>
+<td valign="top">
+
+**Max Tracker** — a GitHub-style heatmap of your daily quota peaks, with
+coding streaks and max counters, per provider. Red cells are days you
+maxed out.
+
+</td>
+</tr>
+</table>
+
+Both providers get equal treatment — same pages, same alert, their own
+accent colour:
+
+| | | |
+|---|---|---|
+| ![Codex weekly quota](docs/img/vibepulse-codex-week.png) | ![Codex NEEDS YOU alert](docs/img/vibepulse-codex-needs-you.png) | ![Claude Max Tracker](docs/img/vibepulse-max-tracker-claude.png) |
+
+### It never makes numbers up
+
+<img src="docs/img/vibepulse-no-data.png" alt="No-data state showing dashes instead of zeros" width="320" align="right">
+
+Before the first successful fetch, and whenever a source is missing, you get
+dashes — never a placeholder `0%` that you might believe. If the service
+goes away, the last good numbers stay on screen and get marked stale rather
+than silently drifting.
+
+Run Claude only, or Codex only, and the other half simply shows dashes.
+
+<br clear="all">
+
+## How it works
+
+```
+        your Mac                             your shelf
+┌────────────────────────────┐          ┌──────────────┐
+│ ~/.claude/projects/*.jsonl │          │              │
+│ ~/.codex/sessions/*.jsonl  │ ───────► │   ESP32-S3   │
+│ rate-limit headers         │          │    AMOLED    │
+└────────────────────────────┘          └──────────────┘
+     tokenserver.py :8737           plain JSON over your LAN,
+     pure Python stdlib                polled every 30 s
+```
+
+A tiny Python service on your Mac reads your local Claude Code / Codex logs
+and rate-limit headers, and serves plain numbers over your LAN. The screen
+polls it every 30 seconds. Your OAuth token never leaves the Mac; the screen
+only ever receives percentages and counts.
 
 ## What you need
 
@@ -28,8 +132,7 @@ keys on the device, nothing leaves your network.
   (~$30). No soldering, just a USB-C cable. It's the same board Clawdmeter
   uses, so if you already own one you're 10 minutes away.
 - **A Mac** on the same WiFi (the log-reading service is macOS-only for now)
-- **Claude Code and/or Codex.** Either alone is fine. Missing data shows as
-  dashes, never as made-up numbers.
+- **Claude Code and/or Codex.** Either alone is fine.
 - **2.4 GHz WiFi.** The ESP32-S3 can't see 5 GHz networks.
 
 ## Setup, the vibecoder way
@@ -57,6 +160,13 @@ its way around. That's the whole onboarding.
    idf.py -p /dev/cu.usbmodem101 flash
    ```
 
+   **Don't miss this:** in `secrets.h`, uncomment the `TK_VIBEPULSE_BASE_URL`
+   block and point it at your Mac. Those URLs are commented out in the
+   example, and an undefined URL compiles the fetch out entirely — the
+   screen boots fine and shows dashes forever. Use your Mac's Bonjour name
+   (`scutil --get LocalHostName`) rather than an IP, so the same firmware
+   works on your home network and on a phone hotspot.
+
    Board not showing up under `/dev/cu.usbmodem*`? Hold **BOOT**, tap
    **RESET**, release **BOOT** and it re-enumerates in download mode.
 
@@ -81,20 +191,17 @@ cmake -S sim -B sim/build -G Ninja && ninja -C sim/build
 ./sim/build/torget-sim
 ```
 
-Same code, same fonts, same pixels as the device. Every screenshot above is
-a simulator frame.
+(On Debian/Ubuntu: `apt-get install libsdl2-dev cmake ninja-build` instead.)
 
-## What's on screen
+Same code, same fonts, same pixels as the device — it builds the real
+platform and both apps against the real LVGL, and feeds them the recorded
+fixtures in `sim-fixtures/` through the same parsers the board runs. Every
+device screenshot in this README is an unmodified simulator frame (the
+banner just places three of them side by side), and the physical panel was
+reviewed against them ([review](docs/superpowers/reviews/2026-08-13-max-tracker-physical-static.md)).
 
-- **Usage**: Claude 5-hour session, weekly and heaviest-model-weekly quota,
-  Codex weekly quota; each with reset countdown and "+N% used today".
-- **Live agent monitor**: which agents are working right now (model,
-  effort, project), and a full-screen **NEEDS YOU** when one is blocked
-  waiting for your input. Tap to dismiss.
-- **Burn rate**: a forecast per provider. On pace, running out early (and
-  when), or how much head-room is left at reset.
-- **Max Tracker**: a GitHub-style heatmap of your daily quota peaks, with
-  coding streaks and max counters, per provider.
+Keys: `[` / `]` change VibePulse page, `S` cycles agent status, `M` cycles
+Max Tracker fixtures, `T` re-feeds tokens, `L` opens the launcher.
 
 ## Privacy
 
@@ -109,10 +216,17 @@ a simulator frame.
 
 ## Tweak it
 
+<img src="docs/img/launcher.png" alt="The Torget launcher with two apps" width="300" align="right">
+
 VibePulse is an app on **Torget**, a deliberately small LVGL 9 app platform
 for this panel. An app is one component exporting
 `torget_app_t { name, icon, create, enter, leave }`; the platform owns WiFi,
-the panel, brightness and the launcher. Repo map:
+the panel, brightness and the launcher.
+
+Design rules: true black background, IBM Plex, dashes instead of invented
+zeros, and provider accents locked to Claude `#D97757` and Codex `#6F78FF`.
+
+<br clear="all">
 
 ```
 platform/            app contract + launcher + fonts (IBM Plex)
@@ -124,36 +238,47 @@ test/                host tests, run with ./test/run.sh (no ESP-IDF needed)
 spec/                hardware truth + UI design system
 ```
 
-Design rules: true black background, IBM Plex, dashes instead of invented
-zeros. The deeper docs (architecture, writing an app, hardware traps) are in
+The deeper docs (architecture, writing an app, hardware traps) are in
 [README.sv.md](README.sv.md), in Swedish, because this started as a Swedish
 hobby project. Your agent reads Swedish just fine.
 
 ## Hardware knowledge
 
-Running `./test/run.sh` (the host test gate) needs a reproducible Python:
+Hardware truth — capabilities, sources and which claims are verified on a
+real unit — lives in the validated registries under `spec/`. Read
+`spec/hardware.md` before any hardware-dependent work, and don't promote a
+capability to "verified" without a physical check.
+
+`./test/run.sh` is the host gate that enforces those registries, alongside
+the C core tests and the Python suites. No ESP-IDF required, but it does
+need a reproducible Python:
 
 ```sh
 python3.12 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements-dev.txt
+./test/run.sh
 ```
 
-Python 3.11+ is required. `./test/run.sh` uses the activated environment's
-Python by default; set `PYTHON_BIN` to point at a different Python 3.11+
-interpreter instead. Hardware truth (capabilities, sources, verified units)
-lives in the validated registries under `spec/`; see `spec/hardware.md`
-before any hardware-dependent work.
+Python 3.11+ is required. The script uses the activated environment's Python
+by default; set `PYTHON_BIN` to point at a different 3.11+ interpreter.
 
 ## FAQ
 
-- **Windows/Linux for the Mac service?** Not yet. Contributions welcome.
-- **Other boards/sizes?** Not yet. The platform is pinned to this exact
-  panel so one pixel-perfect build stays pixel-perfect, but a port is a
-  contained job (BSP, layout constants, fonts). Open an issue if you own a
-  different board.
+- **Windows or Linux for the Mac service?** Not yet — the log paths and
+  keychain reads are macOS-specific. Tracked in
+  [#3 (Windows)](https://github.com/niclasvestlund-YT/vibepulse/issues/3)
+  and [#2 (Linux)](https://github.com/niclasvestlund-YT/vibepulse/issues/2);
+  contributions very welcome.
+- **Other boards or panel sizes?** Not yet. The platform is pinned to this
+  exact panel so one pixel-perfect build stays pixel-perfect, but a port is
+  a contained job (BSP, layout constants, fonts) —
+  [#5](https://github.com/niclasvestlund-YT/vibepulse/issues/5).
+- **Cursor, Gemini CLI, other providers?** Not yet —
+  [#4](https://github.com/niclasvestlund-YT/vibepulse/issues/4).
 - **Just Claude, no Codex (or vice versa)?** Works. The other half shows
   dashes.
+- **Does it need internet?** No. The board talks to one host on your LAN.
 
 ## License
 

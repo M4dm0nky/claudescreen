@@ -81,4 +81,6 @@ if(BUDDY_SRCS)
     "$ENV{HOME}/Buddy/components/app_buddy")
   target_compile_definitions(torget-sim PRIVATE TORGET_HAVE_BUDDY)
 endif()
-target_link_libraries(torget-sim PRIVATE lvgl SDL2::SDL2)
+# m: presenterarnas lround/llround. På macOS bor libm i libSystem, så detta
+# är en no-op där; på Linux (headless CI) är det länkfel utan.
+target_link_libraries(torget-sim PRIVATE lvgl SDL2::SDL2 m)

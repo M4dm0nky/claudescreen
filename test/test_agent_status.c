@@ -30,7 +30,13 @@ static char *read_file(const char *path, size_t *len_out) {
     failures++;
     return NULL;
   }
-  fread(data, 1, (size_t)length, stream);
+  if (fread(data, 1, (size_t)length, stream) != (size_t)length) {
+    printf("FAIL kan inte läsa %s\n", path);
+    failures++;
+    free(data);
+    fclose(stream);
+    return NULL;
+  }
   data[length] = '\0';
   fclose(stream);
   *len_out = (size_t)length;

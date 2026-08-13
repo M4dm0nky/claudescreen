@@ -1699,29 +1699,32 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/max-tracker":
             self._reply(self._max_tracker_payload)
         elif self.path == "/":
-            self._reply(lambda: {"service": "torget-tokenserver",
-                                 "rev": _SERVER_REV,
-                                 "srcFingerprint": _SERVER_SRC,
-                                 "startedAt": _SERVER_STARTED,
-                                 "endpoint": "/api/tokens",
-                                 "endpoints": ["/api/tokens",
-                                               "/api/agent-status",
-                                               "/api/max-tracker"],
-                                 "claudeProbe": _probe_status,
-                                 "ratelimitHeaders": _probe_headers,
-                                 "unknownRateLimitBuckets":
-                                     _probe_unknown_buckets,
-                                 # GET / parsas aldrig av skärmen — fältet
-                                 # kan läggas till utan kontraktsrisk.
-                                 "usageComputeOk":
-                                     _compute_failing_since is None,
-                                 "usageComputeFailingForS":
-                                     (int(time.monotonic() -
-                                          _compute_failing_since)
-                                      if _compute_failing_since is not None
-                                      else None)})
+            self._reply(self._root_payload)
         else:
             self._send(404, {"error": "not found"})
+
+    def _root_payload(self):
+        # EN läsning av failing_since — ok-flaggan och varaktigheten måste
+        # komma ur samma ögonblick. Två läsningar lät en återhämtning mitt
+        # emellan ge None i subtraktionen (500 på själva diagnostikrutten)
+        # och en nystartad episod ge ok=true med varaktighet bredvid.
+        failing_since = _compute_failing_since
+        return {"service": "torget-tokenserver",
+                "rev": _SERVER_REV,
+                "srcFingerprint": _SERVER_SRC,
+                "startedAt": _SERVER_STARTED,
+                "endpoint": "/api/tokens",
+                "endpoints": ["/api/tokens", "/api/agent-status",
+                              "/api/max-tracker"],
+                "claudeProbe": _probe_status,
+                "ratelimitHeaders": _probe_headers,
+                "unknownRateLimitBuckets": _probe_unknown_buckets,
+                # GET / parsas aldrig av skärmen — fält kan läggas till
+                # utan kontraktsrisk.
+                "usageComputeOk": failing_since is None,
+                "usageComputeFailingForS":
+                    (int(time.monotonic() - failing_since)
+                     if failing_since is not None else None)}
 
     def log_message(self, fmt, *args):
         pass  # 30 s-pollning ska inte fylla loggen

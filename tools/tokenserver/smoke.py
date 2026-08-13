@@ -84,6 +84,40 @@ USAGE_HISTORY_FRESH_S = 24 * 3600
 OK, VARN, FAIL = "ok", "varn", "fail"
 
 
+# Laddarna nollställer TYST på fel form trots giltig JSON (usage_history
+# kräver {v:1, samples:[...]}, quota_cache exakt {v:1, records:[...]},
+# max_tracker provider-sektioner) — samma dataförlust som OBS-11, fast
+# via form i stället för korrupta bytes. Samma snubbeltrådsnivå som
+# ENDPOINT_SHAPE: toppnivån, inte postinnehållet.
+def _history_state_shape(payload):
+    if (not isinstance(payload, dict) or payload.get("v") != 1
+            or not isinstance(payload.get("samples"), list)):
+        return "kräver v=1 och en samples-lista"
+    return None
+
+
+def _quota_state_shape(payload):
+    if (not isinstance(payload, dict) or set(payload) != {"v", "records"}
+            or payload.get("v") != 1
+            or not isinstance(payload.get("records"), list)):
+        return "kräver exakt {v: 1, records: [...]}"
+    return None
+
+
+def _tracker_state_shape(payload):
+    if not isinstance(payload, dict) or not all(
+            isinstance(payload.get(p), dict) for p in ("claude", "codex")):
+        return "kräver provider-sektionerna claude och codex"
+    return None
+
+
+STATE_SHAPE = {
+    "usage-history.json": _history_state_shape,
+    "quota-cache.json": _quota_state_shape,
+    "max-tracker.json": _tracker_state_shape,
+}
+
+
 def _get_json(url, timeout=5):
     """(HTTP-status, parsad JSON). Statusen följer med: skärmen avvisar
     allt utom 200 (torget_http.c), så en proxy eller cache som svarar 502
@@ -275,13 +309,20 @@ def check_state_files(state_dir, now_ts=None):
                                   f"observationen"))
             continue
         try:
-            json.loads(f.read_text(encoding="utf-8"))
+            payload = json.loads(f.read_text(encoding="utf-8"))
         except Exception as e:
             # Servern startar tyst om från noll på en korrupt fil (OBS-11) —
             # flytta undan den INNAN nästa save skriver över bevisen.
             results.append((FAIL, f"{name} är KORRUPT ({type(e).__name__}) — "
                                   f"flytta undan filen för forensik innan "
                                   f"nästa skrivning nollar den"))
+            continue
+        shape_error = STATE_SHAPE[name](payload)
+        if shape_error:
+            results.append((FAIL, f"{name}: parsar men har FEL FORM "
+                                  f"({shape_error}) — laddaren nollställer "
+                                  f"tyst vid nästa start; flytta undan "
+                                  f"filen för forensik"))
             continue
         results.append((OK, f"{name}: parsar ({f.stat().st_size} byte)"))
         if name == "usage-history.json":

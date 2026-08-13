@@ -276,16 +276,38 @@ class LogFileCheckTests(unittest.TestCase):
         self.assertIn("respawn", results[2][1])
 
 
+VALID_STATE = {
+    "usage-history.json": '{"v": 1, "samples": []}',
+    "quota-cache.json": '{"v": 1, "records": []}',
+    "max-tracker.json": '{"claude": {}, "codex": {}}',
+}
+
+
 class StateFileCheckTests(unittest.TestCase):
     def _write_state(self, tmp, **overrides):
         for name in smoke.STATE_FILES:
-            (Path(tmp) / name).write_text(overrides.get(name, "{}"))
+            (Path(tmp) / name).write_text(
+                overrides.get(name, VALID_STATE[name]))
 
     def test_valid_files_are_ok_and_fresh_history_stays_quiet(self):
         with tempfile.TemporaryDirectory() as tmp:
             self._write_state(tmp)
             results = smoke.check_state_files(tmp, now_ts=time.time())
         self.assertEqual(levels(results), [smoke.OK] * 3)
+
+    def test_valid_json_with_wrong_shape_is_fail(self):
+        # Giltig JSON med fel form nollställs LIKA tyst som korrupta bytes
+        # av laddarna — röktestet får inte kalla den frisk.
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_state(tmp, **{
+                "usage-history.json": '{"v": 2, "samples": []}',
+                "quota-cache.json": "{}",
+            })
+            results = smoke.check_state_files(tmp, now_ts=time.time())
+        fails = [text for level, text in results if level == smoke.FAIL]
+        self.assertEqual(len(fails), 2)
+        for text in fails:
+            self.assertIn("FEL FORM", text)
 
     def test_corrupt_state_file_is_fail_with_forensics_pointer(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -320,7 +342,7 @@ class RunExitCodeTests(unittest.TestCase):
             state = Path(tmp) / "state"
             state.mkdir()
             for name in smoke.STATE_FILES:
-                (state / name).write_text("{}")
+                (state / name).write_text(VALID_STATE[name])
             out = io.StringIO()
             with canned_server(payloads, status=status) as base:
                 code = smoke.run(base, log_path=log_file, state_dir=state,

@@ -60,9 +60,11 @@ service was quietly running from a different checkout than the one being
 edited. **Root cause:** the plist hardcodes its `WorkingDirectory`; no
 artifact said which code was live. **The rule:** every long-running
 artifact must be able to answer "what revision are you?" in one command.
-**Guards:** `GET /` reports `rev` + `startedAt` (`8f6b8bd`). **Watch
-for:** the firmware has no equivalent yet (OBS-01); comb step 1 exists
-precisely for this.
+**Guards:** `GET /` reports `rev` + `startedAt` (`8f6b8bd`); the smoke
+test compares `rev` to your checkout; the firmware boot banner logs its
+build time and reset reason (OBS-01, done). **Watch for:** the plist's
+hardcoded `WorkingDirectory` is still the root cause waiting to recur —
+the guards make it visible, not impossible.
 
 ## 2026-08-13 · Stale data replayed as breaking news
 

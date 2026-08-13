@@ -34,7 +34,10 @@ Tiers:
 ## P1 — stop flying blind
 
 ### OBS-01 · Boot banner: version, git rev, and reset reason
-`firmware · S · open`
+`firmware · S · done (2026-08-13)` — `app_main` now logs `boot: byggd
+<datum> <tid>, IDF <ver>, omstartsorsak <namn> (<kod>)` as its first
+line, with PANIK/TASKVAKTHUND/BROWNOUT decoded loudly. Takes effect on
+the next flash. Original problem, for the record:
 The firmware never announces what it is or why it started:
 `esp_reset_reason()` is called nowhere in the repo, and boot logs carry
 no version or rev. A board that panicked and rebooted overnight is
@@ -65,7 +68,11 @@ OBS-01 banner. Turns "did it reboot while I was away?" from unanswerable
 into one serial line — and later feeds a diagnostics view (OBS-27).
 
 ### OBS-04 · Give the tokenserver a real logger
-`server · M · open`
+`server · M · done (2026-08-13)` — stdlib `logging` to stderr with
+timestamps; probe status changes log as `claude-probe: X -> Y`
+transitions (one line per change, silence in steady state); store-save
+failures log throttled; agent-status sanitization untouched. Keychain
+cause granularity remains OBS-20. Original problem:
 The service has no logging framework: four `print()` sites, no
 timestamps, no levels (`tokenserver.py:656,1574,1605`;
 `agent_status.py:929`). Meanwhile its most important events — probe
@@ -81,7 +88,11 @@ Keep the agent-status privacy sanitization exactly as is
 content-free).
 
 ### OBS-05 · Un-silence the HTTP layer
-`server · S · open`
+`server · S · done (2026-08-13)` — `log_error` logs again while the
+access log stays muted; all four routes share one guarded `_reply` (the
+agent-status route keeps the `{"error": ...}` contract now); every 500
+logs its traceback; client disconnects are quiet by design. Original
+problem:
 `Handler.log_message` is overridden to `pass` to keep 30 s polls out of
 the log (`tokenserver.py:1523-1524`) — but `BaseHTTPRequestHandler`
 routes `log_error` through `log_message`, so *error* logging died with
@@ -95,7 +106,11 @@ agent-status route like its siblings; log the exception (with traceback)
 whenever a 500 is served.
 
 ### OBS-06 · Move the launchd log out of /tmp, cap it
-`server · S · open`
+`server · S · done (2026-08-13)` — plist now logs to
+`~/Library/Logs/torget-tokenserver.log`; the server self-rotates it at
+startup past 5 MB with the last 256 KB preserved in `.old`, guarded by
+an fstat/stat identity check so terminal runs never touch it. Original
+problem:
 `se.torget.tokenserver.plist` sends both streams to
 `/tmp/torget-tokenserver.log`: unrotated and uncapped within a boot, yet
 erased by macOS reboot//tmp-cleaning — unbounded *and* unavailable for
@@ -106,7 +121,10 @@ file once past a few MB (stdlib, no logrotate dependency). Update plist,
 `tools/tokenserver/README.md`, and the runbook.
 
 ### OBS-07 · Fatal boot error + KeepAlive = silent crash loop
-`server · S · open`
+`server · S · done (2026-08-13)` — a missing `~/.claude/projects` logs
+one warning and waits (30 s poll) instead of exiting; the plist gained
+`ThrottleInterval 30` as the backstop for any other early death.
+Original problem:
 Missing `~/.claude/projects` raises `SystemExit`
 (`tokenserver.py:1570`); the plist has `KeepAlive` with no
 `ThrottleInterval`, so launchd respawns every ~10 s forever, appending
@@ -141,7 +159,9 @@ honesty-invariant violation as OBS-08, on the device side.
 *own* feed. Visual change → AMOLED skill gate applies.
 
 ### OBS-10 · Failed max-tracker save loses the dirty flag
-`server · S · open`
+`server · S · done (2026-08-13)` — a failed save re-marks dirty and logs
+(throttled to one per 5 min) so the next observation retries; the final
+shutdown flush logs its failure too. Original problem:
 The background writer clears `_max_tracker_dirty` *before* calling
 `store.save()` and swallows the exception (`tokenserver.py:1195-1199`);
 the shutdown flush swallows too (`:1616`). One disk-full or permissions

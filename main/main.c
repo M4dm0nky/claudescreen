@@ -33,6 +33,7 @@
 #include "esp_lv_adapter.h"
 #include "lvgl.h"
 
+#include "boot_health.h"
 #include "rotation.h"
 #include "secrets.h"
 #include "torget.h"
@@ -219,6 +220,15 @@ static void tick_cb(lv_timer_t *t) {
   (void)t;
   int64_t now = esp_timer_get_time();
 
+  /* Schemaläggarbeviset till OTA-hälsogrinden: första ticken bevisar att
+   * LVGL-tasken faktiskt snurrar under verklig bootlast — inte bara att
+   * timern skapades. Atomär markering, inga lås. */
+  static bool scheduler_marked;
+  if (!scheduler_marked) {
+    scheduler_marked = true;
+    torget_boot_health_mark(TG_HEALTH_SCHEDULER);
+  }
+
   /* Minnestelemetri var 10:e sekund: SPI-flushen till panelen behöver
    * DMA-dugligt internminne, och tar det slut fastnar hela ritpipen i
    * NO_MEM (sett vid första flashen 2026-08-06: TLS-hämtning + omritning
@@ -382,6 +392,12 @@ void app_main(void) {
   }
   ESP_ERROR_CHECK(nvs);
 
+  /* OTA-hälsogrinden direkt efter NVS: är detta första boot på en ny
+   * avbild börjar 8/15-sekundersklockan ticka HÄR, och bevisen markeras
+   * allteftersom bootordningen nedan levererar dem. En stabil boot gör
+   * anropet till en ren bevisinspektion. */
+  torget_boot_health_start();
+
   /* Eventgruppen FÖRE UI-bygget: apparnas hämttasker startar i create()
    * och blockerar direkt i torget_net_wait() — fanns gruppen inte än
    * assertade FreeRTOS och kortet bootloopade (hittat vid första flashen
@@ -392,6 +408,9 @@ void app_main(void) {
    * visa sina streck medan WiFi:t kopplar upp, inte stå svart i tio
    * sekunder. Egen start med små flushbitar — se display_start ovan. */
   display_start();
+  /* Panelen initierad utan fel = displaybeviset. Att den dessutom LYSER
+   * verifieras fysiskt i uppgift 8 — grinden mäter det som går att mäta. */
+  torget_boot_health_mark(TG_HEALTH_DISPLAY);
   /* Börja släckt: tick_cb:s ramp lyfter till dagsläge på ~1,3 s. Det är
    * bootens fade-in — samma ramp som nattväckningen använder. */
   bsp_display_brightness_set(0);
@@ -413,6 +432,8 @@ void app_main(void) {
 
   torget_ui_lock();
   torget_ui_create(); /* bygger apparna via registret + launchern */
+  /* UI-beviset: registret, apparnas create() och launchern överlevde. */
+  torget_boot_health_mark(TG_HEALTH_UI);
   lv_timer_create(tick_cb, TICK_EVERY_MS, NULL);
   torget_ui_unlock();
 

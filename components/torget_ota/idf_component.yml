@@ -1,0 +1,4 @@
+## Rollback-API:t (esp_ota_mark_*) och otadata-semantiken förutsätter 5.5,
+## samma golv som resten av plattformen.
+dependencies:
+  idf: ">=5.5"

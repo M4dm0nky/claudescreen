@@ -34,3 +34,58 @@ binary = root / "build/torget.bin"
 if binary.exists():
     assert binary.stat().st_size <= maximum_permitted
 print("OK: two 5 MiB OTA slots; 4 MiB maximum image gate")
+
+# --- Task 5: boot-health adapter wiring (source-level, no ESP-IDF needed) ---
+
+main_c = (root / "main/main.c").read_text(encoding="utf-8")
+adapter_path = root / "components/torget_ota/boot_health.c"
+assert adapter_path.exists(), "boot_health.c must exist in torget_ota"
+adapter = adapter_path.read_text(encoding="utf-8")
+
+# The health gate only means something if the target actually starts it and
+# feeds it the local evidence bits at the right places in the boot order.
+assert "torget_boot_health_start();" in main_c, (
+    "app_main must start the boot-health gate after NVS init"
+)
+assert "torget_boot_health_mark(TG_HEALTH_DISPLAY);" in main_c, (
+    "display evidence must be marked after display_start()"
+)
+assert "torget_boot_health_mark(TG_HEALTH_UI);" in main_c, (
+    "UI evidence must be marked after torget_ui_create()"
+)
+assert "torget_boot_health_mark(TG_HEALTH_SCHEDULER);" in main_c, (
+    "scheduler evidence must be marked from the first tick_cb"
+)
+
+# Accept and rollback must both go through the official rollback API; anything
+# else leaves otadata in a state the bootloader does not understand.
+assert "esp_ota_mark_app_valid_cancel_rollback" in adapter, (
+    "the adapter must accept only through esp_ota_mark_app_valid_cancel_rollback"
+)
+assert "esp_ota_mark_app_invalid_rollback_and_reboot" in adapter, (
+    "the adapter must roll back through esp_ota_mark_app_invalid_rollback_and_reboot"
+)
+assert "ESP_OTA_IMG_PENDING_VERIFY" in adapter, (
+    "policy polling must be enabled only for a pending-verify image"
+)
+assert "ESP_OTA_IMG_ABORTED" in adapter, (
+    "a stable boot must record bootloader crash-rollback evidence from the other slot"
+)
+assert '"rollback_from"' in adapter and '"torget_health"' in adapter, (
+    "rollback evidence must land in the bounded NVS key rollback_from"
+)
+
+# Component wiring: the adapter must be compiled into the target build and
+# main must be allowed to include boot_health.h.
+ota_cmake = (root / "components/torget_ota/CMakeLists.txt").read_text(encoding="utf-8")
+main_cmake = (root / "main/CMakeLists.txt").read_text(encoding="utf-8")
+assert '"boot_health.c"' in ota_cmake, "torget_ota must compile boot_health.c"
+assert "torget_ota" in main_cmake, "main must require torget_ota"
+
+# The deliberate failure injection stays a build-time development switch,
+# mapped to forced_failure only for a pending image.
+kconfig = (root / "main/Kconfig.projbuild").read_text(encoding="utf-8")
+assert "TORGET_BOOT_HEALTH_FORCE_FAIL" in kconfig
+assert "CONFIG_TORGET_BOOT_HEALTH_FORCE_FAIL" in adapter
+
+print("OK: boot-health adapter is wired into the target boot order")

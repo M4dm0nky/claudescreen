@@ -59,6 +59,12 @@ its way around. That's the whole onboarding.
 
    Board not showing up under `/dev/cu.usbmodem*`? Hold **BOOT**, tap
    **RESET**, release **BOOT** and it re-enumerates in download mode.
+
+   **Power matters:** flash with the board in download mode (screen dark).
+   A computer USB port often cannot feed the running firmware. The AMOLED
+   panel's draw makes the board bounce off the bus or hang, which looks
+   like a flaky cable. After flashing, run the screen from its own USB
+   power supply, not your computer.
 3. Start the service on your Mac. Pure Python stdlib, nothing to install:
 
    ```

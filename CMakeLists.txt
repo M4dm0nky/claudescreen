@@ -18,12 +18,10 @@ set(EXTRA_COMPONENT_DIRS third_party)
 # de inte finns utcheckade. En färsk klon utifrån bygger bara VibePulse —
 # ingen ska få Solelkollen eller Vibbe på skärmen utan att ha bett om det.
 # Sökvägarna kan pekas om med -DTORGET_SOLELKOLLEN_DIR / -DTORGET_BUDDY_DIR.
-if(NOT DEFINED TORGET_SOLELKOLLEN_DIR)
-  set(TORGET_SOLELKOLLEN_DIR "$ENV{HOME}/Solelkollen/components")
-endif()
-if(NOT DEFINED TORGET_BUDDY_DIR)
-  set(TORGET_BUDDY_DIR "$ENV{HOME}/Buddy/components")
-endif()
+set(TORGET_SOLELKOLLEN_DIR "$ENV{HOME}/Solelkollen/components"
+    CACHE PATH "Companion-katalog för Solelkollen")
+set(TORGET_BUDDY_DIR "$ENV{HOME}/Buddy/components"
+    CACHE PATH "Companion-katalog för Vibbe/Buddy")
 
 if(EXISTS "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
   list(APPEND EXTRA_COMPONENT_DIRS "${TORGET_SOLELKOLLEN_DIR}")

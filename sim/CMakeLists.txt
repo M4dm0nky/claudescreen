@@ -28,12 +28,10 @@ file(GLOB FONTS "${CMAKE_CURRENT_SOURCE_DIR}/../platform/fonts/*.c")
 # Companion-apparna bor i sina EGNA repon och delas in harifran nar de finns
 # utcheckade — exakt som targetet. En farsk klon utifran bygger bara
 # VibePulse; registry.c grindas pa TORGET_HAVE_SOLELKOLLEN/TORGET_HAVE_BUDDY.
-if(NOT DEFINED TORGET_SOLELKOLLEN_DIR)
-  set(TORGET_SOLELKOLLEN_DIR "$ENV{HOME}/Solelkollen/components")
-endif()
-if(NOT DEFINED TORGET_BUDDY_DIR)
-  set(TORGET_BUDDY_DIR "$ENV{HOME}/Buddy/components")
-endif()
+set(TORGET_SOLELKOLLEN_DIR "$ENV{HOME}/Solelkollen/components"
+    CACHE PATH "Companion-katalog för Solelkollen")
+set(TORGET_BUDDY_DIR "$ENV{HOME}/Buddy/components"
+    CACHE PATH "Companion-katalog för Vibbe/Buddy")
 
 if(EXISTS "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
   set(SOLELKOLLEN_SRCS

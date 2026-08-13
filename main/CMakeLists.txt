@@ -6,10 +6,18 @@
 # utcheckade dras komponenten in och TORGET_HAVE_* grindar registerposten i
 # registry.c. En färsk klon utifrån bygger bara VibePulse.
 set(TORGET_MAIN_REQUIRES torget_app app_tokens)
-if(EXISTS "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
+# OBS $ENV{}: den här filen körs TVÅ gånger — en gång i ESP-IDF:s
+# early-expansion (då REQUIRES läses ut) och en gång i det riktiga bygget. I
+# expansionspasset syns INTE cache-/normalvariablerna som rot-CMakeLists.txt
+# satte (TORGET_*_DIR är tomma där), bara miljövariabler överlever dit. Roten
+# speglar därför de upplösta sökvägarna till miljön, och vi grindar på $ENV{}
+# så att REQUIRES och TORGET_HAVE_*-definitionen nedan ALLTID ser samma värde.
+# Grindar vi på ${TORGET_*_DIR} får vi makrot men inte include-katalogen, och
+# registry.c faller på "app_solelkollen.h: No such file".
+if(EXISTS "$ENV{TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
   list(APPEND TORGET_MAIN_REQUIRES app_solelkollen)
 endif()
-if(EXISTS "${TORGET_BUDDY_DIR}/app_buddy")
+if(EXISTS "$ENV{TORGET_BUDDY_DIR}/app_buddy")
   list(APPEND TORGET_MAIN_REQUIRES app_buddy)
 endif()
 
@@ -27,10 +35,10 @@ idf_component_register(
            esp_event
            esp_timer)
 
-if(EXISTS "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
+if(EXISTS "$ENV{TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE TORGET_HAVE_SOLELKOLLEN)
 endif()
-if(EXISTS "${TORGET_BUDDY_DIR}/app_buddy")
+if(EXISTS "$ENV{TORGET_BUDDY_DIR}/app_buddy")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE TORGET_HAVE_BUDDY)
 endif()
 

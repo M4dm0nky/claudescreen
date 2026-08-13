@@ -23,6 +23,15 @@ set(TORGET_SOLELKOLLEN_DIR "$ENV{HOME}/Solelkollen/components"
 set(TORGET_BUDDY_DIR "$ENV{HOME}/Buddy/components"
     CACHE PATH "Companion-katalog för Vibbe/Buddy")
 
+# main/CMakeLists.txt måste läsa dessa i ESP-IDF:s early-expansion (där
+# REQUIRES bestäms). Dit når varken cache- eller normalvariabler härifrån —
+# bara miljön överlever. Spegla de UPPLÖSTA värdena (inkl. ev. -D-override) till
+# miljön så att main grindar sitt REQUIRES på exakt samma sökväg som grindar
+# EXTRA_COMPONENT_DIRS nedan. Utan detta sätts TORGET_HAVE_* men komponentens
+# include-katalog dras aldrig in, och registry.c faller på app_solelkollen.h.
+set(ENV{TORGET_SOLELKOLLEN_DIR} "${TORGET_SOLELKOLLEN_DIR}")
+set(ENV{TORGET_BUDDY_DIR} "${TORGET_BUDDY_DIR}")
+
 if(EXISTS "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
   list(APPEND EXTRA_COMPONENT_DIRS "${TORGET_SOLELKOLLEN_DIR}")
 else()

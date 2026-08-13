@@ -1604,13 +1604,28 @@ class Handler(BaseHTTPRequestHandler):
         """Svara 200 med produce(), annars 500 {"error": ...} — skärmen
         avvisar error-formen per kontrakt och behåller senaste goda värden.
         Orsaken ska ändå alltid synas i loggen: ett tyst 500 var så
-        max-tracker-buggarna förblev osynliga."""
+        max-tracker-buggarna förblev osynliga.
+
+        Producenten och svarsskrivningen bedöms VAR FÖR SIG: ett
+        ConnectionError/TimeoutError från producenten är ett serverfel som
+        ska loggas och bli 500 — bara under själva skrivningen betyder det
+        att klienten försvann."""
         try:
-            self._send(200, produce())
+            payload = produce()
+        except Exception:
+            log.exception("500 på %s", self.path)
+            try:
+                self._send(500, {"error": "internal server error"})
+            except OSError:
+                pass
+            return
+        try:
+            self._send(200, payload)
         except (ConnectionError, TimeoutError):
             pass  # klienten försvann mitt i svaret — inte ett serverfel
         except Exception:
-            log.exception("500 på %s", self.path)
+            # T.ex. oserialiserbar payload — serverfel, inte klientens.
+            log.exception("500 på %s (svarsskrivningen)", self.path)
             try:
                 self._send(500, {"error": "internal server error"})
             except OSError:

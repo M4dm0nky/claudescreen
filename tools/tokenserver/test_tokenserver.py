@@ -1541,6 +1541,29 @@ class HandlerErrorLoggingTests(unittest.TestCase):
 
         handler._send.assert_called_once()  # inget 500-försök till ett lik
 
+    def test_producer_connection_error_is_a_server_error_not_a_disconnect(self):
+        # ConnectionError FRÅN producenten är ett serverfel och ska logga +
+        # 500 — bara under svarsskrivningen betyder det att klienten dog.
+        handler = self._handler("/api/agent-status")
+        handler.agent_status.snapshot.side_effect = ConnectionError("inuti")
+        with self.assertLogs("tokenserver", level="ERROR") as captured:
+            handler.do_GET()
+
+        handler._send.assert_called_once_with(
+            500, {"error": "internal server error"})
+        self.assertIn("inuti", "\n".join(captured.output))
+
+    def test_unwritable_payload_logs_and_falls_back_to_500(self):
+        handler = self._handler("/api/agent-status")
+        handler.agent_status.snapshot.return_value = {"v": 1}
+        handler._send.side_effect = [TypeError("oserialiserbar"), None]
+        with self.assertLogs("tokenserver", level="ERROR") as captured:
+            handler.do_GET()
+
+        self.assertEqual(handler._send.call_count, 2)
+        self.assertEqual(handler._send.call_args.args[0], 500)
+        self.assertIn("svarsskrivningen", "\n".join(captured.output))
+
     def test_log_error_reaches_the_log_while_access_log_stays_muted(self):
         handler = self._handler("/api/tokens")
         with self.assertLogs("tokenserver", level="WARNING") as captured:

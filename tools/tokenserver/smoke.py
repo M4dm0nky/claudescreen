@@ -70,11 +70,14 @@ def check_server(base_url, checkout_rev=None):
         return [(FAIL, f"servern svarar inte på {base_url}/ ({type(e).__name__})"
                        " — kör den? launchctl list | grep torget, eller starta"
                        " python3 tokenserver.py för hand")]
+    # En annan tjänst på porten kan svara med giltig JSON som inte är ett
+    # objekt (lista, tal, null) — det ska bli [FAIL], inte en traceback.
+    if (not isinstance(root, dict)
+            or root.get("service") != "torget-tokenserver"):
+        got = (root.get("service") if isinstance(root, dict)
+               else type(root).__name__)
+        return [(FAIL, f"fel tjänst på {base_url} — 'service' är {got!r}")]
     results = []
-    if root.get("service") != "torget-tokenserver":
-        results.append((FAIL, f"fel tjänst på {base_url} — 'service' är "
-                              f"{root.get('service')!r}"))
-        return results
     rev = root.get("rev", "unknown")
     started = root.get("startedAt", "okänt")
     if checkout_rev and rev != checkout_rev:

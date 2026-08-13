@@ -101,6 +101,17 @@ class ServerCheckTests(unittest.TestCase):
             results = smoke.check_server(base, checkout_rev="abc1234")
         self.assertEqual(levels(results), [smoke.FAIL])
 
+    def test_non_object_json_on_port_is_fail_not_a_traceback(self):
+        # En främmande tjänst kan svara med en lista, ett tal eller null —
+        # exakt fel-tjänst-scenariot får inte krascha diagnosen.
+        for foreign in ([1, 2, 3], 42, None, "text"):
+            with self.subTest(foreign=foreign):
+                with canned_server({"/": foreign}) as base:
+                    results = smoke.check_server(base,
+                                                 checkout_rev="abc1234")
+                self.assertEqual(levels(results), [smoke.FAIL])
+                self.assertIn("fel tjänst", results[0][1])
+
     def test_frozen_usage_compute_is_fail(self):
         # OBS-08: siffror som fryst men ser färska ut är värsta sortens fel
         # — röktestet ska skrika, inte viska.

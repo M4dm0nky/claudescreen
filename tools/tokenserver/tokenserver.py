@@ -89,12 +89,22 @@ def _maybe_rotate_own_log(path=None, stderr_fd=2):
     skyddar terminalkörningar från att röra en fil de inte skriver till.
     Trunkering i stället för rename: launchd håller fd:n öppen med O_APPEND,
     så en rename hade bara fått processen att skriva vidare i den flyttade
-    filen medan den nya förblev tom."""
+    filen medan den nya förblev tom.
+
+    Hela läs-kopiera-trunkera-sekvensen hålls under root-loggerns
+    handlerlås (RLock — vår egen "roterad"-rad kan fortfarande skrivas), så
+    en loggrad från en annan tråd inte kan landa mellan svansläsningen och
+    trunkeringen och raderas ur bägge filerna. Råa stderr-skrivningar
+    (agent_status-diagnostiken) går utanför låset; det kvarvarande fönstret
+    är millisekunder mot en strypt rad per 30 s, en gång per 5 MB."""
     path = Path(path) if path else DEFAULT_LOG_PATH
     try:
         st = path.stat()
     except OSError:
         return False  # ingen fil (terminalkörning, färsk installation)
+    handlers = list(logging.getLogger().handlers)
+    for handler in handlers:
+        handler.acquire()
     try:
         if st.st_size <= _LOG_CAP_BYTES:
             return False
@@ -103,16 +113,19 @@ def _maybe_rotate_own_log(path=None, stderr_fd=2):
             return False
         with open(path, "rb+") as fh:
             fh.seek(max(0, st.st_size - _LOG_TAIL_KEEP_BYTES))
-            tail = fh.read()
+            tail = fh.read()  # läser till FAKTISKT EOF — även nyare rader
             path.with_name(path.name + ".old").write_bytes(tail)
             fh.truncate(0)
-        log.info("loggfilen roterad vid start (%d byte > taket %d; svansen "
-                 "ligger i %s.old)", st.st_size, _LOG_CAP_BYTES, path.name)
+        log.info("loggfilen roterad (%d byte > taket %d; svansen ligger i "
+                 "%s.old)", st.st_size, _LOG_CAP_BYTES, path.name)
         return True
     except Exception:
         # Rotering får aldrig fälla tjänsten; att den misslyckades ska synas.
         log.warning("logrotering av %s misslyckades", path, exc_info=True)
         return False
+    finally:
+        for handler in reversed(handlers):
+            handler.release()
 
 
 _LOG_ROTATE_CHECK_S = 3600.0

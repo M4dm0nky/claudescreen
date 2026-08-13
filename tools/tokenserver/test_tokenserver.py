@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import logging
 import tempfile
 import threading
 import time
@@ -2227,6 +2228,39 @@ class LogRotationTests(unittest.TestCase):
             tail = old.read_bytes()
             self.assertEqual(len(tail), tokenserver._LOG_TAIL_KEEP_BYTES)
             self.assertTrue(tail.endswith(b"SVANSEN\n"))
+
+    def test_rotation_holds_the_logging_handler_locks(self):
+        # En loggrad mellan svansläsningen och trunkeringen skulle raderas
+        # ur BÅDA filerna — rotationen ska hålla handlerlåsen så att
+        # logging-skrivningar inte kan interfoliera.
+        class CountingHandler(logging.Handler):
+            def __init__(self):
+                super().__init__()
+                self.acquisitions = 0
+
+            def acquire(self):
+                self.acquisitions += 1
+                super().acquire()
+
+            def emit(self, record):
+                pass
+
+        counting = CountingHandler()
+        root = logging.getLogger()
+        root.addHandler(counting)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = self._big_file(tmp)
+                fd = os.open(path, os.O_WRONLY | os.O_APPEND)
+                try:
+                    rotated = tokenserver._maybe_rotate_own_log(
+                        path, stderr_fd=fd)
+                finally:
+                    os.close(fd)
+            self.assertTrue(rotated)
+            self.assertGreaterEqual(counting.acquisitions, 1)
+        finally:
+            root.removeHandler(counting)
 
     def test_terminal_run_never_touches_the_file(self):
         # stderr_fd=2 är testkörarens stderr, inte filen — fstat/stat-vakten

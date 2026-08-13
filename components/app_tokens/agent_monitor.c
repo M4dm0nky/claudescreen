@@ -148,7 +148,7 @@ static void render_completion(uint64_t now_ms) {
   if (event->state == TK_AGENT_WAITING) {
     title = "NEEDS YOU";
     if (event->same_state_count > 1) {
-      snprintf(detail, sizeof detail, "%u CHATS WAITING",
+      snprintf(detail, sizeof detail, "%u AGENTS WAITING",
                (unsigned)event->same_state_count);
     } else {
       snprintf(detail, sizeof detail, "%s",
@@ -158,7 +158,7 @@ static void render_completion(uint64_t now_ms) {
   } else if (event->state == TK_AGENT_ERROR) {
     title = "ERROR";
     if (event->same_state_count > 1) {
-      snprintf(detail, sizeof detail, "%u CHATS NEED ATTENTION",
+      snprintf(detail, sizeof detail, "%u AGENTS NEED ATTENTION",
                (unsigned)event->same_state_count);
     } else {
       snprintf(detail, sizeof detail, "%s",
@@ -166,7 +166,7 @@ static void render_completion(uint64_t now_ms) {
                    ? "CLAUDE NEEDS ATTENTION" : "CODEX NEEDS ATTENTION");
     }
   } else if (event->same_state_count > 1) {
-    snprintf(detail, sizeof detail, "%u CHATS FINISHED",
+    snprintf(detail, sizeof detail, "%u AGENTS FINISHED",
              (unsigned)event->same_state_count);
   } else {
     snprintf(detail, sizeof detail, "%s",

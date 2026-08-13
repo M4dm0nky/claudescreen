@@ -41,9 +41,8 @@ frame — the simulator renders the same pixels as the panel.
 <td width="50%"><img src="docs/img/vibepulse-claude-week.png" alt="Claude weekly quota at 73%" width="100%"></td>
 <td valign="top">
 
-**Usage** — Claude's 5-hour session, weekly, and heaviest-model-weekly
-quota, plus Codex's weekly quota. Each with a reset countdown and how much
-you've burned today.
+**Usage** — Claude's weekly and heaviest-model-weekly quota, plus Codex's
+weekly quota. Each with a reset countdown and how much you've burned today.
 
 </td>
 </tr>
@@ -124,7 +123,7 @@ Run Claude only, or Codex only, and the other half simply shows dashes.
 A tiny Python service on your Mac reads your local Claude Code / Codex logs
 and rate-limit headers, and serves plain numbers over your LAN. The screen
 polls it every 30 seconds. Your OAuth token never leaves the Mac; the screen
-only ever receives percentages and counts.
+only ever receives percentages, counts and coarse status.
 
 ## What you need
 
@@ -211,14 +210,14 @@ Max Tracker fixtures, `T` re-feeds tokens, `L` opens the launcher.
 
 ## Privacy
 
-- Everything stays on your LAN; the screen only ever receives percentages
-  and counts.
+- Everything stays on your LAN; the screen only ever receives percentages,
+  counts and coarse status — a project name, a model, an effort level.
 - No prompts, no code, no commands, no file contents are stored or served.
   The service keeps only content-free quota points (at most one per 15
   minutes, kept 8 days) for the trends.
 - Your OAuth token never leaves the Mac.
-- A lost or stolen screen leaks exactly one thing: your WiFi password,
-  which you rotate in your router, not in any cloud.
+- A lost or stolen screen leaks your WiFi credentials and the LAN hostname
+  of your Mac — both of which you rotate yourself, not in any cloud.
 
 ## Tweak it
 

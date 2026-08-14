@@ -512,7 +512,15 @@ def _parse_usage_limits(body, now_ts):
             prefix = "session"
         elif kind == "weekly_all":
             prefix = "week"
-        elif kind == "weekly_scoped" and limit.get("is_active") is True:
+        elif kind == "weekly_scoped" and (limit.get("is_active") is True or
+                                          (isinstance(pct, (int, float)) and
+                                           pct > 0)):
+            # is_active betyder "just nu BINDANDE gräns" (5-timmarsfönstret
+            # bär oftast den flaggan), INTE "poolen finns". Verifierat mot
+            # live-svaret 2026-08-14: Fable veckan låg på 11 % med
+            # is_active=false och försvann från glaset — verklig förbrukning
+            # ska alltid visas. Bara en orörd pool (0 % och inaktiv) lämnas
+            # onämnd, så en aldrig använd modell inte tar plats.
             scope = limit.get("scope")
             model = scope.get("model") if isinstance(scope, dict) else None
             display = (model.get("display_name")

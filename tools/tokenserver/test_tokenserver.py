@@ -88,6 +88,38 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
         self.assertEqual(parsed["modelLabel"], "FABLE · WEEK")
         self.assertIn("modelIdentity", parsed)
 
+    def test_usage_endpoint_maps_inactive_fable_pool_with_real_usage(self):
+        """Live-svaret 2026-08-14: Fable veckan på 11 % bar is_active=false
+        (flaggan pekar ut den BINDANDE gränsen, inte poolens existens) och
+        procenten försvann från glaset. Verklig förbrukning ska visas."""
+        parsed = tokenserver._parse_usage_limits({
+            "limits": [{
+                "kind": "weekly_scoped", "percent": 11,
+                "resets_at": "2026-08-21T06:00:00+00:00",
+                "is_active": False,
+                "scope": {"model": {"id": None, "display_name": "Fable"},
+                          "surface": None},
+            }],
+        }, now_ts=1_786_531_200)
+
+        self.assertEqual(parsed["modelPct"], 11.0)
+        self.assertEqual(parsed["modelLabel"], "FABLE · WEEK")
+
+    def test_usage_endpoint_leaves_untouched_inactive_pool_unnamed(self):
+        """0 % OCH inaktiv = en aldrig använd modellpool — den tar ingen
+        plats på glaset. Gränsen sitter vid verklig förbrukning."""
+        parsed = tokenserver._parse_usage_limits({
+            "limits": [{
+                "kind": "weekly_scoped", "percent": 0,
+                "resets_at": "2026-08-21T06:00:00+00:00",
+                "is_active": False,
+                "scope": {"model": {"display_name": "Fable"}},
+            }],
+        }, now_ts=1_786_531_200)
+
+        self.assertNotIn("modelPct", parsed)
+        self.assertNotIn("modelLabel", parsed)
+
     def test_usage_endpoint_does_not_label_unknown_scoped_pool(self):
         parsed = tokenserver._parse_usage_limits({
             "limits": [{

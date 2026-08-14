@@ -30,4 +30,11 @@ assert 'if(EXISTS "${TORGET_BUDDY_DIR}/app_buddy")' not in cmake, (
     "Den ogrindade EXISTS-inkluderingen av Buddy får inte återuppstå"
 )
 
+sim = (root / "sim" / "CMakeLists.txt").read_text(encoding="utf-8")
+assert 'option(TORGET_WITH_BUDDY' in sim and \
+    'if(TORGET_WITH_BUDDY AND EXISTS "${TORGET_BUDDY_DIR}/app_buddy")' in sim, (
+    "bänken ska spegla panelens opt-in — samma appuppsättning i båda "
+    "världarna, aldrig en app till för att katalogen råkar finnas"
+)
+
 print("OK: Vibbe/Buddy är opt-in — panelflushens DMA-marginal skyddad")

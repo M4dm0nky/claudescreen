@@ -9,6 +9,7 @@
  * apptask sker under torget_ui_lock() — det är LVGL:s egen mutex, så det
  * behövs inte en till.
  */
+#include <stdatomic.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
@@ -35,6 +36,11 @@
 #include "esp_lv_adapter.h"
 #include "lvgl.h"
 
+#include "boot_health.h"
+#include "boot_screen.h"
+#include "button_policy.h"
+#include "ota_service.h"
+#include "ota_ui.h"
 #include "rotation.h"
 #include "secrets.h"
 #include "torget.h"
@@ -85,6 +91,9 @@ static EventGroupHandle_t s_net_events;
  */
 void torget_ui_lock(void)   { ESP_ERROR_CHECK(esp_lv_adapter_lock(-1)); }
 void torget_ui_unlock(void) { esp_lv_adapter_unlock(); }
+bool torget_ui_try_lock(uint32_t timeout_ms) {
+  return esp_lv_adapter_lock((int32_t)timeout_ms) == ESP_OK;
+}
 
 int64_t torget_now_us(void) { return esp_timer_get_time(); }
 
@@ -93,6 +102,16 @@ void torget_net_wait(void) {
 }
 
 void torget_keep_awake(void) { s_last_activity_us = esp_timer_get_time(); }
+
+void torget_update_available(const char *version) {
+  torget_ota_service_update_available(version);
+}
+
+/* Bootskärmens datasignal: första lyckade hämtningen tar ner skärmen.
+ * Atomär flagga — tokens_apply kallar under UI-låset och stage() tar
+ * låset självt, så själva nedtagningen skjuts till nästa tick. */
+static _Atomic bool s_data_alive;
+void torget_data_alive(void) { atomic_store(&s_data_alive, true); }
 
 /* ------------------------------------------------------------------- wifi */
 
@@ -168,6 +187,7 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     esp_wifi_connect();
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
     ESP_LOGI(TAG, "WiFi uppe (\"%s\")", s_ssid[s_nat]);
+    torget_boot_screen_stage(TG_BOOT_WIFI_UP);
     s_nat_missar = 0;
     xEventGroupSetBits(s_net_events, WIFI_GOT_IP);
   }
@@ -211,6 +231,7 @@ static void net_task(void *arg) {
   esp_wifi_connect();
   xEventGroupWaitBits(s_net_events, WIFI_GOT_IP, pdFALSE, pdTRUE, portMAX_DELAY);
   time_sync();
+  torget_boot_screen_stage(TG_BOOT_TIME_OK);
   xEventGroupSetBits(s_net_events, NET_READY);
   vTaskDelete(NULL);
 }
@@ -220,6 +241,15 @@ static void net_task(void *arg) {
 static void tick_cb(lv_timer_t *t) {
   (void)t;
   int64_t now = esp_timer_get_time();
+
+  /* Schemaläggarbeviset till OTA-hälsogrinden: första ticken bevisar att
+   * LVGL-tasken faktiskt snurrar under verklig bootlast — inte bara att
+   * timern skapades. Atomär markering, inga lås. */
+  static bool scheduler_marked;
+  if (!scheduler_marked) {
+    scheduler_marked = true;
+    torget_boot_health_mark(TG_HEALTH_SCHEDULER);
+  }
 
   /* Minnestelemetri var 10:e sekund: SPI-flushen till panelen behöver
    * DMA-dugligt internminne, och tar det slut fastnar hela ritpipen i
@@ -242,16 +272,40 @@ static void tick_cb(lv_timer_t *t) {
   if (s_touch && lv_indev_get_state(s_touch) == LV_INDEV_STATE_PRESSED)
     s_last_touch_us = now;
 
-  /* KEY3 (GPIO18, aktiv låg): fysisk appväxlare — ett tryck, nästa app.
-   * Pollad i 10 Hz-ticken (naturlig avstudsning: en flank per nedtryck,
-   * släpp krävs mellan). Körs i LVGL-tasken, så inga lås behövs. */
-  static bool key3_was_down;
-  bool key3_down = gpio_get_level(GPIO_NUM_18) == 0;
-  if (key3_down && !key3_was_down) {
-    torget_app_next();
-    s_last_touch_us = now; /* ett knapptryck är aktivitet, precis som touch */
+  /* KEY3 (GPIO18, aktiv låg): kort tryck = nästa app, tre sekunders håll =
+   * OTA-underhållsfönster. Tidsreglerna bor i den värdtestade knappolicyn;
+   * 10 Hz-ticken pollar vidare medan knappen är nere så hållet avfyras
+   * utan släpp. Körs i LVGL-tasken — därför bara atomära tjänsteanrop här,
+   * aldrig torget_ota_ui_set (som tar UI-låset). */
+  /* Bootskärmen tas ner av första datalivet — eller ge-upp-taket när
+   * nätet aldrig kommer (45 s: två hämtcykler + marginal; bakom står
+   * apparnas ärliga NO DATA). Låset är rekursivt, så stage() från
+   * LVGL-tasken är säkert. */
+  static bool boot_screen_done;
+  if (!boot_screen_done) {
+    if (atomic_load(&s_data_alive)) {
+      boot_screen_done = true;
+      torget_boot_screen_stage(TG_BOOT_DATA_OK);
+    } else if (now > 45LL * 1000000LL) {
+      boot_screen_done = true;
+      torget_boot_screen_stage(TG_BOOT_GIVE_UP);
+    }
   }
-  key3_was_down = key3_down;
+
+  static tg_button_policy key3;
+  bool key3_down = gpio_get_level(GPIO_NUM_18) == 0;
+  tg_button_action key3_action = tg_button_update(&key3, key3_down, now);
+  if (key3_down)
+    s_last_touch_us = now; /* knappkontakt är aktivitet, precis som touch */
+  if (key3_action == TG_BUTTON_NEXT_APP) {
+    /* Öppet fönster: samma tryck som annars byter app blir nödutgången —
+     * tio minuter utan flyktväg gjorde en frisk enhet omöjlig att skilja
+     * från en hängd (2026-08-14). Stängningen är atomär och ofarlig här. */
+    if (!torget_ota_service_maintenance_open()) torget_app_next();
+    else torget_ota_service_close_maintenance();
+  } else if (key3_action == TG_BUTTON_OPEN_MAINTENANCE) {
+    torget_ota_service_open_maintenance();
+  }
 
   int target = ((now - s_last_activity_us) > NIGHT_AFTER_US
                 && (now - s_last_touch_us) > WAKE_HOLD_US)
@@ -416,6 +470,12 @@ void app_main(void) {
   }
   ESP_ERROR_CHECK(nvs);
 
+  /* OTA-hälsogrinden direkt efter NVS: är detta första boot på en ny
+   * avbild börjar 8/15-sekundersklockan ticka HÄR, och bevisen markeras
+   * allteftersom bootordningen nedan levererar dem. En stabil boot gör
+   * anropet till en ren bevisinspektion. */
+  torget_boot_health_start();
+
   /* Eventgruppen FÖRE UI-bygget: apparnas hämttasker startar i create()
    * och blockerar direkt i torget_net_wait() — fanns gruppen inte än
    * assertade FreeRTOS och kortet bootloopade (hittat vid första flashen
@@ -426,6 +486,9 @@ void app_main(void) {
    * visa sina streck medan WiFi:t kopplar upp, inte stå svart i tio
    * sekunder. Egen start med små flushbitar — se display_start ovan. */
   display_start();
+  /* Panelen initierad utan fel = displaybeviset. Att den dessutom LYSER
+   * verifieras fysiskt i uppgift 8 — grinden mäter det som går att mäta. */
+  torget_boot_health_mark(TG_HEALTH_DISPLAY);
   /* Börja släckt: tick_cb:s ramp lyfter till dagsläge på ~1,3 s. Det är
    * bootens fade-in — samma ramp som nattväckningen använder. */
   bsp_display_brightness_set(0);
@@ -446,10 +509,33 @@ void app_main(void) {
   s_last_activity_us = esp_timer_get_time();
 
   torget_ui_lock();
+  /* Bootskärmen FÖRE apparna och FÖRE OTA-overlayn: apparnas halvbyggda
+   * NO DATA-vyer göms bakom den, och READY-ringen vinner alltid över den
+   * i lagerordningen. */
+  torget_boot_screen_create();
   torget_ui_create(); /* bygger apparna via registret + launchern */
+  /* UI-beviset: registret, apparnas create() och launchern överlevde. */
+  torget_boot_health_mark(TG_HEALTH_UI);
+  /* OTA-overlayn EFTER det delade UI:t, på topplagret, dold tills KEY3-
+   * hållet öppnar underhållsfönstret — appträdet rörs aldrig. */
+  torget_ota_ui_create();
   lv_timer_create(tick_cb, TICK_EVERY_MS, NULL);
   torget_ui_unlock();
 
+  /* Fysisk sanning i loggen: KEY3:s råa nivå vid boot. Låg utan finger =
+   * pinnen är inte att lita på förrän knappolicyns väpning släppt igenom
+   * den (så hände 2026-08-14, då ett fönster öppnade sig självt). */
+  ESP_LOGI(TAG, "KEY3 rå nivå vid boot: %d (1 = släppt)",
+           gpio_get_level(GPIO_NUM_18));
+
   wifi_start();
-  xTaskCreate(net_task, "torget-net", 4096, NULL, 5, NULL);
+  /* Nättasken FÖRE OTA-vakten: apparnas dataväg är plattformens kritiska
+   * bana och får aldrig stå bakom en valfri funktion i minneskön. */
+  if (xTaskCreate(net_task, "torget-net", 4096, NULL, 5, NULL) != pdPASS)
+    ESP_LOGE(TAG, "torget-net kunde inte skapas — apparna får aldrig data");
+  /* OTA-ytan är LAT: vid boot startar bara den lilla fönstervakten.
+   * Http-servern och dess minneskostnad existerar först när ett KEY3-håll
+   * öppnat underhållsfönstret — en boot utan uppdatering ska ha samma
+   * minnesprofil som en build helt utan OTA (frysläxan 2026-08-14). */
+  torget_ota_service_start();
 }

@@ -161,6 +161,15 @@ EXPECTED = {
     "torget-vibepulse-tracker-codex-full.bmp",
     "torget-vibepulse-tracker-empty.bmp",
     "torget-vibepulse-tracker-stale.bmp",
+    "torget-ota-ring-open.bmp",
+    "torget-ota-ring-receiving.bmp",
+    "torget-ota-ring-verifying.bmp",
+    "torget-ota-ring-restarting.bmp",
+    "torget-ota-ring-notice.bmp",
+
+    "torget-boot-cold.bmp",
+    "torget-boot-wifi.bmp",
+    "torget-boot-time.bmp",
 }
 
 
@@ -207,6 +216,99 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
         for name in sorted(EXPECTED):
             with self.subTest(name=name):
                 self.assertEqual(self.image(name).size, (480, 480))
+
+    def test_ota_ring_states_show_honest_arc_and_center(self):
+        """Ringen (riktning A, 2026-08-14): bågens mitt är (240, 268), band-
+        radie ~132-148. Mitt i bandet (radie 140) är färgen solid: vit där
+        läget fyllt bågen, spårgrå (0x303238) där det inte gjort det. 62 %
+        RECEIVING täcker toppen men inte den övre vänstra diagonalen; full
+        cirkel (VERIFYING/RESTARTING) täcker båda. Centrumraden bär vita
+        siffror i alla lägen. Ingen provideraccent någonstans."""
+        top = (240, 128)          # 0 grader, bågens start
+        right = (380, 268)        # 90 grader medurs fran toppen
+        upper_left = (141, 169)   # 315 grader medurs fran toppen
+        track = (48, 50, 56)
+        white = (255, 255, 255)
+
+        # OPEN dräneras MEDURS (REVERSE-läget, äggklockan): gapet börjar
+        # strax medurs om toppen, så referenspunkten är höger sida i stället
+        # för toppixeln. Fyllnadslägena mäts vid bågens start på toppen.
+        cases = (
+            ("torget-ota-ring-open.bmp", right, white, white),
+            ("torget-ota-ring-receiving.bmp", top, white, track),
+            ("torget-ota-ring-verifying.bmp", top, white, white),
+            ("torget-ota-ring-restarting.bmp", top, white, white),
+        )
+        muted = (146, 152, 162)
+        for name, probe, probe_color, upper_left_color in cases:
+            with self.subTest(name=name):
+                image = self.image(name)
+                self.assertEqual(image.getpixel((5, 5)), (0, 0, 0))
+                self.assertEqual(image.getpixel(probe), probe_color)
+                self.assertEqual(image.getpixel(upper_left), upper_left_color)
+                center_row = [image.getpixel((x, 268)) for x in range(150, 330)]
+                self.assertIn(white, center_row)
+                # Versionsraden under ringen: alltid närvarande, alltid i
+                # muted — körande version vid öppet fönster, inkommande
+                # under överföringen.
+                version_rows = [
+                    image.getpixel((x, y))
+                    for y in range(428, 446) for x in range(100, 380)
+                ]
+                self.assertIn(muted, version_rows)
+                claude = (217, 119, 87)
+                codex = (111, 120, 255)
+                self.assertNotIn(claude, center_row)
+                self.assertNotIn(codex, center_row)
+
+    def test_boot_screen_stages_light_up_honestly(self):
+        """Bootskärmen (2026-08-14): wordmärket vitt, stegen tänds av sina
+        riktiga signaler — kallt är alla tre muted, WIFI_UP tänder första,
+        TIME_OK två. Raden bor på y≈268 med stegen kring x 100/240/380."""
+        white = (255, 255, 255)
+        muted = (146, 152, 162)
+        cases = (
+            ("torget-boot-cold.bmp", muted, muted),
+            ("torget-boot-wifi.bmp", white, muted),
+            ("torget-boot-time.bmp", white, white),
+        )
+        for name, wifi_color, time_color in cases:
+            with self.subTest(name=name):
+                image = self.image(name)
+                self.assertEqual(image.getpixel((5, 5)), (0, 0, 0))
+                word_row = [image.getpixel((x, 185)) for x in range(90, 390)]
+                self.assertIn(white, word_row)
+                wifi_row = [image.getpixel((x, 276)) for x in range(60, 140)]
+                time_row = [image.getpixel((x, 276)) for x in range(205, 275)]
+                data_row = [image.getpixel((x, 276)) for x in range(345, 425)]
+                self.assertIn(wifi_color, wifi_row)
+                self.assertNotIn(
+                    white if wifi_color == muted else muted, wifi_row)
+                self.assertIn(time_color, time_row)
+                self.assertIn(muted, data_row)
+                self.assertNotIn(white, data_row)
+
+    def test_ota_notice_is_message_and_two_big_buttons(self):
+        """Fysisk granskning 2026-08-14: ingen ring har — rubrik, vantande
+        version och tva stora knappar. UPDATE NOW (vit kant, y 210-298)
+        ovanfor LATER (sparkant, y 322-410); ringytan ar slackt."""
+        image = self.image("torget-ota-ring-notice.bmp")
+        white = (255, 255, 255)
+        muted = (146, 152, 162)
+        self.assertEqual(image.getpixel((5, 5)), (0, 0, 0))
+        # Dar ringens band lag ar det svart nu.
+        self.assertEqual(image.getpixel((141, 169)), (0, 0, 0))
+        # Rubrikraden bar vitt (UPDATE READY i attention-fonten).
+        header_row = [image.getpixel((x, 78)) for x in range(60, 420)]
+        self.assertIn(white, header_row)
+        # Versionsraden under rubriken ar muted.
+        version_row = [image.getpixel((x, 140)) for x in range(100, 380)]
+        self.assertIn(muted, version_row)
+        # UPDATE NOW-knappens inre bar vit text; LATER-knappens muted.
+        update_row = [image.getpixel((x, 254)) for x in range(120, 360)]
+        self.assertIn(white, update_row)
+        later_row = [image.getpixel((x, 366)) for x in range(120, 360)]
+        self.assertIn(muted, later_row)
 
     def test_provider_bars_are_segmented_with_locked_colors_and_marker(self):
         cases = (

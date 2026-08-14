@@ -1,4 +1,5 @@
 import contextlib
+import fcntl
 import io
 import json
 import logging
@@ -57,6 +58,23 @@ class _FakeUsageResponse:
 
 
 class ClaudeLimitHeaderTests(unittest.TestCase):
+    def setUp(self):
+        # Probelåset och straffrutefilen pekas om till en tempkatalog så
+        # testerna aldrig samsas om de riktiga filerna med en levande
+        # tokenserver på samma maskin — och aldrig läser in en äkta backoff.
+        self._lock_dir = tempfile.TemporaryDirectory(prefix="probe-lock-")
+        for attr, value in (
+                ("_PROBE_LOCK_PATH",
+                 Path(self._lock_dir.name) / "claude-probe.lock"),
+                ("_PROBE_STATE_PATH",
+                 Path(self._lock_dir.name) / "claude-probe-state.json"),
+                ("_probe_state_loaded", True),
+        ):
+            patcher = mock.patch.object(tokenserver, attr, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.addCleanup(self._lock_dir.cleanup)
+
     def test_usage_endpoint_maps_active_fable_scope_without_guessing(self):
         parsed = tokenserver._parse_usage_limits({
             "limits": [
@@ -77,6 +95,38 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
         self.assertEqual(parsed["modelLabel"], "FABLE · WEEK")
         self.assertIn("modelIdentity", parsed)
 
+    def test_usage_endpoint_maps_inactive_fable_pool_with_real_usage(self):
+        """Live-svaret 2026-08-14: Fable veckan på 11 % bar is_active=false
+        (flaggan pekar ut den BINDANDE gränsen, inte poolens existens) och
+        procenten försvann från glaset. Verklig förbrukning ska visas."""
+        parsed = tokenserver._parse_usage_limits({
+            "limits": [{
+                "kind": "weekly_scoped", "percent": 11,
+                "resets_at": "2026-08-21T06:00:00+00:00",
+                "is_active": False,
+                "scope": {"model": {"id": None, "display_name": "Fable"},
+                          "surface": None},
+            }],
+        }, now_ts=1_786_531_200)
+
+        self.assertEqual(parsed["modelPct"], 11.0)
+        self.assertEqual(parsed["modelLabel"], "FABLE · WEEK")
+
+    def test_usage_endpoint_leaves_untouched_inactive_pool_unnamed(self):
+        """0 % OCH inaktiv = en aldrig använd modellpool — den tar ingen
+        plats på glaset. Gränsen sitter vid verklig förbrukning."""
+        parsed = tokenserver._parse_usage_limits({
+            "limits": [{
+                "kind": "weekly_scoped", "percent": 0,
+                "resets_at": "2026-08-21T06:00:00+00:00",
+                "is_active": False,
+                "scope": {"model": {"display_name": "Fable"}},
+            }],
+        }, now_ts=1_786_531_200)
+
+        self.assertNotIn("modelPct", parsed)
+        self.assertNotIn("modelLabel", parsed)
+
     def test_usage_endpoint_does_not_label_unknown_scoped_pool(self):
         parsed = tokenserver._parse_usage_limits({
             "limits": [{
@@ -89,6 +139,35 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
 
         self.assertNotIn("modelPct", parsed)
         self.assertNotIn("modelLabel", parsed)
+
+    def test_ota_available_reads_newest_valid_torget_binary(self):
+        """Annonsen läser versionen ur torget.bin:s appbeskrivning: rätt
+        magi, rätt projekt, nyaste mtime vinner; skräp och främmande
+        projekt annonseras aldrig."""
+        def fake_bin(version, project=b"torget"):
+            desc = (b"\x32\x54\xcd\xab" + b"\x00" * 12 +
+                    version.ljust(32, "\x00").encode() +
+                    project.ljust(32, b"\x00"))
+            return b"\x00" * 32 + desc
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            old = root / "build" / "torget.bin"
+            new = root / "build-diag" / "torget.bin"
+            junk = root / "build-x" / "torget.bin"
+            for path in (old, new, junk):
+                path.parent.mkdir(parents=True)
+            old.write_bytes(fake_bin("v0.1.0-old"))
+            new.write_bytes(fake_bin("v0.2.0-new"))
+            junk.write_bytes(fake_bin("v9.9.9", project=b"vibbe"))
+            os.utime(old, (1_000_000, 1_000_000))
+            os.utime(new, (2_000_000, 2_000_000))
+            os.utime(junk, (3_000_000, 3_000_000))
+
+            with mock.patch.object(tokenserver, "_OTA_BUILD_ROOT", root), \
+                    mock.patch.object(tokenserver, "_ota_desc_cache", {}):
+                self.assertEqual(
+                    tokenserver._ota_available_version(), "v0.2.0-new")
 
     def test_desktop_process_token_wins_over_expired_keychain_token(self):
         process_command = (
@@ -193,6 +272,7 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
                 tokenserver, "_read_oauth_candidates",
                 return_value=[("stale-process-token", None),
                               ("fresh-keychain-token", None)]), \
+                mock.patch.object(tokenserver, "_dead_tokens", {}), \
                 mock.patch.object(tokenserver.urllib.request, "urlopen",
                                   side_effect=fake_urlopen):
             found = tokenserver._probe_limits()
@@ -202,6 +282,88 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
         self.assertEqual([auth for _, auth in calls],
                          ["Bearer stale-process-token",
                           "Bearer fresh-keychain-token"])
+
+    def test_probe_never_resends_a_dead_token(self):
+        """429-straffrutan 2026-08-14: nyckelringstokenen dog på natten och
+        Desktops frusna processtoken hamrades mot API:t varje cykel i timmar.
+        Ett värde som fått 401 ska aldrig lämna Macen igen."""
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(req.get_header("Authorization"))
+            raise urllib.error.HTTPError(
+                req.get_full_url(), 401, "Unauthorized", None, None)
+
+        with mock.patch.object(tokenserver, "_read_oauth_candidates",
+                               return_value=[("dead-token", None)]), \
+                mock.patch.object(tokenserver, "_dead_tokens", {}), \
+                mock.patch.object(tokenserver, "_probe_cooldown_until", 0.0), \
+                mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                  side_effect=fake_urlopen):
+            first = tokenserver._probe_limits()
+            second = tokenserver._probe_limits()
+            status = tokenserver._probe_status
+
+        self.assertIsNone(first)
+        self.assertIsNone(second)
+        # Exakt ETT nätanrop: avvisningen minns och andra cykeln rör inte
+        # nätet alls med det döda värdet.
+        self.assertEqual(calls, ["Bearer dead-token"])
+        self.assertEqual(status, "token_dead_awaiting_refresh")
+
+    def test_probe_yields_when_another_instance_holds_the_lock(self):
+        """Maskinvida enprobe-garantin: håller någon annan process låset gör
+        cykeln INGEN nätaktivitet alls — extra instanser (worktree, manuell
+        start) blir strukturellt ofarliga för 429-straffrutan."""
+        def explode(req, timeout=None):
+            raise AssertionError("upstream-anrop trots att låset var upptaget")
+
+        holder = open(tokenserver._PROBE_LOCK_PATH, "w")
+        fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            with mock.patch.object(tokenserver, "_read_oauth_candidates",
+                                   return_value=[("fresh-token", None)]), \
+                    mock.patch.object(tokenserver, "_dead_tokens", {}), \
+                    mock.patch.object(tokenserver, "_probe_cooldown_until",
+                                      0.0), \
+                    mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                      side_effect=explode):
+                found = tokenserver._probe_limits()
+        finally:
+            holder.close()
+
+        self.assertIsNone(found)
+        self.assertEqual(tokenserver._probe_status,
+                         "probe_held_by_other_instance")
+
+    def test_probe_retries_a_refreshed_token_value(self):
+        """Dödmarkeringen sitter på VÄRDET: när källan levererar en ny
+        sträng (Claude Code förnyade i nyckelringen) provas den direkt."""
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(req.get_header("Authorization"))
+            if req.get_header("Authorization") == "Bearer dead-token":
+                raise urllib.error.HTTPError(
+                    req.get_full_url(), 401, "Unauthorized", None, None)
+            return _FakeUsageResponse({"limits": [
+                {"kind": "weekly_all", "percent": 41,
+                 "resets_at": "2100-01-02T00:00:00+00:00"},
+            ]})
+
+        candidates = [[("dead-token", None)], [("refreshed-token", None)]]
+        with mock.patch.object(tokenserver, "_read_oauth_candidates",
+                               side_effect=lambda: candidates.pop(0)), \
+                mock.patch.object(tokenserver, "_dead_tokens", {}), \
+                mock.patch.object(tokenserver, "_probe_cooldown_until", 0.0), \
+                mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                  side_effect=fake_urlopen):
+            first = tokenserver._probe_limits()
+            second = tokenserver._probe_limits()
+
+        self.assertIsNone(first)
+        self.assertEqual(second["weekPct"], 41.0)
+        self.assertEqual(calls, ["Bearer dead-token", "Bearer refreshed-token"])
 
     def test_probe_ok_when_session_window_lapsed(self):
         """Speglar ett live-svar 2026-08-13: sessionsfönstret hade löpt ut
@@ -261,11 +423,71 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
 
     def test_probe_backoff_interval_grows_with_failures(self):
         with mock.patch.object(tokenserver, "_probe_failure_streak", 0):
-            self.assertEqual(tokenserver._probe_interval_s(), 120)
-        with mock.patch.object(tokenserver, "_probe_failure_streak", 1):
             self.assertEqual(tokenserver._probe_interval_s(), 240)
-        with mock.patch.object(tokenserver, "_probe_failure_streak", 5):
+        with mock.patch.object(tokenserver, "_probe_failure_streak", 1):
             self.assertEqual(tokenserver._probe_interval_s(), 480)
+        with mock.patch.object(tokenserver, "_probe_failure_streak", 5):
+            self.assertEqual(tokenserver._probe_interval_s(), 960)
+
+    def test_probe_respects_persisted_cooldown_across_restart(self):
+        """Straffrutan får inte glömmas av en omstart: en framtida cooldown
+        på disk ska stoppa cykeln före ALL nätaktivitet."""
+        def explode(req, timeout=None):
+            raise AssertionError("upstream-anrop trots persisterad backoff")
+
+        tokenserver._PROBE_STATE_PATH.write_text(
+            json.dumps({"cooldown_until": time.time() + 3600}),
+            encoding="utf-8")
+        with mock.patch.object(tokenserver, "_probe_state_loaded", False), \
+                mock.patch.object(tokenserver, "_probe_cooldown_until", 0.0), \
+                mock.patch.object(tokenserver, "_read_oauth_candidates",
+                                  return_value=[("fresh-token", None)]), \
+                mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                  side_effect=explode):
+            found = tokenserver._probe_limits()
+            status = tokenserver._probe_status
+
+        self.assertIsNone(found)
+        self.assertIn("persisted", status)
+
+    def test_probe_ignores_expired_persisted_cooldown(self):
+        tokenserver._PROBE_STATE_PATH.write_text(
+            json.dumps({"cooldown_until": time.time() - 60}),
+            encoding="utf-8")
+
+        def fake_urlopen(req, timeout=None):
+            return _FakeUsageResponse({"limits": [
+                {"kind": "weekly_all", "percent": 12,
+                 "resets_at": "2100-01-02T00:00:00+00:00"},
+            ]})
+
+        with mock.patch.object(tokenserver, "_probe_state_loaded", False), \
+                mock.patch.object(tokenserver, "_probe_cooldown_until", 0.0), \
+                mock.patch.object(tokenserver, "_dead_tokens", {}), \
+                mock.patch.object(tokenserver, "_read_oauth_candidates",
+                                  return_value=[("fresh-token", None)]), \
+                mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                  side_effect=fake_urlopen):
+            found = tokenserver._probe_limits()
+
+        self.assertEqual(found["weekPct"], 12.0)
+
+    def test_rate_limit_persists_cooldown_to_disk(self):
+        def fake_urlopen(req, timeout=None):
+            raise urllib.error.HTTPError(
+                req.get_full_url(), 429, "Too Many Requests", None, None)
+
+        with mock.patch.object(tokenserver, "_probe_cooldown_until", 0.0), \
+                mock.patch.object(tokenserver, "_dead_tokens", {}), \
+                mock.patch.object(tokenserver, "_read_oauth_candidates",
+                                  return_value=[("fresh-token", None)]), \
+                mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                  side_effect=fake_urlopen):
+            tokenserver._probe_limits()
+
+        saved = json.loads(
+            tokenserver._PROBE_STATE_PATH.read_text(encoding="utf-8"))
+        self.assertGreater(saved["cooldown_until"], time.time() + 500)
 
     def test_refresh_updates_failure_streak(self):
         with mock.patch.object(tokenserver, "_probe_failure_streak", 0), \

@@ -29,6 +29,8 @@
 #include "agent_monitor_policy.h"
 #include "agent_status_parse.h"
 #include "max_tracker_parse.h"
+#include "boot_screen.h"
+#include "ota_ui.h"
 #include "tokens_parse.h"
 #include "torget.h"
 #include "usage_screen.h"
@@ -86,8 +88,10 @@ static int max_tracker_fixture_idx;
  * låset är en no-op och nätväntan meningslös (fixtures behöver inget nät). */
 void torget_ui_lock(void)   {}
 void torget_ui_unlock(void) {}
+bool torget_ui_try_lock(uint32_t timeout_ms) { (void)timeout_ms; return true; }
 void torget_net_wait(void)  {}
 void torget_keep_awake(void) {} /* ljusrampen finns bara på panelen */
+void torget_data_alive(void) {}  /* bootskärmen drivs manuellt i QA:n */
 
 int64_t torget_now_us(void) { return (int64_t)lv_tick_get() * 1000; }
 
@@ -102,12 +106,12 @@ static void capture_failed(const char *tag, const char *detail) {
  * pixelverifieringens facit. LVGL:s XRGB8888 är little-endian BGRX i minnet,
  * vilket är exakt BMP:s radformat, så raderna kopieras rått. Negativ höjd =
  * uppifrån och ner. */
-static void dump_frame(const char *tag) {
+static void dump_obj_frame(lv_obj_t *root, const char *tag) {
   /* QA-dumpar får inte bero på var SDL:s nästa refresh råkar ligga. Tvinga
    * layout + redraw före snapshot så ett helt tillstånd fångas atomiskt. */
-  lv_obj_update_layout(lv_screen_active());
-  lv_obj_invalidate(lv_screen_active());
-  lv_draw_buf_t *buf = lv_snapshot_take(lv_screen_active(), LV_COLOR_FORMAT_XRGB8888);
+  lv_obj_update_layout(root);
+  lv_obj_invalidate(root);
+  lv_draw_buf_t *buf = lv_snapshot_take(root, LV_COLOR_FORMAT_XRGB8888);
   if (!buf) { capture_failed(tag, "kunde inte skapa LVGL-snapshot"); return; }
 
   const char *capture_dir = getenv("TORGET_CAPTURE_DIR");
@@ -163,6 +167,17 @@ static void dump_frame(const char *tag) {
   if (failed) capture_failed(tag, "kunde inte skriva eller stänga BMP-filen");
   else printf("snapshot: %s\n", path);
   lv_draw_buf_destroy(buf);
+}
+
+static void dump_frame(const char *tag) {
+  dump_obj_frame(lv_screen_active(), tag);
+}
+
+/* OTA-ringen bor på lv_layer_top() — utanför skärmträdet som dump_frame
+ * fotograferar. Overlayn täcker hela glaset, så en snapshot av topplagret
+ * ÄR overlayramen. */
+static void dump_overlay_frame(const char *tag) {
+  dump_obj_frame(lv_layer_top(), tag);
 }
 
 #ifdef TORGET_HAVE_SOLELKOLLEN
@@ -722,6 +737,37 @@ static int run_vibepulse_static_qa(void) {
   dump_frame("vibepulse-tracker-stale");
   usage_screen_set_stale(false);
 
+  /* Bootskärmen: tre stadier innan den river sig själv. Skapas HÄR (inte
+   * vid simstart) så övriga QA-dumpar slipper lagret ovanpå sig. */
+  torget_boot_screen_create();
+  dump_overlay_frame("boot-cold");
+  torget_boot_screen_stage(TG_BOOT_WIFI_UP);
+  dump_overlay_frame("boot-wifi");
+  torget_boot_screen_stage(TG_BOOT_TIME_OK);
+  dump_overlay_frame("boot-time");
+  torget_boot_screen_stage(TG_BOOT_DATA_OK); /* river lagret */
+
+  /* OTA-ringen (riktning A, 2026-08-14): fyra ärliga lägen — lucktid,
+   * mottagen andel, verifiering och omstart. Versionsraden byter från
+   * körande till inkommande version exakt som tjänsten gör det: körande
+   * vid öppet fönster, inkommande så fort metadatan är läst. Overlayn
+   * göms igen sist så en framtida dump efter denna ser apparna. */
+  torget_ota_ui_set_version("v0.2.1-16-g9f9af53");
+  torget_ota_ui_set(TG_OTA_UI_OPEN, 0, 583);
+  dump_overlay_frame("ota-ring-open");
+  torget_ota_ui_set_version("v0.2.1-24-g4451646");
+  torget_ota_ui_set(TG_OTA_UI_RECEIVING, 62, 0);
+  dump_overlay_frame("ota-ring-receiving");
+  torget_ota_ui_set(TG_OTA_UI_VERIFYING, 100, 0);
+  dump_overlay_frame("ota-ring-verifying");
+  torget_ota_ui_set(TG_OTA_UI_RESTARTING, 100, 0);
+  dump_overlay_frame("ota-ring-restarting");
+  /* UPDATE READY-takeovern: annonserad version pa versionsraden. */
+  torget_ota_ui_set_version("v0.2.1-31-gnotice");
+  torget_ota_ui_set(TG_OTA_UI_NOTICE, 0, 0);
+  dump_overlay_frame("ota-ring-notice");
+  torget_ota_ui_set(TG_OTA_UI_HIDDEN, 0, 0);
+
   return capture_failures == 0 ? 0 : 1;
 }
 
@@ -776,6 +822,9 @@ int main(int argc, char **argv) {
   lv_sdl_mouse_create();
 
   torget_ui_create(); /* bygger apparna via registret, går in i app 0 */
+  /* OTA-ringen på topplagret, dold tills QA-dumparna väcker den — samma
+   * ordning som targetets app_main (overlay EFTER det delade UI:t). */
+  torget_ota_ui_create();
 
 #ifdef TORGET_HAVE_SOLELKOLLEN
   /* Sverige-vyn (P23): en hämtning vid start, genom samma parser som

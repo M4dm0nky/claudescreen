@@ -24,6 +24,9 @@
  * en apptask sker under det här låset. */
 void torget_ui_lock(void);
 void torget_ui_unlock(void);
+/* Tidsbegränsad variant för tasks som hellre tappar en bilduppdatering än
+ * blockerar: true = låset taget (para med torget_ui_unlock), false = ge upp. */
+bool torget_ui_try_lock(uint32_t timeout_ms);
 
 /* Monoton mikrosekundsklocka — tickerns och stale-trösklarnas tidsbas.
  * Serverklockor används aldrig som tidsbas (Solelkollen-regeln). */
@@ -33,6 +36,16 @@ int64_t torget_now_us(void);
  * tid). Appens hämttask kallar detta först av allt. I simulatorn: no-op —
  * fixtures behöver inget nät. */
 void torget_net_wait(void);
+
+/* OTA-annonsen fran kvotpollen: appen ager natet (P25) och lamnar bara
+ * vidare strangen; plattformen jamfor mot korande version och driver
+ * UPDATE READY-notisen. NULL = ingen annons i senaste svaret. */
+void torget_update_available(const char *version);
+
+/* Forsta LYCKADE hamtningen: apparna kvitterar att riktig data natt
+ * glaset, bootskarment kliver av. Billig att kalla ofta — plattformen
+ * bryr sig bara om forsta gangen. */
+void torget_data_alive(void);
 
 /* Appens sätt att hålla skärmen vaken: "något händer hos mig". Solelkollen
  * kallar den när solen producerar, Tokenmätaren när tokens brinner. Utan

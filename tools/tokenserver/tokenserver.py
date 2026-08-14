@@ -32,6 +32,7 @@ Autostart: se README.md härintill (launchd-plist medföljer).
 """
 
 import argparse
+import fcntl
 import hashlib
 import json
 import logging
@@ -64,7 +65,9 @@ else:  # direktkörning: python3 tools/tokenserver/tokenserver.py
     from usage_history import Forecast, UsageHistory
 
 RECOMPUTE_EVERY_S = 30
-LIMITS_EVERY_S = 120  # rate-limit-proben: snäll mot API:t, färsk nog för hyllan
+LIMITS_EVERY_S = 240  # rate-limit-proben: 15 anrop/h — kontots bucket delas
+                      # med Claude Code självt, och kvoten rör sig långsamt;
+                      # panelens 30 s-pollar får ändå cachat svar direkt
 
 # Diagnostiken går via logging till stderr med tidsstämplar (basicConfig i
 # main; launchd samlar bägge strömmarna i loggfilen, se plisten). Regeln är
@@ -412,6 +415,13 @@ _probe_unknown_buckets = []
 _probe_cooldown_until = 0.0
 _probe_failure_streak = 0
 _probe_status_logged = None  # senast loggade status — övergångar loggas, tillstånd inte
+# Döda tokens (värde → orsak): en kandidat som fått 401/403 skickas ALDRIG
+# igen. Det var mönstret bakom 429-straffrutan: nyckelringstokenen dog på
+# natten och Desktops frusna processtoken hamrade API:t varje probecykel i
+# timmar (loggen 2026-08-14 03:51–10:45 visar sex straffrundor i rad). En
+# förnyad token har ett NYTT värde och provas därmed automatiskt igen;
+# ordboken kapas vid 8 poster så den aldrig kan växa fritt.
+_dead_tokens = {}
 
 
 _CLAUDE_DESKTOP_PROCESS = re.compile(
@@ -613,7 +623,15 @@ def _parse_usage_limits(body, now_ts):
             prefix = "session"
         elif kind == "weekly_all":
             prefix = "week"
-        elif kind == "weekly_scoped" and limit.get("is_active") is True:
+        elif kind == "weekly_scoped" and (limit.get("is_active") is True or
+                                          (isinstance(pct, (int, float)) and
+                                           pct > 0)):
+            # is_active betyder "just nu BINDANDE gräns" (5-timmarsfönstret
+            # bär oftast den flaggan), INTE "poolen finns". Verifierat mot
+            # live-svaret 2026-08-14: Fable veckan låg på 11 % med
+            # is_active=false och försvann från glaset — verklig förbrukning
+            # ska alltid visas. Bara en orörd pool (0 % och inaktiv) lämnas
+            # onämnd, så en aldrig använd modell inte tar plats.
             scope = limit.get("scope")
             model = scope.get("model") if isinstance(scope, dict) else None
             display = (model.get("display_name")
@@ -649,14 +667,138 @@ def _usage_request(token):
     )
 
 
+# Maskinvid probelås: OAVSETT hur många tokenservrar som råkar köra (launchd,
+# en worktree, en manuell start på annan port) får högst EN prata med
+# api.anthropic.com. Båda 429-incidenterna 2026-08-13/14 var i grunden
+# överflödig upstream-trafik — den här grinden gör varianten "en instans
+# till" strukturellt ofarlig i stället för att lita på att ingen startar en.
+_PROBE_LOCK_PATH = (Path.home() / "Library" / "Application Support" /
+                    "VibePulse" / "claude-probe.lock")
+
+# Straffrutan ÖVERLEVER omstarter: cooldownen var ren minnesstat, så varje
+# serveromstart glömde pågående backoff och petade direkt på den heta
+# bucketen igen (sett två gånger 2026-08-14, båda självförvållade). Filen
+# bor bredvid probelåset och läses lat vid första probecykeln.
+_PROBE_STATE_PATH = (Path.home() / "Library" / "Application Support" /
+                     "VibePulse" / "claude-probe-state.json")
+_probe_state_loaded = False
+
+
+def _load_probe_state():
+    global _probe_state_loaded, _probe_cooldown_until, _probe_status
+    if _probe_state_loaded:
+        return
+    _probe_state_loaded = True
+    try:
+        data = json.loads(_PROBE_STATE_PATH.read_text(encoding="utf-8"))
+        until = float(data.get("cooldown_until", 0.0))
+    except (OSError, ValueError, TypeError):
+        return
+    if math.isfinite(until) and until > time.time():
+        _probe_cooldown_until = until
+        _probe_status = (f"usage_http_429 + backoff_until_"
+                         f"{datetime.fromtimestamp(until):%H:%M} (persisted)")
+
+
+def _save_probe_state():
+    try:
+        _PROBE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _PROBE_STATE_PATH.write_text(
+            json.dumps({"cooldown_until": _probe_cooldown_until}),
+            encoding="utf-8")
+    except OSError:
+        pass  # utan disk är beteendet som förr: bättre än att krascha
+
+
+# ---------------------------------------------------------------------------
+# OTA-annonsen: senaste bygget på Macen, läst ur torget.bin:s inbäddade
+# appbeskrivning — samma sanning som enheten själv rapporterar om sin
+# körande version. Enheten jämför och visar UPDATE READY-notisen vid
+# skillnad (beslut 2026-08-14). Bara version och byggtid annonseras,
+# aldrig sökvägar eller innehåll.
+
+_OTA_BUILD_ROOT = Path(__file__).resolve().parents[2]
+_ota_desc_cache = {}  # path -> (mtime, version|None)
+
+
+def _read_app_desc_version(path):
+    """esp_app_desc_t bor på offset 32 (imageheader 24 B + segmentheader
+    8 B): magic_word, secure_version, reserv[2], version[32], project[32].
+    Fel magi eller fel projekt ⇒ None — hellre tyst än fel avbild."""
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(32)
+            desc = handle.read(80)
+    except OSError:
+        return None
+    if len(desc) < 80:
+        return None
+    if desc[:4] != b"\x32\x54\xcd\xab":  # ESP_APP_DESC_MAGIC_WORD, LE
+        return None
+    project = desc[48:80].split(b"\x00")[0].decode("utf-8", "replace")
+    if project != "torget":
+        return None
+    version = desc[16:48].split(b"\x00")[0].decode("utf-8", "replace")
+    return version or None
+
+
+def _ota_available_version():
+    newest = None  # (mtime, version)
+    for path in _OTA_BUILD_ROOT.glob("build*/torget.bin"):
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        cached = _ota_desc_cache.get(str(path))
+        if cached and cached[0] == mtime:
+            version = cached[1]
+        else:
+            version = _read_app_desc_version(path)
+            _ota_desc_cache[str(path)] = (mtime, version)
+        if version and (newest is None or mtime > newest[0]):
+            newest = (mtime, version)
+    return newest[1] if newest else None
+
+
+def _hold_probe_lock():
+    """Icke-blockerande flock; returnerar filobjektet (= låset) eller None."""
+    try:
+        _PROBE_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(_PROBE_LOCK_PATH, "w")
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return handle
+    except OSError:
+        try:
+            handle.close()
+        except UnboundLocalError:
+            pass
+        return None
+
+
 def _probe_limits():
     """Ett minimalt API-anrop; returnerar {sessionPct, sessionResetMin,
     weekPct, weekResetMin} eller None om något saknas på vägen."""
     global _probe_status, _probe_headers, _probe_unknown_buckets, \
         _probe_cooldown_until
+    _load_probe_state()
     if time.time() < _probe_cooldown_until:
         # I nedkylning efter 429 — statusen står kvar på backoff-strängen.
         return None
+    lock = _hold_probe_lock()
+    if lock is None:
+        # En annan instans äger upstream-trafiken just nu. Ingen nätaktivitet
+        # härifrån — den andra instansens svar fyller ändå enhetens behov.
+        _probe_status = "probe_held_by_other_instance"
+        return None
+    try:
+        return _probe_limits_locked()
+    finally:
+        lock.close()  # stänger filen = släpper flocken
+
+
+def _probe_limits_locked():
+    global _probe_status, _probe_headers, _probe_unknown_buckets, \
+        _probe_cooldown_until
     candidates = _read_oauth_candidates()
     if not candidates:
         _probe_status = "no_claude_oauth_token"
@@ -664,6 +806,11 @@ def _probe_limits():
 
     token = None
     for candidate, expires_at in candidates:
+        if candidate in _dead_tokens:
+            # Värdet är redan avvisat av API:t — vänta på ett nytt i stället
+            # för att elda på 429-straffrutan med ett känt dött token.
+            _probe_status = "token_dead_awaiting_refresh"
+            continue
         if expires_at and expires_at / 1000 < time.time():
             # Tokenen har gått ut; Claude Code förnyar den i nyckelringen
             # nästa gång den pratar med API:t — vänta och läs om.
@@ -694,10 +841,16 @@ def _probe_limits():
                 _probe_status = (
                     f"usage_http_429 + backoff_until_"
                     f"{datetime.fromtimestamp(_probe_cooldown_until):%H:%M}")
+                _save_probe_state()  # en omstart får inte glömma straffet
                 return None
             if error.code in (401, 403):
                 # Avvisad token säger inget om nästa källa — prova den innan
-                # vi ger upp.
+                # vi ger upp. Men skicka ALDRIG samma värde igen: det är dött
+                # tills källan levererar ett nytt (ett felmarkerat värde
+                # självläker på samma sätt, nästa förnyelse byter strängen).
+                _dead_tokens[candidate] = f"http_{error.code}"
+                while len(_dead_tokens) > 8:
+                    _dead_tokens.pop(next(iter(_dead_tokens)))
                 continue
             token = candidate
             break
@@ -1573,25 +1726,28 @@ def get_snapshot(projects_dir: Path, history=None, now_ts=None,
             _mark_max_tracker_dirty(max_tracker_store)
 
     claude_session_reset = session_reset_at
-    claude_week_reset = (
-        claude_week["reset_at"] if claude_week["live"] else None)
-    claude_model_reset = (
-        claude_model["reset_at"] if claude_model["live"] else None)
-    codex_week_reset = (
-        codex_week["reset_at"] if codex_week["live"] else None)
+    # Reset-tiderna tas från posten oavsett live/cache: en cachad post bär
+    # sin cykels riktiga reset (quota_cache räknar ut poster vid passerad
+    # reset), och deltan "idag" ska ÖVERLEVA en 429-mörkläggning — panelen
+    # får bli ärligt äldre (stale-flaggan), aldrig tom (kravet 2026-08-14:
+    # skottsäkert för alla som kör detta). I historiken SPELAS däremot bara
+    # live-observationer in — en cachad procent är ingen ny mätning.
+    claude_week_reset = claude_week["reset_at"]
+    claude_model_reset = claude_model["reset_at"]
+    codex_week_reset = codex_week["reset_at"]
     quota_samples = [
         (provider, window, pct, reset_at)
-        for provider, window, pct, reset_at in (
+        for provider, window, pct, reset_at, is_live in (
             ("claude", "session", result["claudeSessionPct"],
-             claude_session_reset),
+             claude_session_reset, True),
             ("claude", "week", result["claudeWeekPct"],
-             claude_week_reset),
+             claude_week_reset, claude_week["live"]),
             ("claude", "model_week", result["claudeModelWeekPct"],
-             claude_model_reset),
+             claude_model_reset, claude_model["live"]),
             ("codex", "week", result["codexWeekPct"],
-             codex_week_reset),
+             codex_week_reset, codex_week["live"]),
         )
-        if pct is not None and reset_at is not None
+        if is_live and pct is not None and reset_at is not None
     ]
     usage_history.record_many(quota_samples, at=current_ts)
 
@@ -1625,6 +1781,9 @@ def get_snapshot(projects_dir: Path, history=None, now_ts=None,
                                now=current_ts))
     _add_forecast(result, "claude", claude_forecast)
     _add_forecast(result, "codex", codex_forecast)
+    # OTA-annonsen rider på kvotpollen: noll ny infrastruktur, och enheten
+    # avgör själv (mot sin körande version) om notisen ska visas.
+    result["otaAvailableVersion"] = _ota_available_version()
     result["v"] = 2
     return result
 

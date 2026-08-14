@@ -41,6 +41,33 @@ def observation_timestamp(value: Any) -> Optional[int]:
         return None
 
 
+def codex_rollout_session_id(obj: Any) -> Optional[str]:
+    """Accept a rollout ``session_meta`` line and return its conversation id.
+
+    Every rollout opens with a ``session_meta`` whose ``payload.session_id``
+    names the conversation. A *resumed*, *forked* or subagent-spawned rollout
+    keeps the ORIGINAL conversation's ``session_id`` while taking a fresh file
+    ``id`` (and, for a fork, a ``forked_from_id``), and it replays the whole
+    parent history -- every ``token_count`` re-timestamped to the new file's
+    creation moment. ``session_id`` is therefore the one field that ties every
+    replay back to the single conversation whose usage was actually billed: a
+    reader that sums ``token_count`` across files must group by it, or it counts
+    one conversation once per resume.
+
+    Verified against ``codex-rs`` (``SessionMeta``; resume/fork replay, see
+    openai/codex PR #18023 "replay token usage after resume and fork") and
+    against real ``~/.codex`` rollouts, where one conversation's ~5 000-event
+    history was replayed across 113 files under a single ``session_id``.
+    """
+    if not isinstance(obj, dict) or obj.get("type") != "session_meta":
+        return None
+    payload = obj.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    session_id = payload.get("session_id")
+    return session_id if isinstance(session_id, str) and session_id else None
+
+
 def codex_rollout_turn_model(obj: Any) -> Optional[str]:
     """Accept a rollout ``turn_context`` line and return the model it names.
 

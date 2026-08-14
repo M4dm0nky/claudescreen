@@ -14,6 +14,17 @@ cmake_minimum_required(VERSION 3.16)
 # appar — registry.c grindas på TORGET_HAVE_BUDDY.
 set(EXTRA_COMPONENT_DIRS third_party)
 
+# Vibbe kräver UTTRYCKLIG avsikt sedan frysjakten 2026-08-14: dess ljud- och
+# USB-stack äter av samma interna DMA-minne som panelflushen lever på, och
+# med OTA-grundens ~12 kB extra bootlast föll största sammanhängande
+# DMA-block under flushens 11 520 B — varje flush dog i NO_MEM och glaset
+# frös på sista bilden medan resten av systemet levde vidare (obducerat via
+# seriekonsolen: co5300 "send color data failed" i evig följd). Dessutom
+# gömde TinyUSB konsolen exakt när den behövdes. Vibbe siktar på egen
+# hårdvara; på VibePulse-panelen byggs den bara in med -DTORGET_WITH_BUDDY=ON
+# och en medvetet omprövad minnesbudget.
+option(TORGET_WITH_BUDDY "Bygg in Vibbe/Buddy (kräver ~/Buddy och medveten minnesbudget)" OFF)
+
 # Companion-appar bor i sina EGNA repon och är inte del av det här bygget om
 # de inte finns utcheckade. En färsk klon utifrån bygger bara VibePulse —
 # ingen ska få Solelkollen eller Vibbe på skärmen utan att ha bett om det.
@@ -30,17 +41,26 @@ set(TORGET_BUDDY_DIR "$ENV{HOME}/Buddy/components"
 # EXTRA_COMPONENT_DIRS nedan. Utan detta sätts TORGET_HAVE_* men komponentens
 # include-katalog dras aldrig in, och registry.c faller på app_solelkollen.h.
 set(ENV{TORGET_SOLELKOLLEN_DIR} "${TORGET_SOLELKOLLEN_DIR}")
-set(ENV{TORGET_BUDDY_DIR} "${TORGET_BUDDY_DIR}")
+# Tom spegel när Vibbe är bortvald: main/ grindar på $ENV{}-sökvägen, och en
+# tom sträng gör båda expansionspassen eniga om att Buddy inte finns — även
+# om skalet råkar ha TORGET_BUDDY_DIR exporterad sedan tidigare.
+if(TORGET_WITH_BUDDY)
+  set(ENV{TORGET_BUDDY_DIR} "${TORGET_BUDDY_DIR}")
+else()
+  set(ENV{TORGET_BUDDY_DIR} "")
+endif()
 
 if(EXISTS "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
   list(APPEND EXTRA_COMPONENT_DIRS "${TORGET_SOLELKOLLEN_DIR}")
 else()
   message(STATUS "Torget: Solelkollen saknas — bygger utan den (companion-app)")
 endif()
-if(EXISTS "${TORGET_BUDDY_DIR}/app_buddy")
+if(TORGET_WITH_BUDDY AND EXISTS "${TORGET_BUDDY_DIR}/app_buddy")
   list(APPEND EXTRA_COMPONENT_DIRS "${TORGET_BUDDY_DIR}")
+elseif(TORGET_WITH_BUDDY)
+  message(STATUS "Torget: TORGET_WITH_BUDDY=ON men ~/Buddy saknas — bygger utan Vibbe/Buddy")
 else()
-  message(STATUS "Torget: ~/Buddy saknas — bygger utan Vibbe/Buddy (companion-app)")
+  message(STATUS "Torget: Vibbe/Buddy är bortvald (TORGET_WITH_BUDDY=OFF, frysläxan 2026-08-14)")
 endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(torget)

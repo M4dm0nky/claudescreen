@@ -205,14 +205,20 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
     lv_obj_add_flag(ui.pctsign, LV_OBJ_FLAG_HIDDEN);
   } else {
     /* RECEIVING fyller bågen medurs med mottagen andel; VERIFYING/
-     * RESTARTING anropas med 100 och sluter cirkeln. */
+     * RESTARTING anropas med 100 och sluter cirkeln. Vid 100 pensioneras
+     * %-tecknet: tresiffrigt + hängande suffix trängde ut ur ringen på
+     * glaset (fysisk granskning 2026-08-14), och den slutna cirkeln plus
+     * lägesordet säger redan "helt". */
     lv_arc_set_mode(ui.arc, LV_ARC_MODE_NORMAL);
     lv_arc_set_value(ui.arc, (int32_t)percent);
     char digits[8];
     snprintf(digits, sizeof digits, "%u", percent);
     lv_obj_set_style_text_font(ui.center, &plex_num_118, 0);
     lv_label_set_text(ui.center, digits);
-    lv_obj_remove_flag(ui.pctsign, LV_OBJ_FLAG_HIDDEN);
+    if (percent >= 100)
+      lv_obj_add_flag(ui.pctsign, LV_OBJ_FLAG_HIDDEN);
+    else
+      lv_obj_remove_flag(ui.pctsign, LV_OBJ_FLAG_HIDDEN);
   }
 
   /* Centrera mot bågens mitt när innehållet bytt bredd; %-tecknet hänger

@@ -463,11 +463,19 @@ static void create_burn_rate_page(void) {
 #define VALUE_RULE_X (VP_SAFE_X + VP_CONTENT_W / 2 - 1)
 #define VALUE_ROW_MONEY_Y 252
 #define VALUE_ROW_PITCH 84
-/* money_35's baseline sits 28 px into its box, ui_16's 14 px. */
-#define VALUE_ROW_NAME_DY 14
+/* Optical centring, measured off the raster rather than derived from the
+ * boxes: the 32 px mark's INK sits high inside its box, so a name aligned to
+ * the box centre lands 6 px low and reads as dropped -- next to a 35 px money
+ * figure on the same row, which IS centred, the mismatch is obvious. */
+#define VALUE_ROW_NAME_DY 8
 /* Icon x=0/name x=42 mirrors the quota header's 22/64 pair exactly. */
 #define VALUE_ROW_NAME_X 42
+/* The two marks are different artwork and their ink sits at different
+ * heights inside the same 32 px box -- Codex's 2 px lower than Claude's. The
+ * offsets differ so the RENDERED marks line up with their rows, which is
+ * what the eye judges; measured off the rasters, not derived. */
 #define VALUE_ROW_ICON_DY 2
+#define VALUE_ROW_CODEX_ICON_DY 0
 #define VALUE_ROW_BAR_DY 40
 #define VALUE_RULE_Y 284
 #define VALUE_RULE_H 124
@@ -489,7 +497,7 @@ static void create_value_row(lv_obj_t *tile, value_row *row,
     create_claude_icon(row->root, 0, VALUE_ROW_ICON_DY);
     row->icon = lv_obj_get_child(row->root, -1);
   } else {
-    row->icon = create_codex_icon(row->root, 0, VALUE_ROW_ICON_DY);
+    row->icon = create_codex_icon(row->root, 0, VALUE_ROW_CODEX_ICON_DY);
   }
 
   /* The provider accent on the name is the only thing separating the two

@@ -187,6 +187,12 @@ assert value.count("create_claude_icon(") == 2 and \
     "both layouts carry the provider mark, not just the two-row one"
 assert "#define VALUE_ROW_NAME_X 42" in source, \
     "name offset must mirror the quota header's 22/64 pair"
+# The two marks are different artwork whose ink sits at different heights in
+# the same box, so their y offsets differ ON PURPOSE. Collapsing them to one
+# constant looks like a tidy-up and silently re-breaks the alignment.
+assert "#define VALUE_ROW_ICON_DY 2" in source and \
+       "#define VALUE_ROW_CODEX_ICON_DY 0" in source, \
+    "each mark carries its own optical offset"
 assert "lv_obj_move_foreground(page->rule);" in value, \
     "the rule must draw over the fills it crosses"
 assert "#define VALUE_RULE_X (VP_SAFE_X + VP_CONTENT_W / 2 - 1)" in source, \

@@ -137,22 +137,33 @@ class PriceUsageTest(unittest.TestCase):
 
 class PlanCostTest(unittest.TestCase):
 
+    def setUp(self):
+        self.table = value_meter.default_table()
+
     def test_override_wins_and_is_marked_configured(self):
         self.assertEqual(
-            value_meter.plan_cost("max5x", 137.5), (137.5, "configured"))
+            self.table.plan_cost("claude", "max5x", 137.5),
+            (137.5, "configured"))
 
     def test_default_is_marked_as_such(self):
-        cost, source = value_meter.plan_cost("pro")
+        cost, source = self.table.plan_cost("claude", "pro")
         self.assertEqual(source, "default")
-        self.assertEqual(cost, value_meter.DEFAULT_PLAN_COST_USD["pro"])
+        self.assertEqual(cost, 20.0)
+
+    def test_codex_plans_resolve_from_their_own_table(self):
+        cost, source = self.table.plan_cost("codex", "pro")
+        self.assertEqual(source, "default")
+        self.assertEqual(cost, 200.0)
 
     def test_unknown_plan_has_no_cost(self):
-        self.assertEqual(value_meter.plan_cost(None), (None, "unknown"))
-        self.assertEqual(value_meter.plan_cost("team"), (None, "unknown"))
+        self.assertEqual(self.table.plan_cost("claude", None),
+                         (None, "unknown"))
+        self.assertEqual(self.table.plan_cost("claude", "team"),
+                         (None, "unknown"))
 
     def test_nonsense_overrides_fall_through_to_the_plan_default(self):
         for bad in (0, -10, float("nan"), float("inf"), True, "100", None):
-            cost, source = value_meter.plan_cost("pro", bad)
+            cost, source = self.table.plan_cost("claude", "pro", bad)
             self.assertEqual(source, "default", bad)
             self.assertEqual(cost, 20.0, bad)
 
@@ -162,7 +173,7 @@ class BuildPayloadTest(unittest.TestCase):
     def test_ok_state_reports_the_multiple(self):
         payload = value_meter.build_payload(
             312.0, unpriced_tokens=0, priced_tokens=5_000_000,
-            plan="max5x", cost_override=100.0)
+            claude_plan="max5x", cost_override=100.0)
         self.assertEqual(payload["state"], "ok")
         self.assertEqual(payload["multiple"], 3.12)
         self.assertEqual(payload["value_usd"], 312.0)
@@ -171,7 +182,7 @@ class BuildPayloadTest(unittest.TestCase):
 
     def test_missing_plan_cost_dashes_the_multiple_but_keeps_the_dollars(self):
         payload = value_meter.build_payload(
-            312.0, unpriced_tokens=0, priced_tokens=5_000_000, plan=None)
+            312.0, unpriced_tokens=0, priced_tokens=5_000_000, claude_plan=None)
         self.assertEqual(payload["state"], "no_plan_cost")
         self.assertIsNone(payload["multiple"])
         self.assertEqual(payload["value_usd"], 312.0)
@@ -179,7 +190,7 @@ class BuildPayloadTest(unittest.TestCase):
     def test_too_many_unpriced_tokens_suppresses_the_multiple(self):
         payload = value_meter.build_payload(
             312.0, unpriced_tokens=500_000, priced_tokens=500_000,
-            plan="max5x", cost_override=100.0)
+            claude_plan="max5x", cost_override=100.0)
         self.assertEqual(payload["state"], "partial")
         self.assertIsNone(payload["multiple"])
         self.assertEqual(payload["unpriced_token_share"], 0.5)
@@ -187,29 +198,159 @@ class BuildPayloadTest(unittest.TestCase):
     def test_a_trace_of_unpriced_tokens_is_tolerated(self):
         payload = value_meter.build_payload(
             312.0, unpriced_tokens=1_000, priced_tokens=1_000_000,
-            plan="max5x", cost_override=100.0)
+            claude_plan="max5x", cost_override=100.0)
         self.assertEqual(payload["state"], "ok")
         self.assertEqual(payload["multiple"], 3.12)
 
     def test_partial_outranks_missing_plan_cost(self):
         """Both wrong: report the one that makes the number meaningless."""
         payload = value_meter.build_payload(
-            312.0, unpriced_tokens=500_000, priced_tokens=500_000, plan=None)
+            312.0, unpriced_tokens=500_000, priced_tokens=500_000, claude_plan=None)
         self.assertEqual(payload["state"], "partial")
 
     def test_zero_usage_is_ok_and_not_a_division_error(self):
         payload = value_meter.build_payload(
             0.0, unpriced_tokens=0, priced_tokens=0,
-            plan="pro", cost_override=20.0)
+            claude_plan="pro", cost_override=20.0)
         self.assertEqual(payload["state"], "ok")
         self.assertEqual(payload["multiple"], 0.0)
         self.assertEqual(payload["unpriced_token_share"], 0.0)
 
     def test_payload_states_its_basis_and_price_date(self):
         payload = value_meter.build_payload(
-            1.0, 0, 1000, plan="pro", cost_override=20.0)
+            1.0, 0, 1000, claude_plan="pro", cost_override=20.0)
         self.assertEqual(payload["basis"], "list API prices")
-        self.assertEqual(payload["prices_as_of"], value_meter.PRICES_AS_OF)
+        self.assertIsNotNone(payload["prices_as_of"])
+        self.assertIn("prices_verified", payload)
+
+
+
+# A Codex turn. Note input_tokens INCLUDES cached_input_tokens -- the opposite
+# of Anthropic -- verified against codex-rs, whose own billing-shaped total is
+# non_cached_input() + output_tokens where
+# non_cached_input = input_tokens - cached_input_tokens.
+CODEX_USAGE = {
+    "input_tokens": 100_000,
+    "cached_input_tokens": 80_000,
+    "cache_write_input_tokens": 5_000,
+    "output_tokens": 10_000,
+    "reasoning_output_tokens": 7_000,   # a SUBSET of output_tokens
+    "total_tokens": 110_000,            # context size, not a billing figure
+}
+
+# GPT-5.6 Sol lists at $5.00 input / $30.00 output, $0.50 cached input.
+#   fresh input  (100000 - 80000) x  5.00 =   100 000
+#   cached input        80000     x  0.50 =    40 000
+#   cache write          5000 x 5.00x1.25 =    31 250
+#   output              10000     x 30.00 =   300 000
+#                                           ----------
+#                                             471 250  per million
+#                                          => $0.47125
+CODEX_USAGE_USD = 471_250.0 / 1_000_000.0
+
+
+class CodexPricingTest(unittest.TestCase):
+    """Codex counts input differently; treating it like Anthropic overcharges."""
+
+    def test_prices_a_codex_turn(self):
+        usd, unpriced = value_meter.price_usage(
+            "gpt-5.6-sol", CODEX_USAGE, "2026-08-14")
+        self.assertEqual(unpriced, 0)
+        self.assertAlmostEqual(usd, CODEX_USAGE_USD, places=10)
+
+    def test_cached_tokens_are_subtracted_from_input_not_added(self):
+        """The accounting trap, asserted directly.
+
+        Reading Codex's input_tokens as fresh input -- the Anthropic
+        convention -- bills 100k tokens at the full rate instead of 20k fresh
+        plus 80k cached, overcharging the input side by 3.6x.
+        """
+        usd, _ = value_meter.price_usage(
+            "gpt-5.6-sol", CODEX_USAGE, "2026-08-14")
+        as_if_anthropic = (100_000 * 5.00 + 80_000 * 0.50
+                           + 5_000 * 6.25 + 10_000 * 30.00) / 1_000_000.0
+        self.assertLess(usd, as_if_anthropic)
+        self.assertAlmostEqual(as_if_anthropic - usd,
+                               80_000 * 5.00 / 1_000_000.0, places=10)
+
+    def test_reasoning_tokens_are_not_billed_on_top_of_output(self):
+        with_reasoning = value_meter.price_usage(
+            "gpt-5.6-sol", CODEX_USAGE, "2026-08-14")[0]
+        without = dict(CODEX_USAGE)
+        without.pop("reasoning_output_tokens")
+        self.assertAlmostEqual(
+            with_reasoning,
+            value_meter.price_usage("gpt-5.6-sol", without, "2026-08-14")[0])
+
+    def test_total_tokens_is_context_size_and_never_billed(self):
+        inflated = dict(CODEX_USAGE, total_tokens=99_000_000)
+        self.assertAlmostEqual(
+            value_meter.price_usage("gpt-5.6-sol", inflated, "2026-08-14")[0],
+            CODEX_USAGE_USD, places=10)
+
+    def test_cached_cannot_exceed_input(self):
+        """A malformed record must not produce negative fresh input."""
+        usd, _ = value_meter.price_usage("gpt-5.6-sol", {
+            "input_tokens": 1_000, "cached_input_tokens": 50_000},
+            "2026-08-14")
+        self.assertAlmostEqual(usd, 1_000 * 0.50 / 1_000_000.0)
+
+    def test_codex_rates_are_flagged_unverified(self):
+        table = value_meter.default_table()
+        self.assertFalse(table.provenance(["openai"])["verified"])
+
+    def test_a_claude_only_machine_is_not_told_its_figure_is_an_estimate(self):
+        """Provenance is scoped to what priced, not to the whole table."""
+        table = value_meter.default_table()
+        self.assertTrue(table.provenance(["anthropic"])["verified"])
+        self.assertFalse(table.provenance(["anthropic", "openai"])["verified"])
+
+    def test_as_of_reports_the_stalest_contributing_date(self):
+        table = value_meter.default_table()
+        both = table.provenance(["anthropic", "openai"])["as_of"]
+        self.assertEqual(both, "2026-06-24")  # older than the openai entry
+
+
+class PriceTableTest(unittest.TestCase):
+
+    def test_override_merges_over_a_single_rate(self):
+        import json, tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "prices.json"
+            path.write_text(json.dumps({"providers": {"anthropic": {
+                "models": {"claude-opus-5": {"input": 1.0, "output": 2.0}}}}}))
+            table = value_meter.load_prices(path)
+        usd, _ = table.price("claude-opus-5", {"input_tokens": 1_000_000})
+        self.assertAlmostEqual(usd, 1.0)
+        # An untouched model keeps the bundled rate.
+        other, _ = table.price("claude-haiku-4-5", {"input_tokens": 1_000_000})
+        self.assertAlmostEqual(other, 1.0)
+
+    def test_override_can_add_a_model_without_code_changes(self):
+        import json, tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "prices.json"
+            path.write_text(json.dumps({"providers": {"anthropic": {
+                "models": {"claude-opus-6": {"input": 7.0, "output": 35.0}}}}}))
+            table = value_meter.load_prices(path)
+        self.assertTrue(table.knows("claude-opus-6"))
+        usd, unpriced = table.price("claude-opus-6", {"output_tokens": 1_000_000})
+        self.assertAlmostEqual(usd, 35.0)
+        self.assertEqual(unpriced, 0)
+
+    def test_unknown_accounting_mode_is_rejected_loudly(self):
+        with self.assertRaises(ValueError):
+            value_meter.PriceTable({"providers": {"weird": {
+                "accounting": "vibes", "models": {"m": {"input": 1.0}}}}})
+
+    def test_a_broken_override_file_raises_instead_of_falling_back(self):
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "prices.json"
+            path.write_text("{ not json")
+            with self.assertRaises(Exception):
+                value_meter.load_prices(path)
+
 
 
 if __name__ == "__main__":

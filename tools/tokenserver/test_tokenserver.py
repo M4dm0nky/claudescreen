@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 import os
 
-from tools.tokenserver import tokenserver
+from tools.tokenserver import codex_usage, tokenserver
 from tools.tokenserver.max_tracker import MaxTrackerStore
 from tools.tokenserver.quota_cache import CachedQuota, QuotaCache
 from tools.tokenserver.usage_history import Forecast, UsageHistory
@@ -2013,14 +2013,26 @@ class ValueMultipleIntegrationTests(unittest.TestCase):
         self.previous_cache = tokenserver._file_cache
         tokenserver._file_cache = {}
         self.previous_plan = tokenserver._claude_plan
+        self.previous_codex_plan = tokenserver._codex_plan
         self.previous_override = tokenserver._plan_cost_override
         tokenserver._claude_plan = "max5x"
+        tokenserver._codex_plan = None
         tokenserver._plan_cost_override = 100.0
+        # Point the Codex scan at an empty tree so a developer machine that
+        # happens to have ~/.codex cannot leak real usage into these figures.
+        self.codex_dir = tempfile.TemporaryDirectory()
+        self.previous_codex_root = codex_usage.DEFAULT_SESSIONS_DIR
+        codex_usage.DEFAULT_SESSIONS_DIR = Path(self.codex_dir.name)
+        codex_usage.reset_cache()
 
     def tearDown(self):
         tokenserver._file_cache = self.previous_cache
         tokenserver._claude_plan = self.previous_plan
+        tokenserver._codex_plan = self.previous_codex_plan
         tokenserver._plan_cost_override = self.previous_override
+        codex_usage.DEFAULT_SESSIONS_DIR = self.previous_codex_root
+        codex_usage.reset_cache()
+        self.codex_dir.cleanup()
 
     @staticmethod
     def _line(message_id, model="claude-opus-5", cache_read=1_000_000):

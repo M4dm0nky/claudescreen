@@ -1,143 +1,206 @@
-"""Value multiple: what this month's usage would cost at list API prices.
+"""Value multiple: what this month's agent usage would cost at list API prices.
 
-The question the usage pages cannot answer is "am I getting my money's
-worth?". This module answers it by pricing every token the transcripts
-already record, at published per-model list rates, and dividing by what the
+The usage pages answer "how much have I spent?". They cannot answer the
+question every subscriber actually has standing: **am I getting my money's
+worth?** This module answers it by pricing every token the local logs already
+record, at published per-model list rates, and dividing by what the
 subscription costs.
 
-Three things make the number honest rather than decorative:
+Rates live in ``prices.json`` beside this file, not in code, so adopting this
+in another build means editing data or passing ``--prices FILE`` -- never
+patching Python. A model that ships next month needs one JSON entry.
 
-* **Cache tokens dominate and are priced separately.** A real assistant
-  record routinely looks like 2 input / 4 output / 23 655 cache-read /
-  8 246 cache-write. Pricing only ``input_tokens`` + ``output_tokens``
-  understates the true value by orders of magnitude. Cache writes are
-  further split by TTL, because a 5-minute write and a 1-hour write cost
-  1.25x and 2x input respectively -- the transcript carries that split in
-  ``usage.cache_creation``, so we never have to guess.
-* **An unpriceable token is never silently worth zero.** A model this table
-  does not know contributes to ``unpriced_tokens`` instead of quietly
-  lowering the multiple. Past a small tolerance the whole figure degrades
-  to a dash rather than showing a confidently wrong number.
-* **The denominator is configuration, not a constant.** Subscription prices
-  are not part of the API price list and could not be verified from a
-  primary source when this was written, so the plan cost is supplied by the
-  operator and the payload always reports which source it came from.
+Four things make the number honest rather than decorative:
 
-Nothing here reads message content -- only the numeric ``usage`` block and
-the model id.
+* **Cache tokens dominate, and are priced separately.** A real Claude record
+  reads 2 input / 4 output against 8 246 cache-write and 23 655 cache-read.
+  Pricing only input+output understates it by ~577x.
+* **Providers do not count input the same way.** Anthropic's ``input_tokens``
+  excludes cached tokens; Codex's *includes* them. Treating them alike
+  double-charges one of the two. Each provider therefore declares an
+  ``accounting`` mode in the table.
+* **An unpriceable token is never silently worth zero.** A model the table
+  does not know contributes to ``unpriced_tokens``; past a small tolerance
+  the multiple degrades to a dash rather than showing a confident wrong
+  number.
+* **Provenance survives to the glass.** Rates carry ``verified`` and
+  ``as_of``; the payload repeats them, so an estimate is never displayed as
+  though it were a vendor-confirmed figure.
+
+Nothing here reads message content -- only numeric usage fields and model ids.
 """
 
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 from typing import Any, Optional
 
 
-# --------------------------------------------------------------------------
-# Prices
-# --------------------------------------------------------------------------
+DEFAULT_PRICES_PATH = Path(__file__).with_name("prices.json")
 
-#: Date the list prices below were taken from Anthropic's published model
-#: table. Surfaced in the payload so a stale table is visible rather than
-#: implied.
-PRICES_AS_OF = "2026-06-24"
-
-#: USD per million tokens. ``input``/``output`` are published list prices.
-#: ``intro`` is a promotional input/output pair that expires on ``until``
-#: (ISO date, inclusive); after that the standard pair applies.
-#:
-#: Cache rates are NOT separately published per model -- they are fixed
-#: multiples of that model's input price, applied in :func:`price_usage`:
-#:   * 5-minute cache write : 1.25x input
-#:   * 1-hour cache write   : 2.00x input
-#:   * cache read           : 0.10x input
-_LIST_PRICES: dict[str, dict[str, Any]] = {
-    "claude-fable-5":    {"input": 10.00, "output": 50.00},
-    "claude-mythos-5":   {"input": 10.00, "output": 50.00},
-    "claude-opus-5":     {"input": 5.00,  "output": 25.00},
-    "claude-opus-4-8":   {"input": 5.00,  "output": 25.00},
-    "claude-opus-4-7":   {"input": 5.00,  "output": 25.00},
-    "claude-opus-4-6":   {"input": 5.00,  "output": 25.00},
-    "claude-sonnet-5":   {"input": 3.00,  "output": 15.00,
-                          "intro": {"input": 2.00, "output": 10.00,
-                                    "until": "2026-08-31"}},
-    "claude-sonnet-4-6": {"input": 3.00,  "output": 15.00},
-    "claude-haiku-4-5":  {"input": 1.00,  "output": 5.00},
-}
-
-CACHE_WRITE_5M_MULTIPLIER = 1.25
-CACHE_WRITE_1H_MULTIPLIER = 2.00
-CACHE_READ_MULTIPLIER = 0.10
-
-#: The Batch API bills at 50% of standard rates. Any other tier is priced at
-#: standard and its name recorded, so an unrecognised tier shows up as a
-#: caveat instead of a silent mispricing.
-_TIER_MULTIPLIERS = {"standard": 1.0, "batch": 0.5}
-
-#: Monthly subscription cost in USD, by the plan names already allowlisted in
-#: ``max_tracker.PLAN_LABELS``.
-#:
-#: These are DEFAULTS, not verified figures. claude.com and the Claude help
-#: centre were both unreachable from the build environment, so only the
-#: "Max starts from $100/month" figure could be corroborated. Treat every
-#: entry as an operator-overridable starting point: pass ``--plan-cost-usd``
-#: to state what you actually pay. The payload reports ``cost_source`` so the
-#: distinction survives all the way to the glass.
-DEFAULT_PLAN_COST_USD: dict[str, float] = {
-    "pro": 20.0,
-    "max5x": 100.0,
-    "max20x": 200.0,
-}
-
-#: Fraction of month-to-date tokens that may be unpriceable before the
-#: multiple is suppressed entirely. Small enough that a stray unknown model
-#: cannot meaningfully move the figure; non-zero so one odd record does not
-#: blank a page that is otherwise correct.
+#: Share of month-to-date tokens that may be unpriceable before the multiple
+#: is suppressed. Small enough that a stray unknown model cannot move the
+#: figure; non-zero so one odd record does not blank an otherwise good page.
 UNPRICED_TOLERANCE = 0.02
 
+_ACCOUNTING_MODES = {"cache_excluded_input", "cache_included_input"}
 
-# --------------------------------------------------------------------------
-# Helpers
-# --------------------------------------------------------------------------
+
+def _number(value: Any) -> Optional[float]:
+    """Return a finite, positive-or-zero float, or None if the value is junk."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(value) or value < 0:
+        return None
+    return float(value)
+
 
 def _count(value: Any) -> int:
     """Coerce one usage field to a non-negative token count.
 
-    Transcript writers are not schema-validated, so anything non-numeric,
-    negative, boolean, or non-finite is read as zero rather than being
-    allowed to poison the total.
+    Log writers are not schema-validated, so anything non-numeric, negative,
+    boolean or non-finite reads as zero instead of poisoning the total.
     """
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return 0
-    if not math.isfinite(value) or value <= 0:
-        return 0
-    return int(value)
+    number = _number(value)
+    return 0 if number is None else int(number)
 
 
-def _rates(model: Optional[str], today: Optional[str]) -> Optional[dict]:
-    """Return the input/output pair in force for ``model`` on ``today``.
+class PriceTable:
+    """Per-model list rates, indexed by model id across every provider."""
 
-    ``None`` means "not priceable" -- an unknown or missing model id. The
-    caller must account for those tokens rather than treating them as free.
+    def __init__(self, document: dict):
+        self._doc = document
+        self._by_model: dict[str, tuple[str, dict, dict]] = {}
+        for provider, spec in (document.get("providers") or {}).items():
+            if not isinstance(spec, dict):
+                continue
+            if spec.get("accounting") not in _ACCOUNTING_MODES:
+                raise ValueError(
+                    f"provider {provider!r} declares unknown accounting "
+                    f"{spec.get('accounting')!r}; expected one of "
+                    f"{sorted(_ACCOUNTING_MODES)}")
+            for model, rates in (spec.get("models") or {}).items():
+                if isinstance(rates, dict):
+                    self._by_model[model] = (provider, spec, rates)
+
+    # -- lookup ------------------------------------------------------------
+
+    def knows(self, model: Optional[str]) -> bool:
+        return isinstance(model, str) and model in self._by_model
+
+    def provider_of(self, model: Optional[str]) -> Optional[str]:
+        entry = self._by_model.get(model) if isinstance(model, str) else None
+        return entry[0] if entry else None
+
+    def provenance(self, providers_used: Optional[Any] = None) -> dict:
+        """Verification status for the providers that actually priced tokens.
+
+        Scoped to what contributed, not to the whole table: a Claude-only
+        machine gets a verified figure even though the table also carries
+        estimated Codex rates that nothing used. Within that scope
+        ``verified`` is an AND -- one estimated rate makes the whole figure an
+        estimate, which is what the display needs to know.
+
+        ``as_of`` is the OLDEST contributing date, since a total is only as
+        current as its stalest input.
+        """
+        specs = self._doc.get("providers") or {}
+        if providers_used is not None:
+            specs = {name: spec for name, spec in specs.items()
+                     if name in set(providers_used)}
+        specs = {n: s for n, s in specs.items() if isinstance(s, dict)}
+        if not specs:
+            return {"verified": True, "as_of": None}
+        verified = all(bool(spec.get("verified")) for spec in specs.values())
+        dates = sorted(str(spec.get("as_of")) for spec in specs.values()
+                       if spec.get("as_of"))
+        return {"verified": verified, "as_of": dates[0] if dates else None}
+
+    def _rates(self, model: str, day: Optional[str]) -> dict:
+        """Rates in force for ``model`` on ``day``, applying any intro price."""
+        _, _, rates = self._by_model[model]
+        intro = rates.get("intro")
+        if isinstance(intro, dict) and isinstance(day, str):
+            until = intro.get("until")
+            if isinstance(until, str) and day <= until:
+                merged = dict(rates)
+                merged.update({k: v for k, v in intro.items() if k != "until"})
+                return merged
+        return rates
+
+    # -- pricing -----------------------------------------------------------
+
+    def price(self, model: Optional[str], usage: Any,
+              day: Optional[str] = None) -> tuple[float, int]:
+        """Price one usage record.
+
+        Returns ``(usd, unpriced_tokens)``. Exactly one is ever non-zero: a
+        record prices completely or not at all, because a partially priced
+        record is indistinguishable from a cheap one.
+        """
+        if not isinstance(usage, dict):
+            return 0.0, 0
+        if not self.knows(model):
+            return 0.0, _countable_tokens(usage)
+
+        _, spec, _ = self._by_model[model]
+        rates = self._rates(model, day)
+        in_rate = _number(rates.get("input")) or 0.0
+        out_rate = _number(rates.get("output")) or 0.0
+
+        if spec["accounting"] == "cache_excluded_input":
+            usd, counted = _price_cache_excluded(usage, spec, in_rate, out_rate)
+        else:
+            usd, counted = _price_cache_included(
+                usage, spec, rates, in_rate, out_rate)
+
+        if counted <= 0:
+            return 0.0, 0
+        return usd * _tier_multiplier(usage, spec), 0
+
+    # -- plans -------------------------------------------------------------
+
+    def plan_cost(self, provider: str, plan: Optional[str],
+                  override: Optional[float] = None) -> tuple[Optional[float], str]:
+        """Resolve monthly subscription cost, and say where the figure is from.
+
+        ``configured`` means the operator stated it and it can be trusted;
+        ``default`` means this table guessed. The distinction reaches the UI.
+        """
+        amount = _number(override)
+        if amount is not None and amount > 0:
+            return amount, "configured"
+        plans = (self._doc.get("plans") or {}).get(provider)
+        if isinstance(plans, dict) and isinstance(plan, str):
+            amount = _number(plans.get(plan))
+            if amount is not None and amount > 0:
+                return amount, "default"
+        return None, "unknown"
+
+
+def _countable_tokens(usage: dict) -> int:
+    """Tokens in a record, for the unpriced tally, under either convention.
+
+    ``cache_creation_input_tokens`` is preferred over the per-TTL breakdown so
+    the two are never added together, and ``reasoning_output_tokens`` is
+    excluded because every provider here reports it as a subset of output.
     """
-    if not isinstance(model, str):
-        return None
-    entry = _LIST_PRICES.get(model)
-    if entry is None:
-        return None
-    intro = entry.get("intro")
-    if intro and isinstance(today, str) and today <= intro["until"]:
-        return {"input": intro["input"], "output": intro["output"]}
-    return {"input": entry["input"], "output": entry["output"]}
+    return (_count(usage.get("input_tokens"))
+            + _count(usage.get("output_tokens"))
+            + _count(usage.get("cache_read_input_tokens"))
+            + _count(usage.get("cache_creation_input_tokens"))
+            + _count(usage.get("cache_write_input_tokens")))
 
 
-def cache_split(usage: dict) -> tuple[int, int]:
-    """Split cache-creation tokens into (5-minute, 1-hour) buckets.
+def cache_write_split(usage: dict) -> tuple[int, int]:
+    """Split Anthropic cache-creation tokens into (5-minute, 1-hour) buckets.
 
-    Prefers the explicit ``usage.cache_creation`` breakdown. When only the
-    flat ``cache_creation_input_tokens`` total is present the whole amount is
-    attributed to the 5-minute bucket -- the cheaper of the two, so the
-    fallback can only ever *understate* value, never inflate it.
+    Prefers the explicit ``usage.cache_creation`` breakdown, because a 5-minute
+    write costs 1.25x input and a 1-hour write 2x -- a 60% difference worth
+    getting right. When only the flat total exists it all goes to the 5-minute
+    bucket, the cheaper of the two, so the fallback can only ever understate.
     """
     detail = usage.get("cache_creation")
     if isinstance(detail, dict):
@@ -148,101 +211,167 @@ def cache_split(usage: dict) -> tuple[int, int]:
     return _count(usage.get("cache_creation_input_tokens")), 0
 
 
-# --------------------------------------------------------------------------
-# Pricing
-# --------------------------------------------------------------------------
-
-def price_usage(model: Optional[str], usage: Any,
-                today: Optional[str] = None) -> tuple[float, int]:
-    """Price one assistant record.
-
-    Returns ``(usd, unpriced_tokens)``. Exactly one of the two is ever
-    non-zero: a record either prices completely or not at all, because a
-    partially-priced record would be indistinguishable from a cheap one.
-    """
-    if not isinstance(usage, dict):
-        return 0.0, 0
-
-    inp = _count(usage.get("input_tokens"))
+def _price_cache_excluded(usage: dict, spec: dict, in_rate: float,
+                          out_rate: float) -> tuple[float, int]:
+    """Anthropic convention: ``input_tokens`` is fresh input only."""
+    fresh = _count(usage.get("input_tokens"))
     out = _count(usage.get("output_tokens"))
     read = _count(usage.get("cache_read_input_tokens"))
-    write_5m, write_1h = cache_split(usage)
-    total = inp + out + read + write_5m + write_1h
-    if total <= 0:
-        return 0.0, 0
+    write_5m, write_1h = cache_write_split(usage)
 
-    rates = _rates(model, today)
-    if rates is None:
-        return 0.0, total
-
-    tier = usage.get("service_tier")
-    tier_multiplier = _TIER_MULTIPLIERS.get(
-        tier if isinstance(tier, str) else "standard", 1.0)
-
-    in_rate = rates["input"]
     usd = (
-        inp * in_rate
-        + out * rates["output"]
-        + write_5m * in_rate * CACHE_WRITE_5M_MULTIPLIER
-        + write_1h * in_rate * CACHE_WRITE_1H_MULTIPLIER
-        + read * in_rate * CACHE_READ_MULTIPLIER
+        fresh * in_rate
+        + out * out_rate
+        + write_5m * in_rate * (_number(spec.get("cache_write_5m_multiplier")) or 0.0)
+        + write_1h * in_rate * (_number(spec.get("cache_write_1h_multiplier")) or 0.0)
+        + read * in_rate * (_number(spec.get("cache_read_multiplier")) or 0.0)
     ) / 1_000_000.0
-    return usd * tier_multiplier, 0
+    return usd, fresh + out + read + write_5m + write_1h
 
 
-def plan_cost(plan: Optional[str], override: Optional[float] = None
-              ) -> tuple[Optional[float], str]:
-    """Resolve the monthly subscription cost and say where it came from.
+def _price_cache_included(usage: dict, spec: dict, rates: dict, in_rate: float,
+                          out_rate: float) -> tuple[float, int]:
+    """Codex/OpenAI convention: ``input_tokens`` already includes cached ones.
 
-    ``("configured"|"default"|"unknown")`` is returned alongside the amount
-    so the UI can distinguish a figure the operator confirmed from one this
-    module guessed.
+    Verified against the Codex source, which computes its own billing-shaped
+    total as ``non_cached_input() + output_tokens`` where
+    ``non_cached_input = input_tokens - cached_input_tokens``. That also
+    confirms ``reasoning_output_tokens`` is a subset of ``output_tokens`` --
+    adding it here would double-count every reasoning token.
     """
-    if (isinstance(override, (int, float)) and not isinstance(override, bool)
-            and math.isfinite(override) and override > 0):
-        return float(override), "configured"
-    if isinstance(plan, str) and plan in DEFAULT_PLAN_COST_USD:
-        return DEFAULT_PLAN_COST_USD[plan], "default"
-    return None, "unknown"
+    total_in = _count(usage.get("input_tokens"))
+    cached = min(_count(usage.get("cached_input_tokens")), total_in)
+    fresh = total_in - cached
+    out = _count(usage.get("output_tokens"))
+    write = _count(usage.get("cache_write_input_tokens"))
+    cached_rate = _number(rates.get("cached_input"))
+    if cached_rate is None:
+        cached_rate = in_rate * 0.1
 
+    usd = (
+        fresh * in_rate
+        + cached * cached_rate
+        + write * in_rate * (_number(spec.get("cache_write_multiplier")) or 0.0)
+        + out * out_rate
+    ) / 1_000_000.0
+    return usd, total_in + out + write
+
+
+def _tier_multiplier(usage: dict, spec: dict) -> float:
+    """Service-tier discount (batch/flex). Unknown tiers price at standard."""
+    tier = usage.get("service_tier")
+    table = spec.get("tier_multipliers")
+    if not isinstance(table, dict) or not isinstance(tier, str):
+        return 1.0
+    return _number(table.get(tier)) if _number(table.get(tier)) else 1.0
+
+
+# --------------------------------------------------------------------------
+# Loading
+# --------------------------------------------------------------------------
+
+def load_prices(override_path: Optional[Any] = None) -> PriceTable:
+    """Load the bundled table, then merge an operator override over it.
+
+    Merging is per model and per provider key, so an override file states only
+    what differs -- correcting one rate does not mean restating the catalogue.
+    A malformed or unreadable override is a hard error rather than a silent
+    fallback: quietly pricing against rates the operator thinks they replaced
+    is exactly the failure this module exists to avoid.
+    """
+    document = json.loads(DEFAULT_PRICES_PATH.read_text(encoding="utf-8"))
+    if override_path:
+        extra = json.loads(Path(override_path).read_text(encoding="utf-8"))
+        _merge(document, extra)
+    return PriceTable(document)
+
+
+def _merge(base: dict, extra: dict) -> None:
+    """Recursively merge ``extra`` into ``base`` (dicts deep, scalars replace)."""
+    for key, value in extra.items():
+        if (isinstance(value, dict) and isinstance(base.get(key), dict)):
+            _merge(base[key], value)
+        else:
+            base[key] = value
+
+
+_default_table: Optional[PriceTable] = None
+
+
+def default_table() -> PriceTable:
+    global _default_table
+    if _default_table is None:
+        _default_table = load_prices()
+    return _default_table
+
+
+def price_usage(model: Optional[str], usage: Any,
+                day: Optional[str] = None,
+                table: Optional[PriceTable] = None) -> tuple[float, int]:
+    """Price one record against the default table (or a supplied one)."""
+    return (table or default_table()).price(model, usage, day)
+
+
+# --------------------------------------------------------------------------
+# Payload
+# --------------------------------------------------------------------------
 
 def build_payload(value_usd: float, unpriced_tokens: int, priced_tokens: int,
-                  plan: Optional[str] = None,
-                  cost_override: Optional[float] = None) -> dict:
+                  claude_plan: Optional[str] = None,
+                  codex_plan: Optional[str] = None,
+                  cost_override: Optional[float] = None,
+                  table: Optional[PriceTable] = None,
+                  providers_used: Optional[Any] = None) -> dict:
     """Build the additive ``value`` block for the tokenserver payload.
 
-    ``state`` is the field the firmware should branch on:
+    ``state`` is what the firmware branches on:
 
     ``ok``
         ``multiple`` is meaningful.
     ``no_plan_cost``
-        Usage was priced but nothing says what the plan costs, so there is
-        no denominator. Show the dollar figure, dash the multiple.
+        Usage priced, but nothing says what the plan costs, so there is no
+        denominator. Show the dollars, dash the multiple.
     ``partial``
-        Too large a share of this month's tokens came from models this
-        table cannot price. Dash everything -- a multiple computed from an
-        unknown fraction of the spend is worse than no multiple.
+        Too large a share of the month came from models the table cannot
+        price. Dash everything -- a multiple over an unknown fraction of the
+        spend is worse than no multiple at all.
+
+    When both subscriptions are configured their monthly costs are added, so
+    the multiple answers "what do I get back for everything I pay for?".
     """
     total = priced_tokens + unpriced_tokens
     unpriced_share = (unpriced_tokens / total) if total else 0.0
-    cost, cost_source = plan_cost(plan, cost_override)
+    prices = table or default_table()
 
+    claude_cost, claude_src = prices.plan_cost(
+        "claude", claude_plan, cost_override)
+    codex_cost, codex_src = prices.plan_cost("codex", codex_plan)
+
+    costs = [c for c in (claude_cost, codex_cost) if c is not None]
+    plan_usd = sum(costs) if costs else None
+    # "configured" only when nothing in the denominator was guessed.
+    sources = [s for s in (claude_src, codex_src) if s != "unknown"]
+    cost_source = ("configured" if sources and all(s == "configured" for s in sources)
+                   else "default" if sources else "unknown")
+
+    provenance = prices.provenance(providers_used)
     payload: dict[str, Any] = {
         "value_usd": round(value_usd, 2),
-        "plan_usd": cost,
+        "plan_usd": plan_usd,
         "cost_source": cost_source,
         "basis": "list API prices",
-        "prices_as_of": PRICES_AS_OF,
+        "prices_as_of": provenance["as_of"],
+        "prices_verified": provenance["verified"],
         "unpriced_token_share": round(unpriced_share, 4),
     }
 
     if unpriced_share > UNPRICED_TOLERANCE:
         payload["state"] = "partial"
         payload["multiple"] = None
-    elif cost is None:
+    elif plan_usd is None:
         payload["state"] = "no_plan_cost"
         payload["multiple"] = None
     else:
         payload["state"] = "ok"
-        payload["multiple"] = round(value_usd / cost, 2)
+        payload["multiple"] = round(value_usd / plan_usd, 2)
     return payload

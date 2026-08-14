@@ -54,13 +54,14 @@ if __package__:
     from .max_tracker import MaxTrackerStore
     from .quota_cache import CachedQuota, QuotaCache
     from .usage_history import Forecast, UsageHistory
-    from . import value_meter
+    from . import codex_usage, value_meter
 else:  # direktkörning: python3 tools/tokenserver/tokenserver.py
     from agent_status import AgentStatusService
     from codex_rollout import codex_rollout_rate_limits, observation_timestamp
     from max_tracker import MaxTrackerStore
     from quota_cache import CachedQuota, QuotaCache
     from usage_history import Forecast, UsageHistory
+    import codex_usage
     import value_meter
 
 RECOMPUTE_EVERY_S = 30
@@ -91,20 +92,24 @@ MAX_TRACKER_BACKFILL_TICK_S = 0.5  # samma kadens som agent_status.POLL_S
 MAX_TRACKER_CLAUDE_SESSION_MINUTES = 300   # 5 timmar
 MAX_TRACKER_CLAUDE_WEEK_MINUTES = 10080    # 7 dygn
 
-# (day, ts, tokens, session, key, usd, unpriced) per loggrad med usage — det
-# minsta som behövs för dag-, månads-, takt- och sessionsaggregaten, plus
-# radens listprisvärde. Värdet bärs PER RAD, inte som en filsumma, så att
-# nyckel-dedupliceringen i _compute gäller det lika självklart som tokens:
-# en dubblerad rad får varken räknas två gånger i tokens eller i dollar.
+# (day, ts, tokens, session, key, usd, unpriced) per usage-bearing log row.
+# The first five are the minimum the day/month/rate/session aggregates need.
+# The last two are the row's list-price value, carried PER ROW rather than as
+# a per-file sum, so the (message id, requestId) dedup in _compute covers
+# dollars exactly as it covers tokens -- Claude Code writes the same record
+# into more than one transcript, and a duplicate must not be counted twice in
+# either currency.
 _cache_lock = threading.Lock()
 _file_cache = {}   # path -> stat, parsed offset, month and compact records
 
-# Nämnaren i värdemultipeln. Prenumerationspriser ingår inte i API:ets
-# prislista, så de sätts av operatören: --claude-plan ger ett defaultvärde
-# (omarkerat som overifierat i value_meter), --plan-cost-usd ger det exakta
-# belopp användaren faktiskt betalar och vinner alltid.
+# The value multiple's denominator and price table. Subscription prices are
+# not part of any API price list, so the operator supplies them: --claude-plan
+# and --codex-plan select a default (flagged unverified in prices.json), while
+# --plan-cost-usd states what is actually paid and always wins.
 _claude_plan = None
+_codex_plan = None
 _plan_cost_override = None
+_price_table = None
 _last_result = None
 _last_computed = 0.0
 _snapshot_refreshing = False
@@ -192,11 +197,12 @@ def _parse_file(path: Path, month_start: datetime, start_offset=0):
                 req_id = entry.get("requestId")
                 key = f"{msg_id}:{req_id}" if msg_id and req_id else None
                 day = ts.strftime("%Y-%m-%d")
-                # Prissätts mot radens EGEN dag, inte mot dagens datum: en rad
-                # från innan ett intropris löper ut ska behålla intropriset
-                # även när den läses i efterhand.
+                # Priced against the row's OWN day, not today's date: a row
+                # written before an introductory rate expired keeps that rate
+                # when it is read back later.
                 usd, unpriced = value_meter.price_usage(
-                    (entry.get("message") or {}).get("model"), usage, day)
+                    (entry.get("message") or {}).get("model"), usage, day,
+                    table=_price_table)
                 records.append((
                     day,
                     ts.timestamp(),
@@ -300,17 +306,32 @@ def _compute(projects_dir: Path, max_tracker_store=None):
             if ts >= hour_ago:
                 hour_tokens += tokens
 
+    # Codex contributes to the same month total. Its rollout logs are a
+    # separate tree with a separate scan; a machine without ~/.codex simply
+    # returns zeros.
+    codex_usd, codex_priced, codex_unpriced = codex_usage.month_value(
+        now=now, table=_price_table)
+
     return {
         "v": 1,
         "dayTokens": day_tokens,
         "dayTokensPerHour": hour_tokens,  # senaste timmen = takt per timme
         "daySessions": len(day_sessions),
         "monthTokens": month_tokens,
-        # Additiv nyckel: tokens_parse.c:219 hoppar över okända toppnycklar,
-        # så redan flashade skärmar ignorerar den utan att fela.
+        # Additive key: tokens_parse.c:219 skips unknown top-level keys, so
+        # already-flashed screens ignore it instead of failing to parse.
         "value": value_meter.build_payload(
-            month_value_usd, month_unpriced_tokens, month_priced_tokens,
-            plan=_claude_plan, cost_override=_plan_cost_override),
+            month_value_usd + codex_usd,
+            month_unpriced_tokens + codex_unpriced,
+            month_priced_tokens + codex_priced,
+            claude_plan=_claude_plan, codex_plan=_codex_plan,
+            cost_override=_plan_cost_override, table=_price_table,
+            # Provenance is scoped to what actually priced: a Claude-only
+            # machine must not be told its figure is an estimate because the
+            # table also carries unverified Codex rates nothing used.
+            providers_used=(
+                (["anthropic"] if month_priced_tokens else [])
+                + (["openai"] if codex_priced else []))),
         "at": now.isoformat(timespec="seconds"),
     }
 
@@ -1567,9 +1588,14 @@ def _build_arg_parser():
              "i max_tracker.PLAN_LABELS)")
     ap.add_argument(
         "--plan-cost-usd", type=float, default=None,
-        help="vad Claude-planen faktiskt kostar per månad i USD — nämnaren i "
-             "värdemultipeln. Utan den används ett OVERIFIERAT defaultvärde "
-             "från --claude-plan, och payloaden märker det som sådant")
+        help="what the subscription actually costs per month in USD -- the "
+             "value multiple's denominator. Without it an UNVERIFIED default "
+             "from --claude-plan/--codex-plan is used and the payload says so")
+    ap.add_argument(
+        "--prices", default=None,
+        help="path to a JSON file merged over tools/tokenserver/prices.json. "
+             "State only what differs: a corrected rate, or a model that "
+             "shipped after this release. No code change needed")
     ap.add_argument(
         "--codex-plan", choices=["plus", "pro"], default=None,
         help="Codex-planen för Max Trackers badge (frivillig, allowlistad "
@@ -1603,9 +1629,14 @@ def main():
     ap = _build_arg_parser()
     args = ap.parse_args()
 
-    global _claude_plan, _plan_cost_override
+    global _claude_plan, _codex_plan, _plan_cost_override, _price_table
     _claude_plan = args.claude_plan
+    _codex_plan = args.codex_plan
     _plan_cost_override = args.plan_cost_usd
+    # A bad --prices file is a hard startup failure, never a silent fallback:
+    # pricing against rates the operator believes they replaced is exactly the
+    # failure the value multiple exists to avoid.
+    _price_table = value_meter.load_prices(args.prices)
 
     Handler.projects_dir = Path(args.dir)
     if not Handler.projects_dir.is_dir():

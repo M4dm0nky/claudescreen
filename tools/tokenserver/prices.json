@@ -1,0 +1,69 @@
+{
+  "_readme": [
+    "List API prices used to compute the value multiple, in USD per million tokens.",
+    "",
+    "Override or extend this file with --prices FILE. Your file is merged over",
+    "these defaults per model, so you only need to state what differs. Adding a",
+    "model that ships after this release needs no code change -- add an entry.",
+    "",
+    "Every provider declares an 'accounting' mode, because providers do not count",
+    "input tokens the same way. Getting that wrong silently double-charges or",
+    "under-charges, so it is data rather than an assumption:",
+    "",
+    "  cache_excluded_input  input_tokens is FRESH input only; cache reads and",
+    "                        cache writes are reported separately. Anthropic.",
+    "  cache_included_input  input_tokens ALREADY INCLUDES cached_input_tokens,",
+    "                        so fresh input is the difference. OpenAI / Codex.",
+    "",
+    "'verified' records whether the numbers were taken from the provider itself.",
+    "Unverified rates still price normally -- the flag is surfaced in the payload",
+    "so the device can say so rather than implying a precision it does not have."
+  ],
+
+  "providers": {
+    "anthropic": {
+      "accounting": "cache_excluded_input",
+      "verified": true,
+      "as_of": "2026-06-24",
+      "source": "Anthropic published model pricing table (bundled claude-api reference)",
+      "cache_write_5m_multiplier": 1.25,
+      "cache_write_1h_multiplier": 2.0,
+      "cache_read_multiplier": 0.1,
+      "tier_multipliers": { "standard": 1.0, "batch": 0.5 },
+      "models": {
+        "claude-fable-5":    { "input": 10.0, "output": 50.0 },
+        "claude-mythos-5":   { "input": 10.0, "output": 50.0 },
+        "claude-opus-5":     { "input": 5.0,  "output": 25.0 },
+        "claude-opus-4-8":   { "input": 5.0,  "output": 25.0 },
+        "claude-opus-4-7":   { "input": 5.0,  "output": 25.0 },
+        "claude-opus-4-6":   { "input": 5.0,  "output": 25.0 },
+        "claude-sonnet-5":   { "input": 3.0,  "output": 15.0,
+                               "intro": { "input": 2.0, "output": 10.0,
+                                          "until": "2026-08-31" } },
+        "claude-sonnet-4-6": { "input": 3.0,  "output": 15.0 },
+        "claude-haiku-4-5":  { "input": 1.0,  "output": 5.0 }
+      }
+    },
+
+    "openai": {
+      "accounting": "cache_included_input",
+      "verified": false,
+      "as_of": "2026-08-14",
+      "source": "third-party pricing aggregators, August 2026 -- openai.com was unreachable from the build environment, so these are NOT confirmed against the vendor. Replace via --prices once you can check them.",
+      "cache_write_multiplier": 1.25,
+      "tier_multipliers": { "standard": 1.0, "batch": 0.5, "flex": 0.5 },
+      "models": {
+        "gpt-5.6-sol":   { "input": 5.0,  "output": 30.0, "cached_input": 0.5 },
+        "gpt-5.6-terra": { "input": 2.0,  "output": 12.0, "cached_input": 0.2 },
+        "gpt-5.6-luna":  { "input": 0.2,  "output": 1.2,  "cached_input": 0.02 }
+      }
+    }
+  },
+
+  "plans": {
+    "_note": "Monthly subscription cost in USD. NOT from a vendor price list -- claude.com and the Claude help centre were both unreachable from the build environment, and only 'Max starts from $100/month' could be corroborated. Set --plan-cost-usd to what you actually pay; the payload reports which source was used.",
+    "verified": false,
+    "claude": { "pro": 20.0, "max5x": 100.0, "max20x": 200.0 },
+    "codex":  { "plus": 20.0, "pro": 200.0 }
+  }
+}

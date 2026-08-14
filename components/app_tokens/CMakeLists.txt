@@ -17,4 +17,5 @@ idf_component_register(
   PRIV_INCLUDE_DIRS "../.."
   PRIV_REQUIRES torget_net esp_http_client)
 
-target_compile_definitions(${COMPONENT_LIB} PRIVATE LV_LVGL_H_INCLUDE_SIMPLE)
+target_compile_definitions(${COMPONENT_LIB} PRIVATE LV_LVGL_H_INCLUDE_SIMPLE
+  TK_GITHUB_SCREEN_ENABLED=1 TK_GITHUB_NOTIFICATIONS_ENABLED=1 TK_GITHUB_SOUND_ENABLED=1)

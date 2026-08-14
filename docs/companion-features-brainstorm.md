@@ -31,6 +31,84 @@ so they don't get re-proposed.
 
 ---
 
+## Vad du faktiskt skulle se på skärmen
+
+Sex konceptmockups, exakt 480 × 480, mot paletten i
+`design/vibepulse/studio-design.json` och hero-geometrin läst ur de riktiga
+rastren i `docs/img/`. Läs den här sektionen först — resten av dokumentet är
+motiveringen bakom bilderna.
+
+> ⚠️ **Konceptbilder.** Inte Studio-captures, inte godkänd design, inget
+> fysiskt granskat, ingen flash implicerad. De visar avsikt, inte en LVGL-port.
+> Regenereras med `python3 tools/mockups/gen_concept_mockups.py`.
+
+### 1. Väntetidsmätaren — den bärande idén
+
+![Väntetidsmätaren: 34 min blockerat på dig idag](img/mockups/latency-meter.png)
+
+Ett dominant tal, precis som kvotsidorna. Stapeln visar hur väntetiden delades
+mellan Claude och Codex. Sekundärraden ger det du faktiskt vill veta i stunden:
+**blockerad just nu** och längsta väntan idag. Etiketten säger vad talet mäter.
+
+### 2. Godkännande från enheten
+
+![Godkännande-prompt: tillåt npm test](img/mockups/approval-prompt.png)
+
+Hela kommandot, i mono, plus katalogen. Tre val, inte två: **LEAVE IT** lämnar
+beslutet till terminalen istället för att tvinga ett ja/nej. Nedräkningen säger
+vad som händer om du inte gör något — inget godkänns av tystnad.
+
+### 3. När kommandot inte går att visa
+
+![Samma prompt men kommandot är för långt, så APPROVE är avstängd](img/mockups/approval-truncated.png)
+
+Det här är hela ärlighetsprincipen applicerad på en knapp. Får kommandot inte
+plats visas det trunkerat och **APPROVE renderas men är död**. DENY funkar
+alltid. Du får aldrig godkänna text du inte kan läsa.
+
+### 4. Panikstopp
+
+![Panikstopp: allt pågående nekat och hållet](img/mockups/panic-stop.png)
+
+Billigast i hela dokumentet och bäst formad: den kan bara **neka**. Ingen
+allowlist, ingen förtroendemodell, ingen privacy-uppluckring — att neka avslöjar
+inget. Värsta en främling kan göra är att stoppa ditt arbete.
+
+### 5. Review debt
+
+![Review debt: 1 240 ogranskade rader, äldsta tre dagar](img/mockups/review-debt.png)
+
+En **fyllnadsnivå, inte ett procenttal** — det finns ingen ärlig nämnare för
+"hur mycket ogranskad kod är för mycket". Åldern på den äldsta är den siffra som
+faktiskt får dig att agera.
+
+### 6. Go / no-go istället för prognos
+
+![Go eller no-go: bara korta uppgifter, 2d 4h till reset](img/mockups/go-no-go.png)
+
+Samma data som burn-rate-sidan, men **ett beslut istället för ett tal**. Den
+enda sortens ändring UI-specen välkomnar: den tar bort en siffra istället för
+att lägga till en. Måste falla tillbaka till ett streck när prognosen är
+`collecting`.
+
+---
+
+## Besluten i korthet
+
+| Bygg | Bygg inte |
+|---|---|
+| Panikstopp (först — bara nekar) | Fler token-, kostnads- eller kvotfönster |
+| Väntetidsmätaren | OpenTelemetry som *tvärleverantörs*-limmet |
+| Godkänn/neka från enheten *(omvänt beslut)* | Lovable |
+| Review debt | Ljud och haptik, för nu |
+| Go / no-go | Trust rate som huvudmetrik |
+| Fragmentering / WIP | |
+
+Ordningen finns längst ner. Resten av dokumentet är varför — inklusive vad som
+inte höll när påståendena granskades.
+
+---
+
 ## The uncomfortable finding, first
 
 Between May and August 2026 the "agent numbers on a small screen" lane went

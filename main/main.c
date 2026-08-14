@@ -224,6 +224,8 @@ static void net_task(void *arg) {
 
 /* ------------------------------------------------------- LVGL-tasken, 10 Hz */
 
+static void diag_stage_unlocked(char stage); /* diagnos, definierad nedan */
+
 static void tick_cb(lv_timer_t *t) {
   (void)t;
   int64_t now = esp_timer_get_time();

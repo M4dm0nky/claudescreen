@@ -88,7 +88,6 @@ def worst_case_payload() -> dict:
         "cost_source": "configured",     # längre än "default"/"unknown"
         "basis": "list API prices",
         "prices_as_of": "2026-12-31",
-        "prices_verified": False,
         "unpriced_token_share": 0.9999,  # fyra decimaler, som round(x, 4)
         "state": "no_plan_cost",         # längre än "ok"/"partial"
         "multiple": 9999.99,

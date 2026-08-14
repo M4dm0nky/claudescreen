@@ -503,8 +503,7 @@ int main(void) {
 
     snprintf(payload, sizeof payload, shell,
              "{\"state\":\"ok\",\"value_usd\":312.0,\"plan_usd\":100.0,"
-             "\"multiple\":3.12,\"cost_source\":\"configured\","
-             "\"prices_verified\":true}");
+             "\"multiple\":3.12,\"cost_source\":\"configured\"}");
     check("value ok parsas", PARSE(payload, &v));
     check("value ok ger OK-state", v.value.state == TK_VALUE_OK);
     check("value ok ger multipel", v.value.has_multiple &&
@@ -512,12 +511,11 @@ int main(void) {
     check("value ok ger dollar", v.value.has_value_usd &&
           v.value.value_usd > 311.9 && v.value.value_usd < 312.1);
     check("value ok bär configured", v.value.cost_configured == 1);
-    check("value ok bär verified", v.value.prices_verified == 1);
 
     snprintf(payload, sizeof payload, shell,
              "{\"state\":\"no_plan_cost\",\"value_usd\":312.0,"
              "\"plan_usd\":null,\"multiple\":null,"
-             "\"cost_source\":\"unknown\",\"prices_verified\":true}");
+             "\"cost_source\":\"unknown\"}");
     check("no_plan_cost parsas", PARSE(payload, &v));
     check("no_plan_cost ger state",
           v.value.state == TK_VALUE_NO_PLAN_COST);
@@ -526,8 +524,7 @@ int main(void) {
 
     snprintf(payload, sizeof payload, shell,
              "{\"state\":\"partial\",\"value_usd\":312.0,\"plan_usd\":100.0,"
-             "\"multiple\":null,\"cost_source\":\"configured\","
-             "\"prices_verified\":true}");
+             "\"multiple\":null,\"cost_source\":\"configured\"}");
     check("partial parsas", PARSE(payload, &v));
     check("partial ger state", v.value.state == TK_VALUE_PARTIAL);
     check("partial ger ingen multipel", !v.value.has_multiple);
@@ -563,12 +560,11 @@ int main(void) {
     check("ok helt utan tal ger unavailable",
           v.value.state == TK_VALUE_UNAVAILABLE);
 
-    /* Absent provenance reads as unverified, never as confirmed. */
+    /* An absent cost_source reads as a default, never as configured. */
     snprintf(payload, sizeof payload, shell,
              "{\"state\":\"ok\",\"value_usd\":312.0,\"plan_usd\":100.0,"
              "\"multiple\":3.12}");
-    check("utan provenance parsas", PARSE(payload, &v));
-    check("utan provenance är overifierad", v.value.prices_verified == 0);
+    check("utan cost_source parsas", PARSE(payload, &v));
     check("utan cost_source är default", v.value.cost_configured == 0);
 
     snprintf(payload, sizeof payload, shell, "\"not-an-object\"");

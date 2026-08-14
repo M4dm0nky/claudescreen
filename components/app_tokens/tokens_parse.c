@@ -282,11 +282,6 @@ static void optional_value(const cJSON *root, bool trust_strings,
   const cJSON *source = cJSON_GetObjectItemCaseSensitive(block, "cost_source");
   int configured = cJSON_IsString(source) && source->valuestring &&
                    strcmp(source->valuestring, "configured") == 0;
-  const cJSON *verified =
-      cJSON_GetObjectItemCaseSensitive(block, "prices_verified");
-  /* Absent provenance reads as unverified: the honest default for a field
-   * whose whole job is to stop an estimate being shown as a fact. */
-  int prices_verified = cJSON_IsBool(verified) && cJSON_IsTrue(verified);
 
   tk_value_state claimed;
   if (strcmp(state->valuestring, "ok") == 0) {
@@ -312,7 +307,6 @@ static void optional_value(const cJSON *root, bool trust_strings,
 
   out->state = claimed;
   out->cost_configured = configured;
-  out->prices_verified = prices_verified;
   if (has_usd) { out->value_usd = usd; out->has_value_usd = 1; }
   if (claimed == TK_VALUE_OK) {
     out->plan_usd = plan;

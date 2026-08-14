@@ -71,11 +71,11 @@ typedef struct {
   double plan_usd;   /* what the subscription costs per month */
   double multiple;   /* value_usd / plan_usd */
   int has_value_usd, has_plan_usd, has_multiple;
-  /* 0 when the plan cost is this build's unverified default rather than a
-   * figure the operator stated, and 0 when any contributing provider's rates
-   * are estimates. The view must not present either as a precise figure. */
+  /* 0 when the plan cost is this build's default rather than a figure the
+   * operator stated. The view must not present a default as a precise
+   * figure. Rates themselves need no such flag: they are generated from a
+   * dated price catalogue, and their age travels as prices_as_of. */
   int cost_configured;
-  int prices_verified;
 } tk_value;
 
 typedef struct {

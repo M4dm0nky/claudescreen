@@ -120,9 +120,12 @@ python3 tools/tokenserver/tokenserver.py --claude-plan max5x --plan-cost-usd 100
 
 It counts cache tokens, which is the whole point — a real record here reads
 2 input and 4 output against 23 655 cache-read, so pricing only input and
-output understates it by 577x. Rates live in a JSON file you can override,
-so a model that ships next month needs one entry and no code change, and an
-unknown model degrades the figure to a dash rather than being silently free.
+output understates it by 577x.
+
+Rates are not hand-maintained: they are generated from a public price
+catalogue by `tools/tokenserver/update_prices.py` and committed, so the
+server stays offline and refreshing is one command. An unknown model degrades
+the figure to a dash rather than being silently free.
 
 ## How it works
 

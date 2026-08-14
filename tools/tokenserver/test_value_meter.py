@@ -7,6 +7,7 @@ even if the table were wrong, which is exactly the failure this feature
 cannot afford.
 """
 
+import json
 import unittest
 
 from tools.tokenserver import value_meter
@@ -42,7 +43,7 @@ class PriceUsageTest(unittest.TestCase):
 
     def test_prices_a_real_record_including_cache(self):
         usd, unpriced = value_meter.price_usage(
-            "claude-opus-5", REAL_USAGE, "2026-08-14")
+            "claude-opus-5", REAL_USAGE)
         self.assertEqual(unpriced, 0)
         self.assertAlmostEqual(usd, REAL_USAGE_USD, places=10)
 
@@ -54,75 +55,87 @@ class PriceUsageTest(unittest.TestCase):
         the cache terms away, this fails loudly.
         """
         usd, _ = value_meter.price_usage(
-            "claude-opus-5", REAL_USAGE, "2026-08-14")
+            "claude-opus-5", REAL_USAGE)
         naive = (2 * 5.00 + 4 * 25.00) / 1_000_000.0
         self.assertGreater(usd / naive, 500)
 
     def test_one_hour_cache_writes_cost_more_than_five_minute(self):
         five = value_meter.price_usage("claude-opus-5", {
             "cache_creation": {"ephemeral_5m_input_tokens": 1_000_000,
-                               "ephemeral_1h_input_tokens": 0}},
-            "2026-08-14")[0]
+                               "ephemeral_1h_input_tokens": 0}})[0]
         hour = value_meter.price_usage("claude-opus-5", {
             "cache_creation": {"ephemeral_5m_input_tokens": 0,
-                               "ephemeral_1h_input_tokens": 1_000_000}},
-            "2026-08-14")[0]
+                               "ephemeral_1h_input_tokens": 1_000_000}})[0]
         self.assertAlmostEqual(five, 6.25)   # 5.00 x 1.25
         self.assertAlmostEqual(hour, 10.00)  # 5.00 x 2.00
 
     def test_flat_cache_total_is_attributed_to_the_cheaper_bucket(self):
         """Without the TTL breakdown we must understate, never inflate."""
         usd, _ = value_meter.price_usage(
-            "claude-opus-5", {"cache_creation_input_tokens": 1_000_000},
-            "2026-08-14")
+            "claude-opus-5", {"cache_creation_input_tokens": 1_000_000})
         self.assertAlmostEqual(usd, 6.25)
 
     def test_explicit_breakdown_wins_over_flat_total(self):
         usd, _ = value_meter.price_usage("claude-opus-5", {
             "cache_creation_input_tokens": 1_000_000,
             "cache_creation": {"ephemeral_5m_input_tokens": 0,
-                               "ephemeral_1h_input_tokens": 1_000_000}},
-            "2026-08-14")
+                               "ephemeral_1h_input_tokens": 1_000_000}})
         self.assertAlmostEqual(usd, 10.00)
 
-    def test_intro_price_applies_before_it_expires(self):
-        # Sonnet 5 introductory input rate is $2.00/M through 2026-08-31.
-        usd, _ = value_meter.price_usage(
-            "claude-sonnet-5", {"input_tokens": 1_000_000}, "2026-08-14")
-        self.assertAlmostEqual(usd, 2.00)
+    def test_per_model_cache_rates_are_used_not_inferred(self):
+        """Cache rates come from the catalogue, not from multiplying input.
 
-    def test_standard_price_applies_after_intro_expires(self):
-        usd, _ = value_meter.price_usage(
-            "claude-sonnet-5", {"input_tokens": 1_000_000}, "2026-09-01")
-        self.assertAlmostEqual(usd, 3.00)
+        Haiku's cache-read rate happens to equal 0.1x its input rate, so this
+        uses a model where an override proves which path ran: state a cache
+        rate that is NOT any multiple of input and check it is honoured.
+        """
+        import json, tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "p.json"
+            path.write_text(json.dumps({"providers": {"anthropic": {"models": {
+                "claude-opus-5": {"input": 5.0, "output": 25.0,
+                                  "cache_read": 3.0}}}}}))
+            table = value_meter.load_prices(path)
+        usd, _ = table.price(
+            "claude-opus-5", {"cache_read_input_tokens": 1_000_000})
+        self.assertAlmostEqual(usd, 3.00)  # not 5.00 x 0.1
 
-    def test_intro_boundary_day_is_inclusive(self):
-        usd, _ = value_meter.price_usage(
-            "claude-sonnet-5", {"input_tokens": 1_000_000}, "2026-08-31")
-        self.assertAlmostEqual(usd, 2.00)
+    def test_a_model_without_cache_rates_falls_back_to_the_multiplier(self):
+        """An override that states only input/output still prices cache."""
+        import json, tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "p.json"
+            path.write_text(json.dumps({"providers": {"anthropic": {"models": {
+                "claude-opus-9": {"input": 8.0, "output": 40.0}}}}}))
+            table = value_meter.load_prices(path)
+        read, _ = table.price(
+            "claude-opus-9", {"cache_read_input_tokens": 1_000_000})
+        write, _ = table.price(
+            "claude-opus-9", {"cache_creation_input_tokens": 1_000_000})
+        self.assertAlmostEqual(read, 0.80)   # 8.00 x 0.1
+        self.assertAlmostEqual(write, 10.00)  # 8.00 x 1.25
 
     def test_batch_tier_is_half_price(self):
         usd, _ = value_meter.price_usage(
             "claude-opus-5",
-            {"input_tokens": 1_000_000, "service_tier": "batch"},
-            "2026-08-14")
+            {"input_tokens": 1_000_000, "service_tier": "batch"})
         self.assertAlmostEqual(usd, 2.50)
 
     def test_unknown_model_reports_tokens_as_unpriced_not_free(self):
         usd, unpriced = value_meter.price_usage(
-            "some-model-shipped-next-year", REAL_USAGE, "2026-08-14")
+            "some-model-shipped-next-year", REAL_USAGE)
         self.assertEqual(usd, 0.0)
         self.assertEqual(unpriced, 2 + 4 + 8246 + 23655)
 
     def test_missing_model_is_unpriced(self):
-        usd, unpriced = value_meter.price_usage(None, REAL_USAGE, "2026-08-14")
+        usd, unpriced = value_meter.price_usage(None, REAL_USAGE)
         self.assertEqual(usd, 0.0)
         self.assertEqual(unpriced, 31907)
 
     def test_empty_usage_is_neither_priced_nor_unpriced(self):
         for usage in ({}, {"input_tokens": 0}, None, "nonsense", []):
             usd, unpriced = value_meter.price_usage(
-                "claude-opus-5", usage, "2026-08-14")
+                "claude-opus-5", usage)
             self.assertEqual((usd, unpriced), (0.0, 0), usage)
 
     def test_malformed_counts_are_ignored_not_trusted(self):
@@ -131,7 +144,7 @@ class PriceUsageTest(unittest.TestCase):
             "output_tokens": True,
             "cache_read_input_tokens": "12000",
             "cache_creation_input_tokens": float("inf"),
-        }, "2026-08-14")
+        })
         self.assertEqual((usd, unpriced), (0.0, 0))
 
 
@@ -221,7 +234,6 @@ class BuildPayloadTest(unittest.TestCase):
             1.0, 0, 1000, claude_plan="pro", cost_override=20.0)
         self.assertEqual(payload["basis"], "list API prices")
         self.assertIsNotNone(payload["prices_as_of"])
-        self.assertIn("prices_verified", payload)
 
 
 
@@ -254,7 +266,7 @@ class CodexPricingTest(unittest.TestCase):
 
     def test_prices_a_codex_turn(self):
         usd, unpriced = value_meter.price_usage(
-            "gpt-5.6-sol", CODEX_USAGE, "2026-08-14")
+            "gpt-5.6-sol", CODEX_USAGE)
         self.assertEqual(unpriced, 0)
         self.assertAlmostEqual(usd, CODEX_USAGE_USD, places=10)
 
@@ -266,7 +278,7 @@ class CodexPricingTest(unittest.TestCase):
         plus 80k cached, overcharging the input side by 3.6x.
         """
         usd, _ = value_meter.price_usage(
-            "gpt-5.6-sol", CODEX_USAGE, "2026-08-14")
+            "gpt-5.6-sol", CODEX_USAGE)
         as_if_anthropic = (100_000 * 5.00 + 80_000 * 0.50
                            + 5_000 * 6.25 + 10_000 * 30.00) / 1_000_000.0
         self.assertLess(usd, as_if_anthropic)
@@ -275,40 +287,79 @@ class CodexPricingTest(unittest.TestCase):
 
     def test_reasoning_tokens_are_not_billed_on_top_of_output(self):
         with_reasoning = value_meter.price_usage(
-            "gpt-5.6-sol", CODEX_USAGE, "2026-08-14")[0]
+            "gpt-5.6-sol", CODEX_USAGE)[0]
         without = dict(CODEX_USAGE)
         without.pop("reasoning_output_tokens")
         self.assertAlmostEqual(
             with_reasoning,
-            value_meter.price_usage("gpt-5.6-sol", without, "2026-08-14")[0])
+            value_meter.price_usage("gpt-5.6-sol", without)[0])
 
     def test_total_tokens_is_context_size_and_never_billed(self):
         inflated = dict(CODEX_USAGE, total_tokens=99_000_000)
         self.assertAlmostEqual(
-            value_meter.price_usage("gpt-5.6-sol", inflated, "2026-08-14")[0],
+            value_meter.price_usage("gpt-5.6-sol", inflated)[0],
             CODEX_USAGE_USD, places=10)
 
     def test_cached_cannot_exceed_input(self):
         """A malformed record must not produce negative fresh input."""
         usd, _ = value_meter.price_usage("gpt-5.6-sol", {
-            "input_tokens": 1_000, "cached_input_tokens": 50_000},
-            "2026-08-14")
+            "input_tokens": 1_000, "cached_input_tokens": 50_000})
         self.assertAlmostEqual(usd, 1_000 * 0.50 / 1_000_000.0)
 
-    def test_codex_rates_are_flagged_unverified(self):
-        table = value_meter.default_table()
-        self.assertFalse(table.provenance(["openai"])["verified"])
+class GeneratedTableTest(unittest.TestCase):
+    """The shipped table is generated, so assert what generation guarantees.
 
-    def test_a_claude_only_machine_is_not_told_its_figure_is_an_estimate(self):
-        """Provenance is scoped to what priced, not to the whole table."""
-        table = value_meter.default_table()
-        self.assertTrue(table.provenance(["anthropic"])["verified"])
-        self.assertFalse(table.provenance(["anthropic", "openai"])["verified"])
+    These are the invariants a bad refresh would break. They are cheap and
+    they bite: an upstream rename, a dropped provider or a flipped accounting
+    mode all fail here rather than silently mis-billing.
+    """
 
-    def test_as_of_reports_the_stalest_contributing_date(self):
-        table = value_meter.default_table()
-        both = table.provenance(["anthropic", "openai"])["as_of"]
-        self.assertEqual(both, "2026-06-24")  # older than the openai entry
+    def setUp(self):
+        self.table = value_meter.default_table()
+        self.doc = json.loads(
+            value_meter.DEFAULT_PRICES_PATH.read_text(encoding="utf-8"))
+
+    def test_table_records_where_it_came_from(self):
+        source = self.doc["source"]
+        self.assertIn("litellm", source["catalogue"].lower())
+        self.assertRegex(source["blob_sha"], r"^[0-9a-f]{40}$")
+        self.assertRegex(source["generated"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertEqual(self.table.as_of(), source["generated"])
+
+    def test_both_providers_survive_a_refresh(self):
+        for provider, expected in (("anthropic", "cache_excluded_input"),
+                                   ("openai", "cache_included_input")):
+            spec = self.doc["providers"][provider]
+            self.assertEqual(spec["accounting"], expected)
+            self.assertGreater(len(spec["models"]), 10, provider)
+
+    def test_the_models_actually_in_use_are_priced(self):
+        for model in ("claude-opus-5", "claude-sonnet-5", "claude-fable-5",
+                      "claude-haiku-4-5", "gpt-5.6-sol", "gpt-5.1-codex"):
+            self.assertTrue(self.table.knows(model), model)
+
+    def test_every_model_prices_both_sides_of_the_bill(self):
+        """Input-only would look ~5x too cheap; worse than being unpriced."""
+        for spec in self.doc["providers"].values():
+            for model, rates in spec["models"].items():
+                self.assertIn("input", rates, model)
+                self.assertIn("output", rates, model)
+
+    def test_rates_are_per_million_not_per_token(self):
+        """A missed unit conversion is a 1,000,000x error that still 'works'."""
+        usd, _ = self.table.price(
+            "claude-opus-5", {"output_tokens": 1_000_000})
+        self.assertAlmostEqual(usd, 25.00)
+
+    def test_sonnet_5_matches_the_catalogue_not_the_old_hand_written_rate(self):
+        """Regression: this was hand-written as $3/$15 and was simply wrong.
+
+        It sat behind a 'verified: true' flag for a whole release, which is
+        why rates are generated now instead of typed.
+        """
+        usd, _ = self.table.price(
+            "claude-sonnet-5", {"input_tokens": 1_000_000})
+        self.assertAlmostEqual(usd, 2.00)
 
 
 class PriceTableTest(unittest.TestCase):

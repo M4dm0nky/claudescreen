@@ -91,7 +91,7 @@ def _parse_file(path: Path, month_start: datetime, start_offset: int = 0,
                     continue
                 day = stamp.strftime("%Y-%m-%d")
                 usd, unpriced = (table or value_meter.default_table()).price(
-                    model, usage, day)
+                    model, usage)
                 priced = 0 if unpriced else _counted(usage)
                 if usd or unpriced or priced:
                     records.append((day, usd, priced, unpriced))

@@ -15,10 +15,8 @@
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 
-#include "esp_attr.h"
 #include "esp_event.h"
 #include "esp_log.h"
-#include "esp_system.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "esp_timer.h"
@@ -224,8 +222,6 @@ static void net_task(void *arg) {
 
 /* ------------------------------------------------------- LVGL-tasken, 10 Hz */
 
-static void diag_stage_unlocked(char stage); /* diagnos, definierad nedan */
-
 static void tick_cb(lv_timer_t *t) {
   (void)t;
   int64_t now = esp_timer_get_time();
@@ -265,13 +261,6 @@ static void tick_cb(lv_timer_t *t) {
    * 10 Hz-ticken pollar vidare medan knappen är nere så hållet avfyras
    * utan släpp. Körs i LVGL-tasken — därför bara atomära tjänsteanrop här,
    * aldrig torget_ota_ui_set (som tar UI-låset). */
-  /* Diagnos: E = LVGL-tickern lever alls, F = den har levt i fem sekunder.
-   * Körs i LVGL-tasken — inget lås. */
-  static uint32_t s_diag_ticks;
-  s_diag_ticks++;
-  if (s_diag_ticks == 1) diag_stage_unlocked('E');
-  if (s_diag_ticks == 50) diag_stage_unlocked('F');
-
   static tg_button_policy key3;
   bool key3_down = gpio_get_level(GPIO_NUM_18) == 0;
   tg_button_action key3_action = tg_button_update(&key3, key3_down, now);
@@ -408,31 +397,9 @@ esp_err_t torget_display_rotation_set(bsp_display_rotation_t rotation) {
   return esp_lcd_panel_io_tx_param(s_panel_io, lcd_cmd, &MADCTL[rotation], 1);
 }
 
-/* --------------------------------------------------- DIAGNOS (tillfällig) */
-
-/* Brödsmulor på glaset: utan seriekonsol (TinyUSB äger USB:n) är panelen
- * den enda logg vi har. En bokstav per bootsteg + en räknare som överlever
- * mjuka omstarter. "D7" som klättrar = kraschloop efter steg D; en stilla
- * bokstav = äkta häng just där. Tas bort när frysaren är dömd. */
-RTC_NOINIT_ATTR static uint32_t s_boot_count;
-static lv_obj_t *s_diag_label;
-extern const lv_font_t plex_ui_14;
-
-static void diag_stage_unlocked(char stage) { /* endast från LVGL-tasken */
-  if (!s_diag_label) return;
-  lv_label_set_text_fmt(s_diag_label, "%c%u", stage,
-                        (unsigned)(s_boot_count % 100));
-}
-
-static void diag_stage(char stage) { /* från app_main, tar låset */
-  torget_ui_lock();
-  diag_stage_unlocked(stage);
-  torget_ui_unlock();
-}
+/* ------------------------------------------------------------------- start */
 
 void app_main(void) {
-  if (esp_reset_reason() == ESP_RST_POWERON) s_boot_count = 0;
-  s_boot_count++;
   esp_err_t nvs = nvs_flash_init();
   if (nvs == ESP_ERR_NVS_NO_FREE_PAGES || nvs == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     ESP_ERROR_CHECK(nvs_flash_erase());
@@ -485,12 +452,6 @@ void app_main(void) {
   /* OTA-overlayn EFTER det delade UI:t, på topplagret, dold tills KEY3-
    * hållet öppnar underhållsfönstret — appträdet rörs aldrig. */
   torget_ota_ui_create();
-  /* Diagnosetiketten sist på topplagret: alltid synlig, aldrig i vägen. */
-  s_diag_label = lv_label_create(lv_layer_top());
-  lv_obj_set_style_text_font(s_diag_label, &plex_ui_14, 0);
-  lv_obj_set_style_text_color(s_diag_label, lv_color_hex(0xFF9F2F), 0);
-  lv_obj_set_pos(s_diag_label, 4, 462);
-  diag_stage_unlocked('A');
   lv_timer_create(tick_cb, TICK_EVERY_MS, NULL);
   torget_ui_unlock();
 
@@ -501,16 +462,13 @@ void app_main(void) {
            gpio_get_level(GPIO_NUM_18));
 
   wifi_start();
-  diag_stage('B');
   /* Nättasken FÖRE OTA-vakten: apparnas dataväg är plattformens kritiska
    * bana och får aldrig stå bakom en valfri funktion i minneskön. */
   if (xTaskCreate(net_task, "torget-net", 4096, NULL, 5, NULL) != pdPASS)
     ESP_LOGE(TAG, "torget-net kunde inte skapas — apparna får aldrig data");
-  diag_stage('C');
   /* OTA-ytan är LAT: vid boot startar bara den lilla fönstervakten.
    * Http-servern och dess minneskostnad existerar först när ett KEY3-håll
    * öppnat underhållsfönstret — en boot utan uppdatering ska ha samma
    * minnesprofil som en build helt utan OTA (frysläxan 2026-08-14). */
   torget_ota_service_start();
-  diag_stage('D');
 }

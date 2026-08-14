@@ -162,34 +162,47 @@ for copy in ("BURN RATE", "WEEKLY", "FORECAST"):
 assert "251" in burn, "Burn Rate rows need the approved separator"
 assert "COL_CARD" not in burn
 
-# Value page. Held to the same contract as the quota pages: shared layout
-# tokens, and no provider accent on a figure that sums both providers.
-value = source[source.index("static void create_value_page"):]
+# Value page. The hero is the COMBINED figure; each provider gets its own
+# bar with its own break-even, which is the only honest way to put the
+# reserved provider accents on a page that sums both -- each bar is that
+# provider's own money.
+value = source[source.index("static void create_value_row"):]
 value = value[:value.index("static uint64_t agent_packet_age_ms")]
-for copy in ("VALUE", "MONTH TO DATE", "AT LIST API PRICES", "YOU PAID",
-             "WHAT YOU PAID", "BREAK EVEN"):
+for copy in ("VALUE", "MONTH TO DATE", "AT LIST API PRICES"):
     assert f'"{copy}"' in value, f"missing value page copy: {copy}"
-assert "VP_BAR_Y" in value and "VP_BAR_H" in value
 assert "VALUE_HERO_Y" in value and "plex_money_118" in value
-assert "lv_obj_set_size(page->marker, 3, VP_BAR_H);" in value
-assert "COL_CLAUDE" not in value and "COL_CODEX" not in value, \
-    "a combined Claude+Codex figure must not wear either provider accent"
+assert value.count("COL_CLAUDE") == 2 and value.count("COL_CODEX") == 2, \
+    "each provider accent appears once at construction and once on apply"
+assert "COL_MONEY" in value, "the combined hero wears the money accent"
 
-value_page_struct = source[source.index("} tracker_page;"):]
+value_page_struct = source[source.index("} value_row;"):]
 value_page_struct = value_page_struct[:value_page_struct.index("} value_page;")]
-for member in ("eyebrow", "hero", "track", "fill", "marker", "multiple",
-               "plan", "plan_caption"):
+for member in ("tile", "eyebrow", "hero", "footer"):
     assert f"*{member};" in value_page_struct, f"value_page must own {member}"
-assert "*unit;" not in value_page_struct, \
-    "the hero is one label again: '$' lives in the 164 px font"
+assert "value_row rows[2];" in value_page_struct
 
-apply_value = source[source.index("static void apply_value"):]
+value_row_struct = source[source.index("typedef struct {\n  lv_obj_t *root;\n  lv_obj_t *name;"):]
+value_row_struct = value_row_struct[:value_row_struct.index("} value_row;")]
+for member in ("root", "name", "detail", "track", "fill", "marker"):
+    assert f"*{member};" in value_row_struct, f"value_row must own {member}"
+
+apply_hero = source[source.index("static void apply_value_hero"):]
+apply_hero = apply_hero[:apply_hero.index("static void apply_value(")]
+assert "COL_CLAUDE" not in apply_hero and "COL_CODEX" not in apply_hero, \
+    "a combined figure must never wear a provider accent"
+
+apply_value = source[source.index("static void apply_value(const tk_tokens"):]
 apply_value = apply_value[:apply_value.index("static uint64_t agent_packet_age_ms")]
 assert "usage_presenter_build_value(tokens, &view);" in apply_value, \
     "the page must render the presenter's view, never tk_value directly"
-assert "view.break_even_fraction" in apply_value
-assert "lv_obj_add_flag(page->track, LV_OBJ_FLAG_HIDDEN)" not in apply_value, \
-    "the empty track stays, matching the quota pages' no-data state"
+assert "i < view.row_count ? &view.rows[i] : NULL" in apply_value, \
+    "a provider that contributed nothing must not be drawn as an empty bar"
+
+apply_row = source[source.index("static void apply_value_row"):]
+apply_row = apply_row[:apply_row.index("/* The value page owns its hero font")]
+assert "view->break_even_fraction" in apply_row, \
+    "every bar carries its OWN break-even, not a shared one"
+assert "LV_OBJ_FLAG_HIDDEN" in apply_row
 
 # The value page has its OWN money fonts. A "$" is taller than every digit,
 # so putting it in a shared numeral font grows line_height and shifts every
@@ -205,11 +218,10 @@ for shared in ("conv Bold     164", "conv Bold     146", "conv Bold      50"):
                 if line.startswith(shared))
     assert "0x24" not in line, \
         f"{shared} must not carry '$': it would shift approved pages"
-for path, symbol in (("plex_money_118", "plex_money_118"),
-                     ("plex_money_35", "plex_money_35")):
+for path in ("plex_money_118", "plex_money_35"):
     generated = root / f"platform/fonts/{path}.c"
     assert generated.is_file(), f"missing generated money font: {path}"
-    assert f"const lv_font_t {symbol}" in generated.read_text()
+    assert f"const lv_font_t {path}" in generated.read_text()
 
 for removed_volume in (
     "rendered_volume_value", "rendered_volume_sessions",

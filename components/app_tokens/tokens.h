@@ -76,6 +76,18 @@ typedef struct {
    * figure. Rates themselves need no such flag: they are generated from a
    * dated price catalogue, and their age travels as prices_as_of. */
   int cost_configured;
+  /* Per-provider breakdown of the same month. Optional: a Claude-only
+   * machine reports only the Claude pair, and a payload that omits them
+   * entirely still renders the combined figure. Used to attribute the total
+   * on screen -- the one honest way to paint a combined page in the reserved
+   * provider accents. */
+  double claude_usd, codex_usd;
+  int has_claude_usd, has_codex_usd;
+  /* What each subscription costs, separately. Each one pays for itself or
+   * does not on its own, so each earns its own bar and its own break-even
+   * point; a blended bar would hide a provider that is not earning its keep. */
+  double claude_plan_usd, codex_plan_usd;
+  int has_claude_plan_usd, has_codex_plan_usd;
 } tk_value;
 
 typedef struct {

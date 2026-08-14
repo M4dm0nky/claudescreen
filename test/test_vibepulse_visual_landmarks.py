@@ -175,6 +175,9 @@ EXPECTED = {
     "torget-vibepulse-value-no-plan-cost.bmp",
     "torget-vibepulse-value-partial.bmp",
     "torget-vibepulse-value-no-data.bmp",
+    "torget-vibepulse-value-both.bmp",
+    "torget-vibepulse-value-uneven.bmp",
+    "torget-vibepulse-value-solo.bmp",
 }
 
 
@@ -720,7 +723,7 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
             ("torget-vibepulse-tracker-codex-full.bmp", 5),        # VIEW_TRACKER_CODEX
             ("torget-vibepulse-tracker-empty.bmp", 5),             # view unchanged
             ("torget-vibepulse-tracker-stale.bmp", 5),             # view unchanged
-            ("torget-vibepulse-value-ahead.bmp", 6),               # VIEW_VALUE
+            ("torget-vibepulse-value-both.bmp", 6),               # VIEW_VALUE
         )
         for name, active_index in cases:
             with self.subTest(name=name):
@@ -737,7 +740,7 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
         # A hard-coded origin walked the row off centre every time a view was
         # added; create_pager now derives it. Assert the drawn row really is
         # centred, not just that the arithmetic in the header looks right.
-        runs = dot_runs(self.image("torget-vibepulse-value-ahead.bmp"),
+        runs = dot_runs(self.image("torget-vibepulse-value-both.bmp"),
                         PAGER_ROW_Y)
         left, right = runs[0][0], runs[-1][1]
         self.assertLessEqual(abs((left + right + 1) - 480), 2)

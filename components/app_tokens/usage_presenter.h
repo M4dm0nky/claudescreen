@@ -104,30 +104,35 @@ typedef enum {
   USAGE_VALUE_OK,
 } usage_value_state;
 
+/* One subscription's own answer. Each provider pays for itself or does not,
+ * independently, so each gets its own bar and its own break-even marker --
+ * a single blended bar hides a provider that is not earning its keep. */
+typedef struct {
+  usage_provider provider;
+  char name[12];
+  char detail[48];  /* "$280 · 1.40x"; sized for the widest pair plus UTF-8 */
+  double bar_fraction;
+  double break_even_fraction;
+  int has_bar;
+} usage_value_row;
+
 typedef struct {
   usage_value_state state;
   char eyebrow[USAGE_VALUE_TEXT_CAP];
   /* The hero is a DOLLAR amount, not the multiple. "$312" is understood at a
    * glance from across a room; "3.12x" needs a beat and a caption to land,
-   * which is exactly what a shelf display does not get. The multiple keeps
-   * its place as the thing that makes the dollars mean something, one size
-   * down in the stat row. */
+   * which is exactly what a shelf display does not get. */
   char hero_text[USAGE_CARD_PCT_CAP];
   /* 1 when the hero is a WORD, not a figure, and must render in the 48 px
    * headline font. An en dash set at 164 px is a bare white rectangle -- it
    * reads as a rendering fault rather than as "unknown", so no degraded
    * state is allowed to use it. */
   int hero_is_word;
-  char plan_text[USAGE_CARD_PCT_CAP];
-  char multiple_text[USAGE_CARD_PCT_CAP];
-  char plan_caption[USAGE_VALUE_TEXT_CAP];
-  /* Bar position on a FIXED 0..2x scale, so break-even sits permanently at
-   * the halfway marker and the fill is comparable from one day to the next.
-   * Anchoring the bar's end at break-even instead would put 0.97x and 3.12x
-   * within a hair of each other -- exactly where the answer matters most. */
-  double bar_fraction;
-  double break_even_fraction;
-  int show_bar;
+  char footer[56];    /* "FOR $220 PAID · 1.42x"; sized for the widest pair */
+  /* Only the providers that actually contributed. One provider means one
+   * row: the absent one is not drawn as an empty bar. */
+  int row_count;
+  usage_value_row rows[2];
 } usage_value_page_view;
 
 void usage_presenter_build_value(const tk_tokens *tokens,

@@ -197,9 +197,9 @@ int main(void) {
         !forecast_page.rows[0].visible && !forecast_page.rows[1].visible);
 
   /* --- value multiple ---------------------------------------------------
-   * The page must never show a confident number it cannot stand behind, so
-   * every state below is asserted on what it REFUSES as much as what it
-   * shows. */
+   * Each provider gets its own row, its own bar and its own break-even,
+   * because each subscription pays for itself or does not on its own. Every
+   * state below is asserted on what it REFUSES as much as what it shows. */
   usage_value_page_view value_page;
 
   tk_tokens value_ok = {0};
@@ -207,120 +207,139 @@ int main(void) {
   value_ok.value.has_value_usd = 1;
   value_ok.value.value_usd = 312.0;
   value_ok.value.has_plan_usd = 1;
-  value_ok.value.plan_usd = 100.0;
+  value_ok.value.plan_usd = 220.0;
   value_ok.value.has_multiple = 1;
-  value_ok.value.multiple = 3.12;
+  value_ok.value.multiple = 1.42;
   value_ok.value.cost_configured = 1;
+  value_ok.value.has_claude_usd = 1;
+  value_ok.value.claude_usd = 280.0;
+  value_ok.value.has_claude_plan_usd = 1;
+  value_ok.value.claude_plan_usd = 200.0;
+  value_ok.value.has_codex_usd = 1;
+  value_ok.value.codex_usd = 32.0;
+  value_ok.value.has_codex_plan_usd = 1;
+  value_ok.value.codex_plan_usd = 20.0;
+
   usage_presenter_build_value(&value_ok, &value_page);
-  check("value ok leads with dollars, not the multiple",
+  check("value ok leads with combined dollars",
         value_page.state == USAGE_VALUE_OK &&
         strcmp(value_page.hero_text, "$312") == 0 &&
-        !value_page.hero_is_word);
-  check("value ok renders the plan cost and the multiple",
-        strcmp(value_page.plan_text, "$100") == 0 &&
-        strcmp(value_page.multiple_text, "3.12\u00d7") == 0);
-  check("value ok says what the hero is",
+        !value_page.hero_is_word &&
         strcmp(value_page.eyebrow, "YOU GOT") == 0);
-  check("value ok past break-even fills the bar",
-        value_page.show_bar && value_page.bar_fraction > 0.999);
-  check("break-even sits at the halfway marker",
-        value_page.break_even_fraction > 0.499 &&
-        value_page.break_even_fraction < 0.501);
-  check("configured cost is not captioned as an estimate",
-        strcmp(value_page.plan_caption, "YOU PAID") == 0);
+  check("the footer closes the sentence with cost and multiple",
+        strcmp(value_page.footer, "FOR $220 PAID · 1.42\u00d7") == 0);
+  check("both providers get a row",
+        value_page.row_count == 2 &&
+        value_page.rows[0].provider == USAGE_PROVIDER_CLAUDE &&
+        value_page.rows[1].provider == USAGE_PROVIDER_CODEX);
+  check("each row carries its own dollars and multiple",
+        strcmp(value_page.rows[0].detail, "$280 · 1.40\u00d7") == 0 &&
+        strcmp(value_page.rows[1].detail, "$32 · 1.60\u00d7") == 0);
+  check("each row breaks even at its own halfway marker",
+        value_page.rows[0].has_bar && value_page.rows[1].has_bar &&
+        value_page.rows[0].break_even_fraction > 0.499 &&
+        value_page.rows[1].break_even_fraction > 0.499);
+  check("each row's fill is its own ratio, not the blended one",
+        value_page.rows[0].bar_fraction > 0.69 &&
+        value_page.rows[0].bar_fraction < 0.71 &&
+        value_page.rows[1].bar_fraction > 0.79 &&
+        value_page.rows[1].bar_fraction < 0.81);
 
-  /* On the 2x scale, 0.4x sits at a fifth of the bar -- left of the marker. */
-  tk_tokens value_half = value_ok;
-  value_half.value.value_usd = 40.0;
-  value_half.value.multiple = 0.4;
-  usage_presenter_build_value(&value_half, &value_page);
-  check("below break-even the bar is partial",
-        value_page.bar_fraction > 0.19 && value_page.bar_fraction < 0.21);
-  check("below break-even the fill stops short of the marker",
-        value_page.bar_fraction < value_page.break_even_fraction);
+  /* The whole point of separate bars: a provider that is NOT earning its
+     keep must be visible as such, not averaged away by the other one. */
+  tk_tokens value_uneven = value_ok;
+  value_uneven.value.codex_usd = 6.0;
+  usage_presenter_build_value(&value_uneven, &value_page);
+  check("a provider below break-even shows below its own marker",
+        value_page.rows[1].bar_fraction <
+            value_page.rows[1].break_even_fraction &&
+        value_page.rows[0].bar_fraction >
+            value_page.rows[0].break_even_fraction);
+
+  /* One subscription: one row. The absent provider is not drawn as an
+     empty bar. */
+  tk_tokens value_claude_only = value_ok;
+  value_claude_only.value.has_codex_usd = 0;
+  value_claude_only.value.codex_usd = 0;
+  usage_presenter_build_value(&value_claude_only, &value_page);
+  check("a Claude-only machine gets exactly one row",
+        value_page.row_count == 1 &&
+        value_page.rows[0].provider == USAGE_PROVIDER_CLAUDE);
+
+  tk_tokens value_codex_only = value_ok;
+  value_codex_only.value.has_claude_usd = 0;
+  value_codex_only.value.claude_usd = 0;
+  usage_presenter_build_value(&value_codex_only, &value_page);
+  check("a Codex-only machine gets exactly one row, in slot zero",
+        value_page.row_count == 1 &&
+        value_page.rows[0].provider == USAGE_PROVIDER_CODEX &&
+        strcmp(value_page.rows[0].name, "CODEX") == 0);
+
+  /* A provider with dollars but no declared cost has no break-even to draw,
+     but its money is still real and still shown. */
+  tk_tokens value_no_codex_plan = value_ok;
+  value_no_codex_plan.value.has_codex_plan_usd = 0;
+  usage_presenter_build_value(&value_no_codex_plan, &value_page);
+  check("a row without a plan cost keeps its dollars and drops its bar",
+        value_page.row_count == 2 && !value_page.rows[1].has_bar &&
+        strcmp(value_page.rows[1].detail, "$32 · –") == 0);
 
   /* 0.97x must never round to "1.0" -- that reads as broken even. */
   tk_tokens value_near = value_ok;
-  value_near.value.value_usd = 97.0;
-  value_near.value.multiple = 0.97;
+  value_near.value.claude_usd = 194.0;
   usage_presenter_build_value(&value_near, &value_page);
   check("just under break-even keeps two decimals",
-        strcmp(value_page.multiple_text, "0.97\u00d7") == 0);
-
-  /* The defect the fixed scale exists to fix: anchoring the bar's end at
-   * break-even put 0.97x and 3.12x within 3% of each other, so the bar said
-   * nothing exactly where the answer matters. They must be far apart now. */
-  double near_fill = value_page.bar_fraction;
-  usage_presenter_build_value(&value_ok, &value_page);
-  check("0.97x and 3.12x are visibly different on the bar",
-        value_page.bar_fraction - near_fill > 0.4);
-  check("just under break-even the fill stops short of the marker",
-        near_fill < value_page.break_even_fraction);
+        strcmp(value_page.rows[0].detail, "$194 · 0.97\u00d7") == 0);
 
   tk_tokens value_big = value_ok;
-  value_big.value.value_usd = 1240.0;
-  value_big.value.multiple = 12.4;
+  value_big.value.value_usd = 2480.0;
+  value_big.value.claude_usd = 2480.0;
   usage_presenter_build_value(&value_big, &value_page);
-  check("large multiples drop to one decimal",
-        strcmp(value_page.multiple_text, "12.4\u00d7") == 0);
   check("thousands are comma-grouped behind the dollar sign",
-        strcmp(value_page.hero_text, "$1,240") == 0);
-
-  tk_tokens value_default_cost = value_ok;
-  value_default_cost.value.cost_configured = 0;
-  usage_presenter_build_value(&value_default_cost, &value_page);
-  check("an unstated plan cost is captioned as an estimate",
-        strcmp(value_page.plan_caption, "YOU PAID (EST)") == 0);
+        strcmp(value_page.hero_text, "$2,480") == 0);
+  check("large multiples drop to one decimal",
+        strcmp(value_page.rows[0].detail, "$2,480 · 12.4\u00d7") == 0);
 
   tk_tokens value_no_plan = {0};
   value_no_plan.value.state = TK_VALUE_NO_PLAN_COST;
   value_no_plan.value.has_value_usd = 1;
   value_no_plan.value.value_usd = 312.0;
+  value_no_plan.value.has_claude_usd = 1;
+  value_no_plan.value.claude_usd = 312.0;
   usage_presenter_build_value(&value_no_plan, &value_page);
-  check("no plan cost keeps the dollars but dashes the multiple",
+  check("no plan cost keeps the dollars but draws no bar",
         value_page.state == USAGE_VALUE_NO_PLAN_COST &&
         strcmp(value_page.hero_text, "$312") == 0 &&
-        strcmp(value_page.multiple_text, "–") == 0 &&
-        strcmp(value_page.plan_text, "–") == 0 &&
-        !value_page.show_bar);
+        value_page.row_count == 1 && !value_page.rows[0].has_bar &&
+        value_page.footer[0] == '\0');
   check("no plan cost tells the owner how to fix it",
         strcmp(value_page.eyebrow, "SET YOUR PLAN COST") == 0);
-  check("a dash is never captioned as an estimate",
-        strcmp(value_page.plan_caption, "YOU PAID") == 0);
 
   tk_tokens value_partial = {0};
   value_partial.value.state = TK_VALUE_PARTIAL;
-  value_partial.value.has_value_usd = 1;
-  value_partial.value.value_usd = 312.0;
+  value_partial.value.has_claude_usd = 1;
+  value_partial.value.claude_usd = 312.0;
   usage_presenter_build_value(&value_partial, &value_page);
-  check("partial says unpriced, not no-data: the usage is real",
+  check("partial says unpriced and draws nothing",
         value_page.state == USAGE_VALUE_PARTIAL &&
         strcmp(value_page.hero_text, "UNPRICED") == 0 &&
-        value_page.hero_is_word &&
-        strcmp(value_page.eyebrow, "SOME MODELS UNKNOWN") == 0 &&
-        strcmp(value_page.multiple_text, "–") == 0 &&
-        !value_page.show_bar);
+        value_page.hero_is_word && value_page.row_count == 0 &&
+        strcmp(value_page.eyebrow, "SOME MODELS UNKNOWN") == 0);
 
+  /* Never an en dash as the hero: set at hero size a dash is a bare white
+     rectangle and reads as a rendering fault rather than as "unknown". */
   tk_tokens value_absent = {0};
   usage_presenter_build_value(&value_absent, &value_page);
-  /* Never an en dash as the hero: set at 164 px a dash is a bare white
-     rectangle and reads as a rendering fault rather than as "unknown". */
   check("absent value block shows a word, never a giant dash",
         value_page.state == USAGE_VALUE_UNAVAILABLE &&
         strcmp(value_page.hero_text, "NO DATA") == 0 &&
-        value_page.hero_is_word &&
-        value_page.eyebrow[0] == '\0' &&
-        strcmp(value_page.multiple_text, "–") == 0 &&
-        strcmp(value_page.plan_text, "–") == 0 &&
-        !value_page.show_bar);
+        value_page.hero_is_word && value_page.eyebrow[0] == '\0' &&
+        value_page.row_count == 0);
 
   usage_presenter_build_value(NULL, &value_page);
   check("null tokens are safe and show nothing",
         value_page.state == USAGE_VALUE_UNAVAILABLE &&
-        !value_page.show_bar);
-  check("a real figure is never rendered in the word font",
-        !value_page.hero_is_word ||
-        strcmp(value_page.hero_text, "NO DATA") == 0);
+        value_page.row_count == 0);
 
   if (failures == 0) {
     printf("OK: all usage presenter tests pass\n");

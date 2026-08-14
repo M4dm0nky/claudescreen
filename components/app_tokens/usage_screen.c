@@ -125,17 +125,24 @@ typedef struct {
   bool quota_stale;
 } tracker_page;
 
+/* One provider's bar block: name, its own dollars+multiple, its own track,
+ * fill and break-even tick. Hidden entirely when that provider contributed
+ * nothing -- an empty bar would imply a subscription that is not there. */
+typedef struct {
+  lv_obj_t *root;
+  lv_obj_t *name;
+  lv_obj_t *detail;
+  lv_obj_t *track;
+  lv_obj_t *fill;
+  lv_obj_t *marker;
+} value_row;
+
 typedef struct {
   lv_obj_t *tile;
   lv_obj_t *eyebrow;
   lv_obj_t *hero;
-  lv_obj_t *track;
-  lv_obj_t *fill;
-  lv_obj_t *marker;
-  lv_obj_t *marker_caption;
-  lv_obj_t *plan;
-  lv_obj_t *multiple;
-  lv_obj_t *plan_caption;
+  lv_obj_t *footer;
+  value_row rows[2];
 } value_page;
 
 static struct {
@@ -145,6 +152,7 @@ static struct {
   forecast_row forecast_rows[2];
   tracker_page trackers[2];
   value_page value;
+  tk_tokens last_tokens;
   tk_agent_snapshot agent_snapshot;
   int64_t agent_applied_at_us;
   int64_t last_now_us;
@@ -425,16 +433,62 @@ static void create_burn_rate_page(void) {
   create_pager(tile, VIEW_BURN_RATE);
 }
 
-/* Value page. Deliberately monochrome: the figure sums Claude and Codex, so
- * painting it in either provider accent would attribute the whole month to
- * one of them. The provider pages are coloured; this one is the money page. */
+/* Value page. The hero is the combined figure; underneath it each provider
+ * gets its own bar with its own break-even, because each subscription pays
+ * for itself or does not independently -- one blended bar would hide a
+ * provider that is not earning its keep. Run one agent and you get one bar:
+ * the other block is not drawn at all.
+ *
+ * This is also the only honest way to put the reserved provider accents on a
+ * page that sums both: each bar IS that provider's own money. */
 #define VALUE_HERO_X 16
-/* A 118 px hero is shorter than the 164 px quota hero, so it sits lower to
- * keep its optical centre in the same band. */
-#define VALUE_HERO_Y (VP_PERCENT_Y + 26)
-/* A word hero is a third the height of a numeral one, so it sits lower to
- * keep its optical weight near where the figure would have been. */
-#define VALUE_WORD_HERO_Y (VP_PERCENT_Y + 54)
+#define VALUE_HERO_Y 104
+#define VALUE_WORD_HERO_Y 150
+#define VALUE_ROW_Y 244
+#define VALUE_ROW_PITCH 84
+#define VALUE_ROW_BAR_DY 26
+#define VALUE_FOOTER_Y 412
+/* Already a platform colour (spec/ui-spec.md's cheap-electricity dot):
+ * desaturated to match the palette and far from both provider accents, so
+ * it reads as "money" rather than as either agent. */
+#define COL_MONEY lv_color_hex(0x6FC795)
+
+static void create_value_row(lv_obj_t *tile, value_row *row, int y,
+                             usage_provider provider) {
+  row->root = bare(tile);
+  lv_obj_set_pos(row->root, VP_SAFE_X, y);
+  lv_obj_set_size(row->root, VP_CONTENT_W, VALUE_ROW_BAR_DY + VP_BAR_H);
+
+  row->name = label(row->root, &plex_ui_16, COL_LABEL, 0, 0, 200, 20);
+  lv_obj_set_style_text_letter_space(row->name, 2, 0);
+  row->detail = label(row->root, &plex_ui_21, COL_WHITE,
+                      VP_CONTENT_W - 240, 0, 240, 26);
+  lv_obj_set_style_text_align(row->detail, LV_TEXT_ALIGN_RIGHT, 0);
+
+  row->track = bare(row->root);
+  lv_obj_set_pos(row->track, 0, VALUE_ROW_BAR_DY);
+  lv_obj_set_size(row->track, VP_CONTENT_W, VP_BAR_H);
+  lv_obj_set_style_bg_opa(row->track, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(row->track, COL_TRACK, 0);
+  lv_obj_set_style_radius(row->track, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_clip_corner(row->track, true, 0);
+
+  row->fill = bare(row->track);
+  lv_obj_set_pos(row->fill, 0, 0);
+  lv_obj_set_size(row->fill, 0, VP_BAR_H);
+  lv_obj_set_style_bg_opa(row->fill, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(
+      row->fill,
+      provider == USAGE_PROVIDER_CLAUDE ? COL_CLAUDE : COL_CODEX, 0);
+
+  /* Break-even tick, on the row rather than inside the clipped track so it
+   * stays visible where the fill has already covered it. */
+  row->marker = bare(row->root);
+  lv_obj_set_size(row->marker, 3, VP_BAR_H);
+  lv_obj_set_style_bg_opa(row->marker, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(row->marker, COL_WHITE, 0);
+  lv_obj_add_flag(row->marker, LV_OBJ_FLAG_HIDDEN);
+}
 
 static void create_value_page(void) {
   value_page *page = &ui.value;
@@ -447,88 +501,56 @@ static void create_value_page(void) {
                         VP_SAFE_X, VP_QUOTA_Y, VP_CONTENT_W, 30);
   lv_obj_set_style_text_letter_space(page->eyebrow, 2, 0);
 
-  /* One label, because '$' now lives in the 164 px font. The hero used to be
-   * split around a missing multiplication sign; a dollar amount needs no
-   * such surgery. */
-  page->hero = label_auto(page->tile, &plex_money_118, COL_WHITE,
+  page->hero = label_auto(page->tile, &plex_money_118, COL_MONEY,
                           VALUE_HERO_X, VALUE_HERO_Y);
   lv_obj_set_style_text_letter_space(page->hero, -3, 0);
   lv_label_set_text(page->hero, "–");
 
-  page->track = bare(page->tile);
-  lv_obj_set_pos(page->track, VP_SAFE_X, VP_BAR_Y);
-  lv_obj_set_size(page->track, VP_CONTENT_W, VP_BAR_H);
-  lv_obj_set_style_bg_opa(page->track, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(page->track, COL_TRACK, 0);
-  lv_obj_set_style_radius(page->track, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_clip_corner(page->track, true, 0);
+  create_value_row(page->tile, &page->rows[0], VALUE_ROW_Y,
+                   USAGE_PROVIDER_CLAUDE);
+  create_value_row(page->tile, &page->rows[1],
+                   VALUE_ROW_Y + VALUE_ROW_PITCH, USAGE_PROVIDER_CODEX);
 
-  page->fill = bare(page->track);
-  lv_obj_set_pos(page->fill, 0, 0);
-  lv_obj_set_size(page->fill, 0, VP_BAR_H);
-  lv_obj_set_style_bg_opa(page->fill, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(page->fill, COL_WHITE, 0);
-
-  /* Break-even tick, drawn on the tile rather than inside the clipped track
-   * so it stays visible where the fill has already covered the scale. It is
-   * exactly bar-height and recoloured per state: a grey tick over a white
-   * fill is something you have to hunt for, and it goes invisible in the one
-   * case -- past break-even -- where it carries the good news. */
-  page->marker = bare(page->tile);
-  lv_obj_set_size(page->marker, 3, VP_BAR_H);
-  lv_obj_set_style_bg_opa(page->marker, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(page->marker, COL_WHITE, 0);
-  lv_obj_add_flag(page->marker, LV_OBJ_FLAG_HIDDEN);
-
-  page->marker_caption = label(page->tile, &plex_ui_14, COL_MUTED,
-                               VP_SAFE_X, VP_BAR_Y + VP_BAR_H + 8,
-                               VP_CONTENT_W, 18);
-  lv_obj_set_style_text_letter_space(page->marker_caption, 2, 0);
-  lv_label_set_text(page->marker_caption, "");
-
-  /* Left: what it cost. Right: the multiple, which is what turns the hero's
-   * dollars into an answer rather than a number. */
-  page->plan = label(page->tile, &plex_money_35, COL_MUTED,
-                     VP_SAFE_X, STAT_VALUE_Y, 210, 42);
-  page->plan_caption = label(page->tile, &plex_ui_14, COL_MUTED,
-                             VP_SAFE_X, STAT_LABEL_Y, 210, 20);
-  lv_obj_set_style_text_letter_space(page->plan_caption, 2, 0);
-
-  /* Not create_stat(): that hardcodes the shared plex_stat_35, which has no
-   * multiplication sign and would render the x as a missing-glyph box. */
-  page->multiple = label(page->tile, &plex_money_35, COL_WHITE,
-                         RIGHT_STAT_X, STAT_VALUE_Y, RIGHT_STAT_W, 42);
-  lv_obj_set_style_text_align(page->multiple, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_t *multiple_caption = label(page->tile, &plex_ui_14, COL_MUTED,
-                                     RIGHT_STAT_X, STAT_LABEL_Y,
-                                     RIGHT_STAT_W, 20);
-  lv_obj_set_style_text_align(multiple_caption, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_set_style_text_letter_space(multiple_caption, 2, 0);
-  lv_label_set_text(multiple_caption, "WHAT YOU PAID");
-
-  lv_label_set_text(page->plan, "–");
-  lv_label_set_text(page->multiple, "–");
-  lv_label_set_text(page->plan_caption, "YOU PAID");
-  lv_label_set_text(page->eyebrow, "NO DATA YET");
+  page->footer = label(page->tile, &plex_ui_16, COL_MUTED,
+                       VP_SAFE_X, VALUE_FOOTER_Y, VP_CONTENT_W, 22);
+  lv_obj_set_style_text_letter_space(page->footer, 2, 0);
+  lv_label_set_text(page->footer, "");
   create_pager(page->tile, VIEW_VALUE);
 }
 
-/* The quota hero's -9 px tracking was tuned for three glyphs ("73%"); a
- * dollar amount runs to six and that much negative tracking collides the
- * digits. */
-#define VALUE_HERO_TRACK -3
-#define VALUE_WORD_TRACK -1
+static void apply_value_row(value_row *row, const usage_value_row *view) {
+  if (!view) {
+    lv_obj_add_flag(row->root, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_obj_remove_flag(row->root, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_style_bg_color(
+      row->fill,
+      view->provider == USAGE_PROVIDER_CLAUDE ? COL_CLAUDE : COL_CODEX, 0);
+  lv_label_set_text(row->name, view->name);
+  lv_label_set_text(row->detail, view->detail);
 
-/* Pick the hero size from the string's MEASURED width, never from its length.
- * "$2,480" overflows 164 px where "$312" has room to spare, and the overflow
- * silently clips the last digit -- a wrong number, not a cosmetic flaw.
- *
- * The hero label is self-sizing so its real rendered width can be read back
- * after a layout pass; this runs once per token refresh, not per frame. The
- * second size is a REAL font, not a scaled label -- scaling would need an
- * unsliceable ARGB layer, which the layout test forbids outright, and it is
- * the same "own size, never a downscale" rule spec/ui-spec.md already sets
- * for the year view's wider hero. */
+  if (!view->has_bar) {
+    lv_obj_set_size(row->fill, 0, VP_BAR_H);
+    lv_obj_add_flag(row->marker, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  int width = (int)(view->bar_fraction * VP_CONTENT_W + 0.5);
+  if (width < 0) width = 0;
+  if (width > VP_CONTENT_W) width = VP_CONTENT_W;
+  lv_obj_set_size(row->fill, width, VP_BAR_H);
+
+  int tick = (int)(view->break_even_fraction * VP_CONTENT_W + 0.5);
+  lv_obj_set_pos(row->marker, tick, VALUE_ROW_BAR_DY);
+  /* Black once the fill has reached it, white while it is still over bare
+   * track: either way the highest contrast against what is behind it. */
+  lv_obj_set_style_bg_color(
+      row->marker,
+      view->bar_fraction >= view->break_even_fraction ? COL_BLACK : COL_WHITE,
+      0);
+  lv_obj_remove_flag(row->marker, LV_OBJ_FLAG_HIDDEN);
+}
+
 /* The value page owns its hero font. The shared numeral fonts must never
  * carry "$": the glyph is taller than every digit, so adding it grows
  * line_height (164 px: 119 -> 153) and pushes every already-reviewed quota
@@ -543,8 +565,8 @@ static void apply_value_hero(value_page *page,
   const bool word = view->hero_is_word;
   lv_obj_set_style_text_font(page->hero,
                              word ? &plex_headline_48 : &plex_money_118, 0);
-  lv_obj_set_style_text_letter_space(
-      page->hero, word ? VALUE_WORD_TRACK : VALUE_HERO_TRACK, 0);
+  lv_obj_set_style_text_color(page->hero, word ? COL_WHITE : COL_MONEY, 0);
+  lv_obj_set_style_text_letter_space(page->hero, word ? -1 : -3, 0);
   lv_obj_set_pos(page->hero, VALUE_HERO_X,
                  word ? VALUE_WORD_HERO_Y : VALUE_HERO_Y);
   lv_label_set_text(page->hero, view->hero_text);
@@ -557,39 +579,20 @@ static void apply_value(const tk_tokens *tokens) {
   usage_presenter_build_value(tokens, &view);
 
   lv_label_set_text(page->eyebrow, view.eyebrow);
+  lv_label_set_text(page->footer, view.footer);
   apply_value_hero(page, &view);
-  lv_label_set_text(page->multiple, view.multiple_text);
-  lv_label_set_text(page->plan, view.plan_text);
-  lv_label_set_text(page->plan_caption, view.plan_caption);
-
-  if (view.show_bar) {
-    int width = (int)(view.bar_fraction * VP_CONTENT_W + 0.5);
-    if (width < 0) width = 0;
-    if (width > VP_CONTENT_W) width = VP_CONTENT_W;
-    lv_obj_set_size(page->fill, width, VP_BAR_H);
-    lv_obj_remove_flag(page->track, LV_OBJ_FLAG_HIDDEN);
-
-    int tick = VP_SAFE_X +
-               (int)(view.break_even_fraction * VP_CONTENT_W + 0.5);
-    lv_obj_set_pos(page->marker, tick, VP_BAR_Y);
-    /* Black once the fill has reached it, white while it is still over bare
-     * track: either way it is the highest contrast available against what
-     * is actually behind it. */
-    lv_obj_set_style_bg_color(
-        page->marker,
-        view.bar_fraction >= view.break_even_fraction ? COL_BLACK : COL_WHITE,
-        0);
-    lv_obj_remove_flag(page->marker, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(page->marker_caption, "BREAK EVEN");
-    lv_obj_set_pos(page->marker_caption, tick + 7,
-                   VP_BAR_Y + VP_BAR_H + 8);
-  } else {
-    /* The empty track stays, matching the quota pages' no-data state: the
-     * scale is still real, there is just nothing to put on it. Only the
-     * fill and the break-even tick go. */
-    lv_obj_set_size(page->fill, 0, VP_BAR_H);
-    lv_obj_add_flag(page->marker, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(page->marker_caption, "");
+  /* A lone row sits between where the pair would have been, so a
+   * single-subscription machine reads as composed rather than as a page
+   * with something missing from the bottom of it. */
+  int y = view.row_count == 1 ? VALUE_ROW_Y + VALUE_ROW_PITCH / 2
+                              : VALUE_ROW_Y;
+  for (int i = 0; i < 2; i++) {
+    apply_value_row(&page->rows[i],
+                    i < view.row_count ? &view.rows[i] : NULL);
+    if (i < view.row_count) {
+      lv_obj_set_pos(page->rows[i].root, VP_SAFE_X, y);
+      y += VALUE_ROW_PITCH;
+    }
   }
 }
 
@@ -897,6 +900,7 @@ void usage_screen_create(lv_obj_t *root) {
 
 void usage_screen_apply_tokens(const tk_tokens *tokens) {
   if (!tokens) return;
+  ui.last_tokens = *tokens;
   for (int i = 0; i < 3; i++) apply_quota(&ui.quotas[i], tokens);
   usage_forecast_page_view forecasts = {0};
   usage_presenter_build_forecasts(tokens, &forecasts);

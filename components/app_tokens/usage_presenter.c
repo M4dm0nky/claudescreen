@@ -296,6 +296,34 @@ static void format_multiple(double multiple, char *out, size_t capacity) {
   }
 }
 
+/* One provider's row: its own dollars, its own plan cost, its own break-even.
+ * Returns 0 when the provider contributed nothing, so it is not drawn. */
+static int build_value_row(usage_value_row *row, usage_provider provider,
+                           const char *name, int has_value, double value_usd,
+                           int has_plan, double plan_usd) {
+  if (!has_value || value_usd <= 0) return 0;
+  memset(row, 0, sizeof *row);
+  row->provider = provider;
+  snprintf(row->name, sizeof row->name, "%s", name);
+
+  char dollars[USAGE_CARD_PCT_CAP];
+  format_usd(value_usd, dollars, sizeof dollars);
+
+  if (has_plan && plan_usd > 0) {
+    char multiple[USAGE_CARD_PCT_CAP];
+    format_multiple(value_usd / plan_usd, multiple, sizeof multiple);
+    snprintf(row->detail, sizeof row->detail, "%s · %s", dollars, multiple);
+    row->has_bar = 1;
+    row->break_even_fraction = 1.0 / USAGE_VALUE_BAR_SCALE;
+    double fraction = value_usd / plan_usd / USAGE_VALUE_BAR_SCALE;
+    row->bar_fraction = fraction < 0 ? 0 : fraction > 1 ? 1 : fraction;
+  } else {
+    /* Dollars without a denominator: real money, no break-even to draw. */
+    snprintf(row->detail, sizeof row->detail, "%s · –", dollars);
+  }
+  return 1;
+}
+
 void usage_presenter_build_value(const tk_tokens *tokens,
                                  usage_value_page_view *out) {
   if (!out) return;
@@ -303,9 +331,6 @@ void usage_presenter_build_value(const tk_tokens *tokens,
   out->state = USAGE_VALUE_UNAVAILABLE;
   snprintf(out->hero_text, sizeof out->hero_text, "NO DATA");
   out->hero_is_word = 1;
-  snprintf(out->multiple_text, sizeof out->multiple_text, "–");
-  snprintf(out->plan_text, sizeof out->plan_text, "–");
-  snprintf(out->plan_caption, sizeof out->plan_caption, "YOU PAID");
   /* No eyebrow: it exists to introduce the hero, and "NO DATA" introduces
    * itself. Repeating it just doubles the bad news. */
   out->eyebrow[0] = '\0';
@@ -323,38 +348,41 @@ void usage_presenter_build_value(const tk_tokens *tokens,
       return;
     case TK_VALUE_NO_PLAN_COST:
       out->state = USAGE_VALUE_NO_PLAN_COST;
-      /* The dollars are real here, so the hero still earns them; only the
-       * comparison is missing, and the eyebrow says how to supply it. */
       snprintf(out->eyebrow, sizeof out->eyebrow, "SET YOUR PLAN COST");
       if (value->has_value_usd) {
         format_usd(value->value_usd, out->hero_text, sizeof out->hero_text);
         out->hero_is_word = 0;
       }
-      return;
+      break;
     case TK_VALUE_OK:
+      out->state = USAGE_VALUE_OK;
+      snprintf(out->eyebrow, sizeof out->eyebrow, "YOU GOT");
+      format_usd(value->value_usd, out->hero_text, sizeof out->hero_text);
+      out->hero_is_word = 0;
+      {
+        char paid[USAGE_CARD_PCT_CAP], multiple[USAGE_CARD_PCT_CAP];
+        format_usd(value->plan_usd, paid, sizeof paid);
+        format_multiple(value->multiple, multiple, sizeof multiple);
+        snprintf(out->footer, sizeof out->footer, "FOR %s PAID · %s",
+                 paid, multiple);
+      }
       break;
     case TK_VALUE_UNAVAILABLE:
     default:
       return;
   }
 
-  /* OK. The parser already refused this state without all three numbers and
-   * a positive plan, so the division below cannot divide by zero. */
-  out->state = USAGE_VALUE_OK;
-  snprintf(out->eyebrow, sizeof out->eyebrow, "YOU GOT");
-  /* Only qualify a figure that exists. "(EST)" beside a dash says nothing
-   * except that the caption was written without looking at the number. */
-  if (!value->cost_configured)
-    snprintf(out->plan_caption, sizeof out->plan_caption, "YOU PAID (EST)");
-  format_multiple(value->multiple, out->multiple_text,
-                  sizeof out->multiple_text);
-  format_usd(value->value_usd, out->hero_text, sizeof out->hero_text);
-  out->hero_is_word = 0;
-  format_usd(value->plan_usd, out->plan_text, sizeof out->plan_text);
-  out->show_bar = 1;
-  out->break_even_fraction = 1.0 / USAGE_VALUE_BAR_SCALE;
-  double fraction = value->value_usd / value->plan_usd / USAGE_VALUE_BAR_SCALE;
-  out->bar_fraction = fraction < 0 ? 0 : fraction > 1 ? 1 : fraction;
+  /* Rows are built for both OK and NO_PLAN_COST: the per-provider dollars
+   * are real even when nothing says what the subscriptions cost. */
+  out->row_count = 0;
+  out->row_count += build_value_row(
+      &out->rows[out->row_count], USAGE_PROVIDER_CLAUDE, "CLAUDE",
+      value->has_claude_usd, value->claude_usd,
+      value->has_claude_plan_usd, value->claude_plan_usd);
+  out->row_count += build_value_row(
+      &out->rows[out->row_count], USAGE_PROVIDER_CODEX, "CODEX",
+      value->has_codex_usd, value->codex_usd,
+      value->has_codex_plan_usd, value->codex_plan_usd);
 }
 
 void usage_presenter_build_forecasts(const tk_tokens *tokens,

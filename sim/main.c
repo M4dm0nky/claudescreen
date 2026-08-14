@@ -772,6 +772,42 @@ static int run_vibepulse_static_qa(void) {
   tokens_apply(&value_none);
   dump_frame("vibepulse-value-no-data");
 
+  /* Both providers, each with its own plan cost and its own break-even. */
+  tk_tokens value_both = value_truth;
+  value_both.value.value_usd = 312.0;
+  value_both.value.plan_usd = 220.0;
+  value_both.value.multiple = 1.42;
+  value_both.value.has_claude_usd = 1;
+  value_both.value.claude_usd = 280.0;
+  value_both.value.has_claude_plan_usd = 1;
+  value_both.value.claude_plan_usd = 200.0;
+  value_both.value.has_codex_usd = 1;
+  value_both.value.codex_usd = 32.0;
+  value_both.value.has_codex_plan_usd = 1;
+  value_both.value.codex_plan_usd = 20.0;
+  tokens_apply(&value_both);
+  dump_frame("vibepulse-value-both");
+
+  /* Codex below its own break-even while Claude is well past: the whole
+   * reason the bars are separate rather than blended. */
+  tk_tokens value_uneven = value_both;
+  value_uneven.value.codex_usd = 6.0;
+  value_uneven.value.value_usd = 286.0;
+  value_uneven.value.multiple = 1.30;
+  tokens_apply(&value_uneven);
+  dump_frame("vibepulse-value-uneven");
+
+  /* One subscription: one bar, and no empty second block. */
+  tk_tokens value_solo = value_both;
+  value_solo.value.has_codex_usd = 0;
+  value_solo.value.codex_usd = 0;
+  value_solo.value.has_codex_plan_usd = 0;
+  value_solo.value.value_usd = 280.0;
+  value_solo.value.plan_usd = 200.0;
+  value_solo.value.multiple = 1.40;
+  tokens_apply(&value_solo);
+  dump_frame("vibepulse-value-solo");
+
   return capture_failures == 0 ? 0 : 1;
 }
 

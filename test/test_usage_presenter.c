@@ -221,43 +221,54 @@ int main(void) {
   value_ok.value.codex_plan_usd = 20.0;
 
   usage_presenter_build_value(&value_ok, &value_page);
-  check("value ok leads with combined dollars",
+  check("the hero is the verdict, not the money",
         value_page.state == USAGE_VALUE_OK &&
-        strcmp(value_page.hero_text, "$312") == 0 &&
-        !value_page.hero_is_word &&
-        strcmp(value_page.eyebrow, "YOU GOT") == 0);
-  check("the footer closes the sentence with cost and multiple",
-        strcmp(value_page.footer, "FOR $220 PAID · 1.42\u00d7") == 0);
+        strcmp(value_page.hero_text, "1.42\u00d7") == 0 &&
+        !value_page.hero_is_word && value_page.hero_ahead);
+  check("the evidence line states the whole argument above it",
+        strcmp(value_page.evidence, "$312 EARNED ON $220 PAID") == 0);
   check("both providers get a row",
         value_page.row_count == 2 &&
         value_page.rows[0].provider == USAGE_PROVIDER_CLAUDE &&
         value_page.rows[1].provider == USAGE_PROVIDER_CODEX);
-  check("each row carries its own dollars and multiple",
-        strcmp(value_page.rows[0].detail, "$280 · 1.40\u00d7") == 0 &&
-        strcmp(value_page.rows[1].detail, "$32 · 1.60\u00d7") == 0);
-  check("each row breaks even at its own halfway marker",
-        value_page.rows[0].has_bar && value_page.rows[1].has_bar &&
-        value_page.rows[0].break_even_fraction > 0.499 &&
-        value_page.rows[1].break_even_fraction > 0.499);
+  check("each row carries exactly one figure, its own dollars",
+        strcmp(value_page.rows[0].money, "$280") == 0 &&
+        strcmp(value_page.rows[1].money, "$32") == 0);
+  /* The single idea: every row is normalised to its OWN plan cost, so
+     break-even lands at the same fraction on all of them and one shared rule
+     down the page means the same thing for every bar. */
+  check("break-even is one shared fraction for the whole page",
+        value_page.show_rule &&
+        value_page.break_even_fraction > 0.499 &&
+        value_page.break_even_fraction < 0.501);
   check("each row's fill is its own ratio, not the blended one",
+        value_page.rows[0].has_bar && value_page.rows[1].has_bar &&
         value_page.rows[0].bar_fraction > 0.69 &&
         value_page.rows[0].bar_fraction < 0.71 &&
         value_page.rows[1].bar_fraction > 0.79 &&
         value_page.rows[1].bar_fraction < 0.81);
+  check("the combined pair is kept for the one-provider footer",
+        strcmp(value_page.earned, "$312") == 0 &&
+        strcmp(value_page.paid, "$220") == 0);
 
-  /* The whole point of separate bars: a provider that is NOT earning its
-     keep must be visible as such, not averaged away by the other one. */
+  /* A provider not earning its keep must be visible as such, not averaged
+     away by the other one. */
   tk_tokens value_uneven = value_ok;
   value_uneven.value.codex_usd = 6.0;
   usage_presenter_build_value(&value_uneven, &value_page);
-  check("a provider below break-even shows below its own marker",
-        value_page.rows[1].bar_fraction <
-            value_page.rows[1].break_even_fraction &&
-        value_page.rows[0].bar_fraction >
-            value_page.rows[0].break_even_fraction);
+  check("a provider below break-even sits left of the shared rule",
+        value_page.rows[1].bar_fraction < value_page.break_even_fraction &&
+        value_page.rows[0].bar_fraction > value_page.break_even_fraction);
 
-  /* One subscription: one row. The absent provider is not drawn as an
-     empty bar. */
+  /* Below break-even overall the hero drops the money accent. No red is
+     invented: white plus short bars carries it. */
+  tk_tokens value_behind = value_ok;
+  value_behind.value.multiple = 0.84;
+  usage_presenter_build_value(&value_behind, &value_page);
+  check("below break-even the hero is not marked ahead",
+        !value_page.hero_ahead &&
+        strcmp(value_page.hero_text, "0.84\u00d7") == 0);
+
   tk_tokens value_claude_only = value_ok;
   value_claude_only.value.has_codex_usd = 0;
   value_claude_only.value.codex_usd = 0;
@@ -270,35 +281,34 @@ int main(void) {
   value_codex_only.value.has_claude_usd = 0;
   value_codex_only.value.claude_usd = 0;
   usage_presenter_build_value(&value_codex_only, &value_page);
-  check("a Codex-only machine gets exactly one row, in slot zero",
+  check("a Codex-only machine gets one row, in slot zero",
         value_page.row_count == 1 &&
         value_page.rows[0].provider == USAGE_PROVIDER_CODEX &&
         strcmp(value_page.rows[0].name, "CODEX") == 0);
 
-  /* A provider with dollars but no declared cost has no break-even to draw,
-     but its money is still real and still shown. */
   tk_tokens value_no_codex_plan = value_ok;
   value_no_codex_plan.value.has_codex_plan_usd = 0;
   usage_presenter_build_value(&value_no_codex_plan, &value_page);
-  check("a row without a plan cost keeps its dollars and drops its bar",
+  check("a row without a plan cost keeps its money and drops its bar",
         value_page.row_count == 2 && !value_page.rows[1].has_bar &&
-        strcmp(value_page.rows[1].detail, "$32 · –") == 0);
+        strcmp(value_page.rows[1].money, "$32") == 0);
 
   /* 0.97x must never round to "1.0" -- that reads as broken even. */
   tk_tokens value_near = value_ok;
-  value_near.value.claude_usd = 194.0;
+  value_near.value.multiple = 0.97;
   usage_presenter_build_value(&value_near, &value_page);
   check("just under break-even keeps two decimals",
-        strcmp(value_page.rows[0].detail, "$194 · 0.97\u00d7") == 0);
+        strcmp(value_page.hero_text, "0.97\u00d7") == 0);
 
   tk_tokens value_big = value_ok;
   value_big.value.value_usd = 2480.0;
   value_big.value.claude_usd = 2480.0;
+  value_big.value.multiple = 12.4;
   usage_presenter_build_value(&value_big, &value_page);
-  check("thousands are comma-grouped behind the dollar sign",
-        strcmp(value_page.hero_text, "$2,480") == 0);
   check("large multiples drop to one decimal",
-        strcmp(value_page.rows[0].detail, "$2,480 · 12.4\u00d7") == 0);
+        strcmp(value_page.hero_text, "12.4\u00d7") == 0);
+  check("thousands are comma-grouped behind the dollar sign",
+        strcmp(value_page.rows[0].money, "$2,480") == 0);
 
   tk_tokens value_no_plan = {0};
   value_no_plan.value.state = TK_VALUE_NO_PLAN_COST;
@@ -307,13 +317,12 @@ int main(void) {
   value_no_plan.value.has_claude_usd = 1;
   value_no_plan.value.claude_usd = 312.0;
   usage_presenter_build_value(&value_no_plan, &value_page);
-  check("no plan cost keeps the dollars but draws no bar",
+  check("no denominator is the one state where money is the hero",
         value_page.state == USAGE_VALUE_NO_PLAN_COST &&
         strcmp(value_page.hero_text, "$312") == 0 &&
-        value_page.row_count == 1 && !value_page.rows[0].has_bar &&
-        value_page.footer[0] == '\0');
+        !value_page.hero_is_word && !value_page.show_rule);
   check("no plan cost tells the owner how to fix it",
-        strcmp(value_page.eyebrow, "SET YOUR PLAN COST") == 0);
+        strcmp(value_page.evidence, "SET YOUR PLAN COST") == 0);
 
   tk_tokens value_partial = {0};
   value_partial.value.state = TK_VALUE_PARTIAL;
@@ -324,22 +333,23 @@ int main(void) {
         value_page.state == USAGE_VALUE_PARTIAL &&
         strcmp(value_page.hero_text, "UNPRICED") == 0 &&
         value_page.hero_is_word && value_page.row_count == 0 &&
-        strcmp(value_page.eyebrow, "SOME MODELS UNKNOWN") == 0);
+        !value_page.show_rule &&
+        strcmp(value_page.evidence, "SOME MODELS ARE NOT PRICED") == 0);
 
-  /* Never an en dash as the hero: set at hero size a dash is a bare white
+  /* Never an en dash as the hero: at hero size a dash is a bare white
      rectangle and reads as a rendering fault rather than as "unknown". */
   tk_tokens value_absent = {0};
   usage_presenter_build_value(&value_absent, &value_page);
   check("absent value block shows a word, never a giant dash",
         value_page.state == USAGE_VALUE_UNAVAILABLE &&
         strcmp(value_page.hero_text, "NO DATA") == 0 &&
-        value_page.hero_is_word && value_page.eyebrow[0] == '\0' &&
-        value_page.row_count == 0);
+        value_page.hero_is_word && value_page.row_count == 0 &&
+        !value_page.show_rule);
 
   usage_presenter_build_value(NULL, &value_page);
   check("null tokens are safe and show nothing",
         value_page.state == USAGE_VALUE_UNAVAILABLE &&
-        value_page.row_count == 0);
+        value_page.row_count == 0 && !value_page.show_rule);
 
   if (failures == 0) {
     printf("OK: all usage presenter tests pass\n");

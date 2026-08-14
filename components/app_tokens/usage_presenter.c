@@ -296,8 +296,10 @@ static void format_multiple(double multiple, char *out, size_t capacity) {
   }
 }
 
-/* One provider's row: its own dollars, its own plan cost, its own break-even.
- * Returns 0 when the provider contributed nothing, so it is not drawn. */
+/* One provider's row. Normalised to its OWN plan cost, so break-even lands
+ * at the same fraction on every row. Returns 0 when the provider contributed
+ * nothing, so it is not drawn at all -- an empty bar for an agent that is
+ * not installed claims "earned nothing", which is a different statement. */
 static int build_value_row(usage_value_row *row, usage_provider provider,
                            const char *name, int has_value, double value_usd,
                            int has_plan, double plan_usd) {
@@ -305,21 +307,11 @@ static int build_value_row(usage_value_row *row, usage_provider provider,
   memset(row, 0, sizeof *row);
   row->provider = provider;
   snprintf(row->name, sizeof row->name, "%s", name);
-
-  char dollars[USAGE_CARD_PCT_CAP];
-  format_usd(value_usd, dollars, sizeof dollars);
-
+  format_usd(value_usd, row->money, sizeof row->money);
   if (has_plan && plan_usd > 0) {
-    char multiple[USAGE_CARD_PCT_CAP];
-    format_multiple(value_usd / plan_usd, multiple, sizeof multiple);
-    snprintf(row->detail, sizeof row->detail, "%s · %s", dollars, multiple);
     row->has_bar = 1;
-    row->break_even_fraction = 1.0 / USAGE_VALUE_BAR_SCALE;
     double fraction = value_usd / plan_usd / USAGE_VALUE_BAR_SCALE;
     row->bar_fraction = fraction < 0 ? 0 : fraction > 1 ? 1 : fraction;
-  } else {
-    /* Dollars without a denominator: real money, no break-even to draw. */
-    snprintf(row->detail, sizeof row->detail, "%s · –", dollars);
   }
   return 1;
 }
@@ -330,10 +322,9 @@ void usage_presenter_build_value(const tk_tokens *tokens,
   memset(out, 0, sizeof *out);
   out->state = USAGE_VALUE_UNAVAILABLE;
   snprintf(out->hero_text, sizeof out->hero_text, "NO DATA");
+  snprintf(out->evidence, sizeof out->evidence,
+           "NO PRICED USAGE THIS MONTH");
   out->hero_is_word = 1;
-  /* No eyebrow: it exists to introduce the hero, and "NO DATA" introduces
-   * itself. Repeating it just doubles the bad news. */
-  out->eyebrow[0] = '\0';
   if (!tokens) return;
 
   const tk_value *value = &tokens->value;
@@ -341,14 +332,17 @@ void usage_presenter_build_value(const tk_tokens *tokens,
   switch (value->state) {
     case TK_VALUE_PARTIAL:
       /* Not "NO DATA": there IS usage, too much of it just ran on models the
-       * price table does not know. The eyebrow carries the reason. */
+       * price table does not know. */
       out->state = USAGE_VALUE_PARTIAL;
       snprintf(out->hero_text, sizeof out->hero_text, "UNPRICED");
-      snprintf(out->eyebrow, sizeof out->eyebrow, "SOME MODELS UNKNOWN");
+      snprintf(out->evidence, sizeof out->evidence,
+               "SOME MODELS ARE NOT PRICED");
       return;
     case TK_VALUE_NO_PLAN_COST:
+      /* The one state where money belongs in the hero: there is no ratio to
+       * draw, so nothing else can go there. */
       out->state = USAGE_VALUE_NO_PLAN_COST;
-      snprintf(out->eyebrow, sizeof out->eyebrow, "SET YOUR PLAN COST");
+      snprintf(out->evidence, sizeof out->evidence, "SET YOUR PLAN COST");
       if (value->has_value_usd) {
         format_usd(value->value_usd, out->hero_text, sizeof out->hero_text);
         out->hero_is_word = 0;
@@ -356,24 +350,22 @@ void usage_presenter_build_value(const tk_tokens *tokens,
       break;
     case TK_VALUE_OK:
       out->state = USAGE_VALUE_OK;
-      snprintf(out->eyebrow, sizeof out->eyebrow, "YOU GOT");
-      format_usd(value->value_usd, out->hero_text, sizeof out->hero_text);
       out->hero_is_word = 0;
-      {
-        char paid[USAGE_CARD_PCT_CAP], multiple[USAGE_CARD_PCT_CAP];
-        format_usd(value->plan_usd, paid, sizeof paid);
-        format_multiple(value->multiple, multiple, sizeof multiple);
-        snprintf(out->footer, sizeof out->footer, "FOR %s PAID · %s",
-                 paid, multiple);
-      }
+      out->hero_ahead = value->multiple >= 1.0;
+      format_multiple(value->multiple, out->hero_text,
+                      sizeof out->hero_text);
+      format_usd(value->value_usd, out->earned, sizeof out->earned);
+      format_usd(value->plan_usd, out->paid, sizeof out->paid);
+      snprintf(out->evidence, sizeof out->evidence, "%s EARNED ON %s PAID",
+               out->earned, out->paid);
+      out->show_rule = 1;
+      out->break_even_fraction = 1.0 / USAGE_VALUE_BAR_SCALE;
       break;
     case TK_VALUE_UNAVAILABLE:
     default:
       return;
   }
 
-  /* Rows are built for both OK and NO_PLAN_COST: the per-provider dollars
-   * are real even when nothing says what the subscriptions cost. */
   out->row_count = 0;
   out->row_count += build_value_row(
       &out->rows[out->row_count], USAGE_PROVIDER_CLAUDE, "CLAUDE",
@@ -383,6 +375,13 @@ void usage_presenter_build_value(const tk_tokens *tokens,
       &out->rows[out->row_count], USAGE_PROVIDER_CODEX, "CODEX",
       value->has_codex_usd, value->codex_usd,
       value->has_codex_plan_usd, value->codex_plan_usd);
+
+  /* Nothing to normalise against means nothing to draw a rule through. */
+  if (out->show_rule) {
+    int any_bar = 0;
+    for (int i = 0; i < out->row_count; i++) any_bar |= out->rows[i].has_bar;
+    out->show_rule = any_bar;
+  }
 }
 
 void usage_presenter_build_forecasts(const tk_tokens *tokens,

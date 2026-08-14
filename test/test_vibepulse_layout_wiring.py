@@ -162,29 +162,41 @@ for copy in ("BURN RATE", "WEEKLY", "FORECAST"):
 assert "251" in burn, "Burn Rate rows need the approved separator"
 assert "COL_CARD" not in burn
 
-# Value page. The hero is the COMBINED figure; each provider gets its own
-# bar with its own break-even, which is the only honest way to put the
-# reserved provider accents on a page that sums both -- each bar is that
-# provider's own money.
+# Value page. Every provider bar is normalised to its OWN plan cost, so
+# break-even lands at the same fraction on all of them -- which is what lets
+# one shared white rule down the centre mean "past the line or not" for the
+# whole page, drawn once and labelled once.
 value = source[source.index("static void create_value_row"):]
 value = value[:value.index("static uint64_t agent_packet_age_ms")]
-for copy in ("VALUE", "MONTH TO DATE", "AT LIST API PRICES"):
+for copy in ("VALUE", "MONTH TO DATE", "AT LIST API PRICES", "EARNED",
+             "PAID", "BREAK EVEN"):
     assert f'"{copy}"' in value, f"missing value page copy: {copy}"
 assert "VALUE_HERO_Y" in value and "plex_money_118" in value
-assert value.count("COL_CLAUDE") == 2 and value.count("COL_CODEX") == 2, \
-    "each provider accent appears once at construction and once on apply"
+# Three each, and every one marks that provider's own data: its name, its bar
+# fill, and the name in the top slot of the one-provider layout.
+assert value.count("COL_CLAUDE") == 3 and value.count("COL_CODEX") == 3, \
+    "provider accents must mark provider data and nothing else"
 assert "COL_MONEY" in value, "the combined hero wears the money accent"
+assert "lv_obj_move_foreground(page->rule);" in value, \
+    "the rule must draw over the fills it crosses"
+assert "#define VALUE_RULE_X (VP_SAFE_X + VP_CONTENT_W / 2 - 1)" in source, \
+    "break-even is at half scale, which is the screen's own centre line"
+assert "VALUE_RULE_X" in value, "the rule must be positioned from that token"
+assert "LV_RADIUS_CIRCLE" not in value, \
+    "square bar ends: the pill is the quota pages' running-out shape"
 
 value_page_struct = source[source.index("} value_row;"):]
 value_page_struct = value_page_struct[:value_page_struct.index("} value_page;")]
-for member in ("tile", "eyebrow", "hero", "footer"):
+for member in ("tile", "evidence", "hero", "rule", "rule_label"):
     assert f"*{member};" in value_page_struct, f"value_page must own {member}"
 assert "value_row rows[2];" in value_page_struct
 
 value_row_struct = source[source.index("typedef struct {\n  lv_obj_t *root;\n  lv_obj_t *name;"):]
 value_row_struct = value_row_struct[:value_row_struct.index("} value_row;")]
-for member in ("root", "name", "detail", "track", "fill", "marker"):
+for member in ("root", "name", "money", "track", "fill"):
     assert f"*{member};" in value_row_struct, f"value_row must own {member}"
+assert "*marker;" not in value_row_struct, \
+    "per-row ticks are replaced by one shared rule"
 
 apply_hero = source[source.index("static void apply_value_hero"):]
 apply_hero = apply_hero[:apply_hero.index("static void apply_value(")]
@@ -200,8 +212,13 @@ assert "i < view.row_count ? &view.rows[i] : NULL" in apply_value, \
 
 apply_row = source[source.index("static void apply_value_row"):]
 apply_row = apply_row[:apply_row.index("/* The value page owns its hero font")]
-assert "view->break_even_fraction" in apply_row, \
-    "every bar carries its OWN break-even, not a shared one"
+assert "if (width < 6) width = 6;" in apply_row, \
+    "a near-zero provider needs a visible stub, not a 2 px rendering fault"
+assert "VALUE_ROW_BAR_DY + bar_h" in apply_row, \
+    "the row root must grow with the bar or LVGL clips the taller one"
+
+apply_row = source[source.index("static void apply_value_row"):]
+apply_row = apply_row[:apply_row.index("/* The value page owns its hero font")]
 assert "LV_OBJ_FLAG_HIDDEN" in apply_row
 
 # The value page has its OWN money fonts. A "$" is taller than every digit,

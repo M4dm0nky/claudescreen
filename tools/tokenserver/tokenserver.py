@@ -32,6 +32,7 @@ Autostart: se README.md härintill (launchd-plist medföljer).
 """
 
 import argparse
+import fcntl
 import hashlib
 import json
 import math
@@ -547,6 +548,30 @@ def _usage_request(token):
     )
 
 
+# Maskinvid probelås: OAVSETT hur många tokenservrar som råkar köra (launchd,
+# en worktree, en manuell start på annan port) får högst EN prata med
+# api.anthropic.com. Båda 429-incidenterna 2026-08-13/14 var i grunden
+# överflödig upstream-trafik — den här grinden gör varianten "en instans
+# till" strukturellt ofarlig i stället för att lita på att ingen startar en.
+_PROBE_LOCK_PATH = (Path.home() / "Library" / "Application Support" /
+                    "VibePulse" / "claude-probe.lock")
+
+
+def _hold_probe_lock():
+    """Icke-blockerande flock; returnerar filobjektet (= låset) eller None."""
+    try:
+        _PROBE_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(_PROBE_LOCK_PATH, "w")
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return handle
+    except OSError:
+        try:
+            handle.close()
+        except UnboundLocalError:
+            pass
+        return None
+
+
 def _probe_limits():
     """Ett minimalt API-anrop; returnerar {sessionPct, sessionResetMin,
     weekPct, weekResetMin} eller None om något saknas på vägen."""
@@ -555,6 +580,21 @@ def _probe_limits():
     if time.time() < _probe_cooldown_until:
         # I nedkylning efter 429 — statusen står kvar på backoff-strängen.
         return None
+    lock = _hold_probe_lock()
+    if lock is None:
+        # En annan instans äger upstream-trafiken just nu. Ingen nätaktivitet
+        # härifrån — den andra instansens svar fyller ändå enhetens behov.
+        _probe_status = "probe_held_by_other_instance"
+        return None
+    try:
+        return _probe_limits_locked()
+    finally:
+        lock.close()  # stänger filen = släpper flocken
+
+
+def _probe_limits_locked():
+    global _probe_status, _probe_headers, _probe_unknown_buckets, \
+        _probe_cooldown_until
     candidates = _read_oauth_candidates()
     if not candidates:
         _probe_status = "no_claude_oauth_token"

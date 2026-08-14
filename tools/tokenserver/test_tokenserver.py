@@ -1,4 +1,5 @@
 import contextlib
+import fcntl
 import io
 import json
 import tempfile
@@ -56,6 +57,17 @@ class _FakeUsageResponse:
 
 
 class ClaudeLimitHeaderTests(unittest.TestCase):
+    def setUp(self):
+        # Probelåset pekas om till en tempfil så testerna aldrig samsas om
+        # den riktiga låsfilen med en levande tokenserver på samma maskin.
+        self._lock_dir = tempfile.TemporaryDirectory(prefix="probe-lock-")
+        self._lock_patch = mock.patch.object(
+            tokenserver, "_PROBE_LOCK_PATH",
+            Path(self._lock_dir.name) / "claude-probe.lock")
+        self._lock_patch.start()
+        self.addCleanup(self._lock_patch.stop)
+        self.addCleanup(self._lock_dir.cleanup)
+
     def test_usage_endpoint_maps_active_fable_scope_without_guessing(self):
         parsed = tokenserver._parse_usage_limits({
             "limits": [
@@ -230,6 +242,31 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
         # nätet alls med det döda värdet.
         self.assertEqual(calls, ["Bearer dead-token"])
         self.assertEqual(status, "token_dead_awaiting_refresh")
+
+    def test_probe_yields_when_another_instance_holds_the_lock(self):
+        """Maskinvida enprobe-garantin: håller någon annan process låset gör
+        cykeln INGEN nätaktivitet alls — extra instanser (worktree, manuell
+        start) blir strukturellt ofarliga för 429-straffrutan."""
+        def explode(req, timeout=None):
+            raise AssertionError("upstream-anrop trots att låset var upptaget")
+
+        holder = open(tokenserver._PROBE_LOCK_PATH, "w")
+        fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            with mock.patch.object(tokenserver, "_read_oauth_candidates",
+                                   return_value=[("fresh-token", None)]), \
+                    mock.patch.object(tokenserver, "_dead_tokens", {}), \
+                    mock.patch.object(tokenserver, "_probe_cooldown_until",
+                                      0.0), \
+                    mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                      side_effect=explode):
+                found = tokenserver._probe_limits()
+        finally:
+            holder.close()
+
+        self.assertIsNone(found)
+        self.assertEqual(tokenserver._probe_status,
+                         "probe_held_by_other_instance")
 
     def test_probe_retries_a_refreshed_token_value(self):
         """Dödmarkeringen sitter på VÄRDET: när källan levererar en ny

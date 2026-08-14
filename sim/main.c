@@ -722,6 +722,56 @@ static int run_vibepulse_static_qa(void) {
   dump_frame("vibepulse-tracker-stale");
   usage_screen_set_stale(false);
 
+  /* Value multiple. Every state the parser can hand the page gets its own
+   * raster, because the whole design premise is that a wrong figure here is
+   * worse than no figure — the dashes need proving as much as the number. */
+  tk_tokens value_truth = {0};
+  value_truth.value.state = TK_VALUE_OK;
+  value_truth.value.has_value_usd = 1;
+  value_truth.value.value_usd = 312.0;
+  value_truth.value.has_plan_usd = 1;
+  value_truth.value.plan_usd = 100.0;
+  value_truth.value.has_multiple = 1;
+  value_truth.value.multiple = 3.12;
+  value_truth.value.cost_configured = 1;
+  tokens_apply(&value_truth);
+  tokens_show_view(VIEW_VALUE);
+  dump_frame("vibepulse-value-ahead");
+
+  /* Early in the month: below break-even, so the bar is partial and the
+   * hero keeps two decimals rather than rounding up to a false 1.0. */
+  tk_tokens value_early = value_truth;
+  value_early.value.value_usd = 97.0;
+  value_early.value.multiple = 0.97;
+  tokens_apply(&value_early);
+  dump_frame("vibepulse-value-early");
+
+  /* Widest realistic copy: four-figure value, two-digit multiple, and the
+   * estimated-plan caption that runs longest. */
+  tk_tokens value_wide = value_truth;
+  value_wide.value.value_usd = 2480.0;
+  value_wide.value.plan_usd = 200.0;
+  value_wide.value.multiple = 12.4;
+  value_wide.value.cost_configured = 0;
+  tokens_apply(&value_wide);
+  dump_frame("vibepulse-value-wide");
+
+  tk_tokens value_no_plan = {0};
+  value_no_plan.value.state = TK_VALUE_NO_PLAN_COST;
+  value_no_plan.value.has_value_usd = 1;
+  value_no_plan.value.value_usd = 312.0;
+  tokens_apply(&value_no_plan);
+  dump_frame("vibepulse-value-no-plan-cost");
+
+  tk_tokens value_partial = {0};
+  value_partial.value.state = TK_VALUE_PARTIAL;
+  tokens_apply(&value_partial);
+  dump_frame("vibepulse-value-partial");
+
+  tk_tokens value_none = {0};
+  tokens_apply(&value_none);
+  dump_frame("vibepulse-value-no-data");
+
   return capture_failures == 0 ? 0 : 1;
 }
 

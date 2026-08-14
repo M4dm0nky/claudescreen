@@ -266,6 +266,86 @@ static void build_forecast_row(usage_forecast_row_view *out,
   }
 }
 
+/* Whole dollars, space-grouped. The 35 px stat font carries digits and a
+ * plain space but no U+00A0, so the group separator is an ordinary space. */
+static void format_usd(double usd, char *out, size_t capacity) {
+  long long whole = (long long)(usd + 0.5);
+  if (whole < 0) whole = 0;
+  if (whole > 9999999LL) whole = 9999999LL;
+  if (whole < 1000) {
+    snprintf(out, capacity, "%lld", whole);
+  } else if (whole < 1000000) {
+    snprintf(out, capacity, "%lld %03lld", whole / 1000, whole % 1000);
+  } else {
+    snprintf(out, capacity, "%lld %03lld %03lld", whole / 1000000,
+             (whole / 1000) % 1000, whole % 1000);
+  }
+}
+
+/* Two decimals below 10x, one above. Never one decimal below 10: 0.97x
+ * would round to "1.0" and read as broken even when it is not. */
+static void format_multiple(double multiple, char *out, size_t capacity) {
+  if (multiple < 0) multiple = 0;
+  if (multiple >= 999.9) {
+    snprintf(out, capacity, "999.9");
+  } else if (multiple >= 10.0) {
+    snprintf(out, capacity, "%.1f", multiple);
+  } else {
+    snprintf(out, capacity, "%.2f", multiple);
+  }
+}
+
+void usage_presenter_build_value(const tk_tokens *tokens,
+                                 usage_value_page_view *out) {
+  if (!out) return;
+  memset(out, 0, sizeof *out);
+  out->state = USAGE_VALUE_UNAVAILABLE;
+  snprintf(out->multiple_text, sizeof out->multiple_text, "–");
+  snprintf(out->value_text, sizeof out->value_text, "–");
+  snprintf(out->plan_text, sizeof out->plan_text, "–");
+  snprintf(out->plan_caption, sizeof out->plan_caption, "USD PAID");
+  snprintf(out->subhead, sizeof out->subhead, "NO DATA YET");
+  if (!tokens) return;
+
+  const tk_value *value = &tokens->value;
+
+  switch (value->state) {
+    case TK_VALUE_PARTIAL:
+      out->state = USAGE_VALUE_PARTIAL;
+      snprintf(out->subhead, sizeof out->subhead, "PRICES INCOMPLETE");
+      return;
+    case TK_VALUE_NO_PLAN_COST:
+      out->state = USAGE_VALUE_NO_PLAN_COST;
+      snprintf(out->subhead, sizeof out->subhead, "SET YOUR PLAN COST");
+      if (value->has_value_usd)
+        format_usd(value->value_usd, out->value_text, sizeof out->value_text);
+      return;
+    case TK_VALUE_OK:
+      break;
+    case TK_VALUE_UNAVAILABLE:
+    default:
+      return;
+  }
+
+  /* OK. The parser already refused this state without all three numbers and
+   * a positive plan, so the division below cannot divide by zero. */
+  out->state = USAGE_VALUE_OK;
+  snprintf(out->subhead, sizeof out->subhead, "API VALUE PER DOLLAR PAID");
+  /* Only qualify a figure that exists. "(EST)" beside a dash says nothing
+   * except that the caption was written without looking at the number. */
+  if (!value->cost_configured)
+    snprintf(out->plan_caption, sizeof out->plan_caption, "USD PAID (EST)");
+  format_multiple(value->multiple, out->multiple_text,
+                  sizeof out->multiple_text);
+  out->show_unit = 1;
+  format_usd(value->value_usd, out->value_text, sizeof out->value_text);
+  format_usd(value->plan_usd, out->plan_text, sizeof out->plan_text);
+  out->show_bar = 1;
+  out->break_even_fraction = 1.0 / USAGE_VALUE_BAR_SCALE;
+  double fraction = value->value_usd / value->plan_usd / USAGE_VALUE_BAR_SCALE;
+  out->bar_fraction = fraction < 0 ? 0 : fraction > 1 ? 1 : fraction;
+}
+
 void usage_presenter_build_forecasts(const tk_tokens *tokens,
                                      usage_forecast_page_view *out) {
   if (!tokens || !out) return;

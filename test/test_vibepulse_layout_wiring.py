@@ -13,7 +13,7 @@ attention_fonts = (
     (root / "platform/fonts/plex_attention_52.c", "plex_attention_52"),
 )
 
-assert "#define TK_USAGE_SCREEN_VIEWS 6" in header
+assert "#define TK_USAGE_SCREEN_VIEWS 7" in header
 for enum_literal in (
     "VIEW_CLAUDE_FABLE = 0",
     "VIEW_CLAUDE_ALL = 1",
@@ -21,6 +21,7 @@ for enum_literal in (
     "VIEW_BURN_RATE = 3",
     "VIEW_TRACKER_CLAUDE = 4",
     "VIEW_TRACKER_CODEX = 5",
+    "VIEW_VALUE = 6",
 ):
     assert enum_literal in app_header
 assert "VIEW_VOLUME" not in app_header
@@ -70,6 +71,7 @@ create = create[:create.index("void usage_screen_apply_tokens")]
 assert create.count("create_quota_page(") == 3
 assert create.count("create_burn_rate_page(") == 1
 assert create.count("create_tracker_page(") == 2
+assert create.count("create_value_page(") == 1
 assert "tk_agent_monitor_create(root);" in create
 
 quota = source[source.index("static void create_quota_page"):]
@@ -154,11 +156,42 @@ assert "lv_label_set_text(page->percent, quota->pct_text);" in apply_quota
 assert 'quota->has_pct ? quota->pct_text : ""' not in apply_quota
 
 burn = source[source.index("static void create_burn_rate_page"):]
-burn = burn[:burn.index("static uint64_t agent_packet_age_ms")]
+burn = burn[:burn.index("static void create_value_page")]
 for copy in ("BURN RATE", "WEEKLY", "FORECAST"):
     assert f'"{copy}"' in burn
 assert "251" in burn, "Burn Rate rows need the approved separator"
 assert "COL_CARD" not in burn
+
+# Value page. Held to the same contract as the quota pages: shared layout
+# tokens, no provider accent on a figure that sums both providers, and the
+# hero unit split out because the 164 px numeral font has no multiply sign.
+value = source[source.index("static void create_value_page"):]
+value = value[:value.index("static uint64_t agent_packet_age_ms")]
+for copy in ("VALUE", "MONTH TO DATE", "AT LIST PRICES", "USD OF VALUE",
+             "USD PAID", "BREAK EVEN"):
+    assert f'"{copy}"' in value, f"missing value page copy: {copy}"
+assert "VP_BAR_Y" in value and "VP_BAR_H" in value
+assert "VP_PERCENT_Y" in value and "plex_num_164" in value
+assert "lv_obj_set_size(page->marker, 3, VP_BAR_H + 8);" in value
+assert "COL_CLAUDE" not in value and "COL_CODEX" not in value, \
+    "a combined Claude+Codex figure must not wear either provider accent"
+assert "plex_headline_48" in value, "the hero unit needs its own font"
+
+value_page_struct = source[source.index("} tracker_page;"):]
+value_page_struct = value_page_struct[:value_page_struct.index("} value_page;")]
+for member in ("subhead", "multiple", "unit", "track", "fill", "marker",
+               "value", "plan", "plan_caption"):
+    assert f"*{member};" in value_page_struct, f"value_page must own {member}"
+
+apply_value = source[source.index("static void apply_value"):]
+apply_value = apply_value[:apply_value.index("static uint64_t agent_packet_age_ms")]
+assert "usage_presenter_build_value(tokens, &view);" in apply_value, \
+    "the page must render the presenter's view, never tk_value directly"
+assert "lv_obj_update_layout(page->multiple);" in apply_value, \
+    "the unit is placed from the hero's measured width, not last frame's"
+assert "view.break_even_fraction" in apply_value
+assert "lv_obj_add_flag(page->track, LV_OBJ_FLAG_HIDDEN)" not in apply_value, \
+    "the empty track stays, matching the quota pages' no-data state"
 
 for removed_volume in (
     "rendered_volume_value", "rendered_volume_sessions",
@@ -286,4 +319,4 @@ for anchor in (31, 246, 321, 365, 430):
 assert "int usage_screen_current_view(void);" in header
 assert "usage_screen_current_view()" in sim
 
-print("OK: VibePulse six-page full-screen layout wiring")
+print("OK: VibePulse seven-page full-screen layout wiring")

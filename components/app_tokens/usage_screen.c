@@ -123,12 +123,27 @@ typedef struct {
   bool quota_stale;
 } tracker_page;
 
+typedef struct {
+  lv_obj_t *tile;
+  lv_obj_t *subhead;
+  lv_obj_t *multiple;
+  lv_obj_t *unit;
+  lv_obj_t *track;
+  lv_obj_t *fill;
+  lv_obj_t *marker;
+  lv_obj_t *marker_caption;
+  lv_obj_t *value;
+  lv_obj_t *plan;
+  lv_obj_t *plan_caption;
+} value_page;
+
 static struct {
   lv_obj_t *tileview;
   lv_obj_t *tiles[TK_USAGE_SCREEN_VIEWS];
   quota_page quotas[3];
   forecast_row forecast_rows[2];
   tracker_page trackers[2];
+  value_page value;
   tk_agent_snapshot agent_snapshot;
   int64_t agent_applied_at_us;
   int64_t last_now_us;
@@ -268,17 +283,26 @@ static void create_analytics_header(lv_obj_t *tile, const char *title,
   create_hairline(tile, HEADER_LINE_Y);
 }
 
+/* Centred from the dot geometry rather than a hard-coded origin: the row
+ * grows every time a view is added, and a fixed origin walks it off centre. */
+#define PAGER_DOT 6
+#define PAGER_DOT_ACTIVE 18
+#define PAGER_GAP 5
+#define PAGER_W ((TK_USAGE_SCREEN_VIEWS - 1) * (PAGER_DOT + PAGER_GAP) + \
+                 PAGER_DOT_ACTIVE)
+#define PAGER_X ((VP_SCREEN_W - PAGER_W) / 2)
+
 static void create_pager(lv_obj_t *tile, int active) {
-  int x = 209;
+  int x = PAGER_X;
   for (int i = 0; i < TK_USAGE_SCREEN_VIEWS; i++) {
-    int width = i == active ? 18 : 6;
+    int width = i == active ? PAGER_DOT_ACTIVE : PAGER_DOT;
     lv_obj_t *dot = bare(tile);
     lv_obj_set_pos(dot, x, PAGER_Y);
-    lv_obj_set_size(dot, width, 6);
+    lv_obj_set_size(dot, width, PAGER_DOT);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(dot, i == active ? COL_DOT_ON : COL_DOT, 0);
-    x += width + 5;
+    x += width + PAGER_GAP;
   }
 }
 
@@ -398,6 +422,130 @@ static void create_burn_rate_page(void) {
   create_forecast_row(tile, &ui.forecast_rows[1], 270,
                       USAGE_PROVIDER_CODEX);
   create_pager(tile, VIEW_BURN_RATE);
+}
+
+/* Value page. Deliberately monochrome: the figure sums Claude and Codex, so
+ * painting it in either provider accent would attribute the whole month to
+ * one of them. The provider pages are coloured; this one is the money page. */
+#define VALUE_HERO_X 16
+/* The 164 px numeral font has no multiplication sign, so the unit is a
+ * separate 48 px label placed after the number once LVGL has measured it. */
+#define VALUE_UNIT_GAP 6
+#define VALUE_UNIT_Y (VP_PERCENT_Y + 96)
+
+static void create_value_page(void) {
+  value_page *page = &ui.value;
+  memset(page, 0, sizeof *page);
+  page->tile = new_tile(VIEW_VALUE);
+  create_analytics_header(page->tile, "VALUE", "MONTH TO DATE",
+                          "AT LIST PRICES");
+
+  page->subhead = label(page->tile, &plex_ui_21, COL_LABEL,
+                        VP_SAFE_X, VP_QUOTA_Y, VP_CONTENT_W, 30);
+  lv_obj_set_style_text_letter_space(page->subhead, 2, 0);
+
+  page->multiple = label_auto(page->tile, &plex_num_164, COL_WHITE,
+                              VALUE_HERO_X, VP_PERCENT_Y);
+  lv_obj_set_style_text_letter_space(page->multiple, -9, 0);
+  lv_label_set_text(page->multiple, "–");
+
+  page->unit = label_auto(page->tile, &plex_headline_48, COL_MUTED,
+                          VALUE_HERO_X, VALUE_UNIT_Y);
+  lv_label_set_text(page->unit, "X");
+  lv_obj_add_flag(page->unit, LV_OBJ_FLAG_HIDDEN);
+
+  page->track = bare(page->tile);
+  lv_obj_set_pos(page->track, VP_SAFE_X, VP_BAR_Y);
+  lv_obj_set_size(page->track, VP_CONTENT_W, VP_BAR_H);
+  lv_obj_set_style_bg_opa(page->track, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(page->track, COL_TRACK, 0);
+  lv_obj_set_style_radius(page->track, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_clip_corner(page->track, true, 0);
+
+  page->fill = bare(page->track);
+  lv_obj_set_pos(page->fill, 0, 0);
+  lv_obj_set_size(page->fill, 0, VP_BAR_H);
+  lv_obj_set_style_bg_opa(page->fill, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(page->fill, COL_WHITE, 0);
+
+  /* Break-even tick, drawn on the tile rather than inside the clipped track
+   * so it stays visible where the fill has already covered the scale. */
+  page->marker = bare(page->tile);
+  lv_obj_set_size(page->marker, 3, VP_BAR_H + 8);
+  lv_obj_set_style_bg_opa(page->marker, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(page->marker, COL_MUTED, 0);
+  lv_obj_add_flag(page->marker, LV_OBJ_FLAG_HIDDEN);
+
+  page->marker_caption = label(page->tile, &plex_ui_12, COL_MUTED,
+                               VP_SAFE_X, VP_BAR_Y + VP_BAR_H + 8,
+                               VP_CONTENT_W, 16);
+  lv_obj_set_style_text_letter_space(page->marker_caption, 2, 0);
+  lv_label_set_text(page->marker_caption, "");
+
+  create_stat(page->tile, &page->value, VP_SAFE_X, 210, false, COL_WHITE,
+              "USD OF VALUE");
+  page->plan = label(page->tile, &plex_stat_35, COL_MUTED,
+                     RIGHT_STAT_X, STAT_VALUE_Y, RIGHT_STAT_W, 42);
+  lv_obj_set_style_text_align(page->plan, LV_TEXT_ALIGN_RIGHT, 0);
+  page->plan_caption = label(page->tile, &plex_ui_14, COL_MUTED,
+                             RIGHT_STAT_X, STAT_LABEL_Y, RIGHT_STAT_W, 20);
+  lv_obj_set_style_text_align(page->plan_caption, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_set_style_text_letter_space(page->plan_caption, 2, 0);
+
+  lv_label_set_text(page->value, "–");
+  lv_label_set_text(page->plan, "–");
+  lv_label_set_text(page->plan_caption, "USD PAID");
+  lv_label_set_text(page->subhead, "NO DATA YET");
+  create_pager(page->tile, VIEW_VALUE);
+}
+
+static void apply_value(const tk_tokens *tokens) {
+  value_page *page = &ui.value;
+  if (!page->tile) return;
+  usage_value_page_view view;
+  usage_presenter_build_value(tokens, &view);
+
+  lv_label_set_text(page->subhead, view.subhead);
+  lv_label_set_text(page->multiple, view.multiple_text);
+  lv_label_set_text(page->value, view.value_text);
+  lv_label_set_text(page->plan, view.plan_text);
+  lv_label_set_text(page->plan_caption, view.plan_caption);
+
+  if (view.show_unit) {
+    /* The hero is self-sizing, so its rendered width is only known after a
+     * layout pass -- without this the unit would sit on last frame's number. */
+    lv_obj_update_layout(page->multiple);
+    lv_obj_set_pos(page->unit,
+                   VALUE_HERO_X + lv_obj_get_width(page->multiple)
+                       + VALUE_UNIT_GAP,
+                   VALUE_UNIT_Y);
+    lv_obj_remove_flag(page->unit, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(page->unit, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  if (view.show_bar) {
+    int width = (int)(view.bar_fraction * VP_CONTENT_W + 0.5);
+    if (width < 0) width = 0;
+    if (width > VP_CONTENT_W) width = VP_CONTENT_W;
+    lv_obj_set_size(page->fill, width, VP_BAR_H);
+    lv_obj_remove_flag(page->track, LV_OBJ_FLAG_HIDDEN);
+
+    int tick = VP_SAFE_X +
+               (int)(view.break_even_fraction * VP_CONTENT_W + 0.5);
+    lv_obj_set_pos(page->marker, tick, VP_BAR_Y - 4);
+    lv_obj_remove_flag(page->marker, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(page->marker_caption, "BREAK EVEN");
+    lv_obj_set_pos(page->marker_caption, tick + 7,
+                   VP_BAR_Y + VP_BAR_H + 8);
+  } else {
+    /* The empty track stays, matching the quota pages' no-data state: the
+     * scale is still real, there is just nothing to put on it. Only the
+     * fill and the break-even tick go. */
+    lv_obj_set_size(page->fill, 0, VP_BAR_H);
+    lv_obj_add_flag(page->marker, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(page->marker_caption, "");
+  }
 }
 
 static uint64_t agent_packet_age_ms(int64_t now_us) {
@@ -698,6 +846,7 @@ void usage_screen_create(lv_obj_t *root) {
   create_burn_rate_page();
   create_tracker_page(&ui.trackers[0], VIEW_TRACKER_CLAUDE, false);
   create_tracker_page(&ui.trackers[1], VIEW_TRACKER_CODEX, true);
+  create_value_page();
   tk_agent_monitor_create(root);
 }
 
@@ -708,6 +857,7 @@ void usage_screen_apply_tokens(const tk_tokens *tokens) {
   usage_presenter_build_forecasts(tokens, &forecasts);
   for (int i = 0; i < 2; i++)
     apply_forecast_row(&ui.forecast_rows[i], &forecasts.rows[i]);
+  apply_value(tokens);
 }
 
 void usage_screen_apply_max_tracker(const tk_max_tracker *t) {

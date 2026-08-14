@@ -161,6 +161,10 @@ EXPECTED = {
     "torget-vibepulse-tracker-codex-full.bmp",
     "torget-vibepulse-tracker-empty.bmp",
     "torget-vibepulse-tracker-stale.bmp",
+    "torget-ota-ring-open.bmp",
+    "torget-ota-ring-receiving.bmp",
+    "torget-ota-ring-verifying.bmp",
+    "torget-ota-ring-restarting.bmp",
 }
 
 
@@ -207,6 +211,37 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
         for name in sorted(EXPECTED):
             with self.subTest(name=name):
                 self.assertEqual(self.image(name).size, (480, 480))
+
+    def test_ota_ring_states_show_honest_arc_and_center(self):
+        """Ringen (riktning A, 2026-08-14): bågens mitt är (240, 268), band-
+        radie ~132-148. Mitt i bandet (radie 140) är färgen solid: vit där
+        läget fyllt bågen, spårgrå (0x303238) där det inte gjort det. 62 %
+        RECEIVING täcker toppen men inte den övre vänstra diagonalen; full
+        cirkel (VERIFYING/RESTARTING) täcker båda. Centrumraden bär vita
+        siffror i alla lägen. Ingen provideraccent någonstans."""
+        top = (240, 128)          # 0 grader, bågens start
+        upper_left = (141, 169)   # 315 grader medurs fran toppen
+        track = (48, 50, 56)
+        white = (255, 255, 255)
+
+        cases = (
+            ("torget-ota-ring-open.bmp", white, white),
+            ("torget-ota-ring-receiving.bmp", white, track),
+            ("torget-ota-ring-verifying.bmp", white, white),
+            ("torget-ota-ring-restarting.bmp", white, white),
+        )
+        for name, top_color, upper_left_color in cases:
+            with self.subTest(name=name):
+                image = self.image(name)
+                self.assertEqual(image.getpixel((5, 5)), (0, 0, 0))
+                self.assertEqual(image.getpixel(top), top_color)
+                self.assertEqual(image.getpixel(upper_left), upper_left_color)
+                center_row = [image.getpixel((x, 268)) for x in range(150, 330)]
+                self.assertIn(white, center_row)
+                claude = (217, 119, 87)
+                codex = (111, 120, 255)
+                self.assertNotIn(claude, center_row)
+                self.assertNotIn(codex, center_row)
 
     def test_provider_bars_are_segmented_with_locked_colors_and_marker(self):
         cases = (

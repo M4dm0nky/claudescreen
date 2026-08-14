@@ -7,32 +7,55 @@
 #include "torget.h"
 
 /*
- * Fyra stora statiska lägen, inget annat: inga kort, inga loggor, ingen
- * animation, inga opacitetslager, ingen appdata. Overlayn ska gå att läsa
- * tvärs över rummet medan en uppdatering pågår — och den ska vara omöjlig
- * att förväxla med en app.
+ * Ringen (riktning A, vald 2026-08-14): ett fullsvart lager med lägesordet
+ * överst, en cirkelbåge mitt på glaset och EN dominerande siffra i bågen.
+ * Bågen är ärlig data i varje läge: kvarvarande lucktid när fönstret är
+ * öppet, mottagen andel under RECEIVING, full cirkel när avbilden
+ * verifieras och startas om. Inga kort, inga loggor, ingen appdata — och
+ * ingen provideraccent: det här är plattformens läge, inte en apps.
+ *
+ * Statisk batch: all rörelse (andningspunkten på bågens huvud) väntar på
+ * sin egen granskning EFTER den statiska fysiska granskningen — skillnaden
+ * mellan godkänd stillbild och godkänd rörelse är två separata grindar.
  *
  * Fontval mot verklig glyftäckning (platform/fonts/fetch-and-convert.sh):
- * planens plex_text_32 rymmer bara "%GMWhkort" och plex_num_50 saknar
- * kolon, så lägesorden sätts i plex_attention_52 (versaler + mellanslag,
- * samma fullskärmsfont som NEEDS YOU-larmet) och nedräkningen i plex_ui_21
- * (full ASCII) — planens egen minsta tillåtna detaljfont. Procenten ryms i
- * plex_num_50 precis som planerat. Native storlekar, aldrig transformer.
+ * lägesorden i plex_attention_52 (versaler + mellanslag, samma
+ * fullskärmsfont som NEEDS YOU-larmet), mittsiffran i plex_num_118 (siffror,
+ * %, och sedan 2026-08-14 kolon — mm:ss-nedräkningen bor där), %-tecknet i
+ * plex_num_50 och detaljraden i plex_ui_21 (full ASCII). Native storlekar,
+ * aldrig transformer.
  */
 
 extern const lv_font_t plex_attention_52;
+extern const lv_font_t plex_num_118;
+extern const lv_font_t plex_num_84;
 extern const lv_font_t plex_num_50;
 extern const lv_font_t plex_ui_21;
 
-#define COL_DETAIL lv_color_hex(0x8994A5) /* designsystemets etikettgrå  */
-#define COL_TRACK  lv_color_hex(0x1D2634) /* designsystemets spårfärg    */
+/* Färgerna är studio-tokens (design/vibepulse/studio-design.json): muted
+ * och track därifrån, inte de äldre lokala nyanserna — rastret på glaset
+ * ska gå att lägga bredvid studiomockupen utan att skilja sig. */
+#define COL_DETAIL lv_color_hex(0x9298A2) /* palette.muted */
+#define COL_TRACK  lv_color_hex(0x303238) /* palette.track */
+
+/* Bågen: 296 px yttermått ger radie 148, spår 16 px — samma proportioner
+ * som mockupen (2026-08-14, riktning A). Centrum (240, 268) lämnar plats
+ * för lägesordet överst utan att sista raden når det klippta hörnglaset. */
+#define ARC_SIZE   296
+#define ARC_X      (240 - ARC_SIZE / 2)
+#define ARC_Y      (268 - ARC_SIZE / 2)
+#define ARC_WIDTH  16
+
+/* Fönstret är tio minuter; bågen mappar sekunder → 0..100 mot det taket. */
+#define WINDOW_SECONDS 600
 
 static struct {
   lv_obj_t *overlay;
-  lv_obj_t *word;      /* UPDATES ON / RECEIVING / VERIFYING / RESTARTING */
-  lv_obj_t *countdown; /* mm:ss kvar av fönstret (endast OPEN)            */
-  lv_obj_t *percent;   /* "42%" (endast RECEIVING)                        */
-  lv_obj_t *bar;       /* 20 px neutral balk (endast RECEIVING)           */
+  lv_obj_t *word;    /* UPDATES ON / RECEIVING / VERIFYING / RESTARTING */
+  lv_obj_t *arc;     /* lucktid (OPEN) eller mottagen andel (övriga)     */
+  lv_obj_t *center;  /* mm:ss (OPEN) eller procentsiffrorna (övriga)    */
+  lv_obj_t *pctsign; /* "%" bredvid siffrorna — dolt i OPEN             */
+  lv_obj_t *detail;  /* KEY3 CLOSES / SHA-256 — tomt annars             */
   tg_ota_ui_state rendered_state;
   unsigned rendered_percent;
   int rendered_seconds;
@@ -55,35 +78,43 @@ void torget_ota_ui_create(void) {
   ui.word = lv_label_create(ui.overlay);
   lv_obj_set_style_text_font(ui.word, &plex_attention_52, 0);
   lv_obj_set_style_text_color(ui.word, lv_color_white(), 0);
-  lv_obj_align(ui.word, LV_ALIGN_CENTER, 0, -60);
+  lv_obj_align(ui.word, LV_ALIGN_TOP_MID, 0, 52);
   lv_label_set_text(ui.word, "");
 
-  ui.countdown = lv_label_create(ui.overlay);
-  lv_obj_set_style_text_font(ui.countdown, &plex_ui_21, 0);
-  lv_obj_set_style_text_color(ui.countdown, COL_DETAIL, 0);
-  lv_obj_set_style_text_letter_space(ui.countdown, 2, 0);
-  lv_obj_align(ui.countdown, LV_ALIGN_CENTER, 0, 10);
-  lv_label_set_text(ui.countdown, "");
+  /* Bågen är ren visning: ingen knopp, inget klick — värdet sätts bara
+   * härifrån. Startar kl 12 och fylls medurs (rotation 270). */
+  ui.arc = lv_arc_create(ui.overlay);
+  lv_obj_remove_style_all(ui.arc);
+  lv_obj_set_size(ui.arc, ARC_SIZE, ARC_SIZE);
+  lv_obj_set_pos(ui.arc, ARC_X, ARC_Y);
+  lv_arc_set_rotation(ui.arc, 270);
+  lv_arc_set_bg_angles(ui.arc, 0, 360);
+  lv_arc_set_range(ui.arc, 0, 100);
+  lv_obj_set_style_arc_color(ui.arc, COL_TRACK, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(ui.arc, ARC_WIDTH, LV_PART_MAIN);
+  lv_obj_set_style_arc_rounded(ui.arc, true, LV_PART_MAIN);
+  lv_obj_set_style_arc_color(ui.arc, lv_color_white(), LV_PART_INDICATOR);
+  lv_obj_set_style_arc_width(ui.arc, ARC_WIDTH, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_rounded(ui.arc, true, LV_PART_INDICATOR);
+  lv_obj_remove_flag(ui.arc, LV_OBJ_FLAG_CLICKABLE);
+  lv_arc_set_value(ui.arc, 0);
 
-  ui.percent = lv_label_create(ui.overlay);
-  lv_obj_set_style_text_font(ui.percent, &plex_num_50, 0);
-  lv_obj_set_style_text_color(ui.percent, lv_color_white(), 0);
-  lv_obj_align(ui.percent, LV_ALIGN_CENTER, 0, 30);
-  lv_label_set_text(ui.percent, "");
+  ui.center = lv_label_create(ui.overlay);
+  lv_obj_set_style_text_font(ui.center, &plex_num_118, 0);
+  lv_obj_set_style_text_color(ui.center, lv_color_white(), 0);
+  lv_label_set_text(ui.center, "");
 
-  /* Neutral balk: spårfärg ur designsystemet, grå fyllnad — ingen
-   * provideraccent, det här är plattformens läge, inte en apps. */
-  ui.bar = lv_bar_create(ui.overlay);
-  lv_obj_remove_style_all(ui.bar);
-  lv_obj_set_size(ui.bar, 360, 20);
-  lv_obj_align(ui.bar, LV_ALIGN_CENTER, 0, 120);
-  lv_obj_set_style_bg_color(ui.bar, COL_TRACK, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(ui.bar, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_radius(ui.bar, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(ui.bar, COL_DETAIL, LV_PART_INDICATOR);
-  lv_obj_set_style_bg_opa(ui.bar, LV_OPA_COVER, LV_PART_INDICATOR);
-  lv_obj_set_style_radius(ui.bar, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
-  lv_bar_set_range(ui.bar, 0, 100);
+  ui.pctsign = lv_label_create(ui.overlay);
+  lv_obj_set_style_text_font(ui.pctsign, &plex_num_50, 0);
+  lv_obj_set_style_text_color(ui.pctsign, COL_DETAIL, 0);
+  lv_label_set_text(ui.pctsign, "%");
+  lv_obj_add_flag(ui.pctsign, LV_OBJ_FLAG_HIDDEN);
+
+  ui.detail = lv_label_create(ui.overlay);
+  lv_obj_set_style_text_font(ui.detail, &plex_ui_21, 0);
+  lv_obj_set_style_text_color(ui.detail, COL_DETAIL, 0);
+  lv_obj_set_style_text_letter_space(ui.detail, 2, 0);
+  lv_label_set_text(ui.detail, "");
 
   ui.rendered_state = TG_OTA_UI_HIDDEN;
 }
@@ -95,6 +126,17 @@ static const char *state_word(tg_ota_ui_state state) {
     case TG_OTA_UI_VERIFYING:  return "VERIFYING";
     case TG_OTA_UI_RESTARTING: return "RESTARTING";
     default:                   return "";
+  }
+}
+
+/* Detaljraden säger bara det ärliga: utgången (kort tryck, inte håll) när
+ * fönstret väntar, och vad verifieringen faktiskt räknar. Övriga lägen bär
+ * sitt ord och sin siffra — en dominerande siffra, inga bihang. */
+static const char *state_detail(tg_ota_ui_state state) {
+  switch (state) {
+    case TG_OTA_UI_OPEN:      return "KEY3 CLOSES";
+    case TG_OTA_UI_VERIFYING: return "SHA-256";
+    default:                  return "";
   }
 }
 
@@ -131,28 +173,37 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
   }
 
   lv_label_set_text(ui.word, state_word(state));
+  lv_label_set_text(ui.detail, state_detail(state));
 
   if (state == TG_OTA_UI_OPEN) {
+    /* Bågen är kvarvarande lucktid: full vid nytt håll, dränerad vid 0.
+     * Klockan sätts i 84:an — 118:an svämmade över ringens innerradie
+     * (rastergranskningen 2026-08-14). */
+    lv_arc_set_value(ui.arc,
+                     (int32_t)((seconds_left * 100) / WINDOW_SECONDS));
     char clock[8];
     snprintf(clock, sizeof clock, "%02d:%02d", seconds_left / 60,
              seconds_left % 60);
-    lv_label_set_text(ui.countdown, clock);
-    lv_obj_remove_flag(ui.countdown, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_text_font(ui.center, &plex_num_84, 0);
+    lv_label_set_text(ui.center, clock);
+    lv_obj_add_flag(ui.pctsign, LV_OBJ_FLAG_HIDDEN);
   } else {
-    lv_obj_add_flag(ui.countdown, LV_OBJ_FLAG_HIDDEN);
+    /* RECEIVING fyller bågen med mottagen andel; VERIFYING/RESTARTING
+     * anropas med 100 och sluter cirkeln. */
+    lv_arc_set_value(ui.arc, (int32_t)percent);
+    char digits[8];
+    snprintf(digits, sizeof digits, "%u", percent);
+    lv_obj_set_style_text_font(ui.center, &plex_num_118, 0);
+    lv_label_set_text(ui.center, digits);
+    lv_obj_remove_flag(ui.pctsign, LV_OBJ_FLAG_HIDDEN);
   }
 
-  if (state == TG_OTA_UI_RECEIVING) {
-    char text[8];
-    snprintf(text, sizeof text, "%u%%", percent);
-    lv_label_set_text(ui.percent, text);
-    lv_bar_set_value(ui.bar, (int32_t)percent, LV_ANIM_OFF);
-    lv_obj_remove_flag(ui.percent, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(ui.bar, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_add_flag(ui.percent, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(ui.bar, LV_OBJ_FLAG_HIDDEN);
-  }
+  /* Centrera mot bågens mitt när innehållet bytt bredd; %-tecknet hänger
+   * på siffrornas nederkant som i mockupen. Detaljraden ligger under
+   * mittsiffran, väl innanför bågens innerradie. */
+  lv_obj_align(ui.center, LV_ALIGN_CENTER, 0, 268 - 240);
+  lv_obj_align_to(ui.pctsign, ui.center, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -14);
+  lv_obj_align(ui.detail, LV_ALIGN_CENTER, 0, 268 - 240 + 78);
 
   lv_obj_remove_flag(ui.overlay, LV_OBJ_FLAG_HIDDEN);
   lv_obj_move_foreground(ui.overlay);

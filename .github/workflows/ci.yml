@@ -5,7 +5,10 @@ name: CI
 
 on:
   push:
-    branches: [main, worktree-max-tracker]
+    # Alla brancher: OTA-pusharens CI-brygga vägrar leverera byggen utan
+    # grön CI för exakt sin commit (2026-08-14) — då måste varje pushad
+    # commit också få en dom. Concurrency-gruppen håller kostnaden nere.
+    branches: ['**']
   pull_request:
 
 concurrency:

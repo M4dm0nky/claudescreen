@@ -80,6 +80,21 @@ compares against its own running version:
 The nag rhythm lives in `components/torget_ota/notice_policy.c`, a pure
 host-tested module (`test/test_ota_notice_policy.c`).
 
+## The sender gates
+
+The device proves an image is *valid*; the pusher proves it is the
+*right* one. Four gates run at the moment of upload, all born from the
+2026-08-14 ghost incident:
+
+1. **Newest binary at send time** — never a directory picked at script
+   start while a build was mid-write.
+2. **The embedded version is read from the image and announced** before
+   anything is sent.
+3. **`-dirty` builds are refused** (`TG_OTA_ALLOW_DIRTY=1` to override).
+4. **CI bridge**: the commit in the version string must have a green CI
+   run on GitHub (`TG_OTA_ALLOW_NO_CI=1` for offline emergencies). CI
+   runs on every pushed branch for exactly this reason.
+
 ## Day-to-day developer workflow
 
 ```

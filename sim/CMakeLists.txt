@@ -42,7 +42,11 @@ else()
   message(STATUS "torget-sim: Solelkollen saknas — bygger utan den (companion-app)")
 endif()
 
-if(EXISTS "${TORGET_BUDDY_DIR}/app_buddy")
+# Samma opt-in som targetet (frysläxan 2026-08-14): bänken ska visa exakt
+# den appuppsättning panelen bygger, aldrig en app till bara för att
+# katalogen råkar finnas.
+option(TORGET_WITH_BUDDY "Bygg in Vibbe/Buddy (kräver ~/Buddy)" OFF)
+if(TORGET_WITH_BUDDY AND EXISTS "${TORGET_BUDDY_DIR}/app_buddy")
   set(BUDDY_SRCS
     ${TORGET_BUDDY_DIR}/app_buddy/app.c
     ${TORGET_BUDDY_DIR}/app_buddy/buddy_soul.c
@@ -50,11 +54,12 @@ if(EXISTS "${TORGET_BUDDY_DIR}/app_buddy")
     ${TORGET_BUDDY_DIR}/app_buddy/vibbe_sounds.c)
 else()
   set(BUDDY_SRCS "")
-  message(STATUS "torget-sim: ~/Buddy saknas — bygger utan Vibbe/Buddy (companion-app)")
+  message(STATUS "torget-sim: Vibbe/Buddy är bortvald (TORGET_WITH_BUDDY=OFF)")
 endif()
 add_executable(torget-sim
   main.c
   ../platform/torget_ui.c
+  ../platform/boot_screen.c
   ../main/registry.c
   ../components/app_tokens/app.c
   ../components/app_tokens/tokens_parse.c
@@ -72,6 +77,8 @@ add_executable(torget-sim
   ../components/app_tokens/max_tracker_presenter.c
   ../components/torget_fmt/fmt_sv.c
   ../components/torget_ticker/ticker.c
+  # OTA-ringen: ren LVGL utan ESP-beroenden — bänken bevisar dess raster.
+  ../components/torget_ota/ota_ui.c
   ../third_party/cjson/cJSON.c
   ${SOLELKOLLEN_SRCS}
   ${BUDDY_SRCS}
@@ -86,7 +93,8 @@ target_include_directories(torget-sim PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../platform"
   "${CMAKE_CURRENT_SOURCE_DIR}/../components/app_tokens"
   "${CMAKE_CURRENT_SOURCE_DIR}/../components/torget_fmt"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../components/torget_ticker")
+  "${CMAKE_CURRENT_SOURCE_DIR}/../components/torget_ticker"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../components/torget_ota")
 if(SOLELKOLLEN_SRCS)
   target_include_directories(torget-sim PRIVATE
     "${TORGET_SOLELKOLLEN_DIR}/app_solelkollen")

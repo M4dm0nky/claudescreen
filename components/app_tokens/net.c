@@ -51,6 +51,10 @@ static void net_task(void *arg) {
       torget_ui_lock();
       tokens_apply(&t);
       torget_ui_unlock();
+      /* OTA-annonsen till plattformen — utanför UI-låset, den rör inget UI
+       * själv utan bara tjänstens atomära annonsminne. */
+      torget_update_available(
+          t.has_ota_available_version ? t.ota_available_version : NULL);
       ESP_LOGI(TAG, "hämtning ok (%.2f Mtok idag, %d sessioner)",
                t.day_tokens / 1e6, t.day_sessions);
     } else {

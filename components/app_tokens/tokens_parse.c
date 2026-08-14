@@ -205,7 +205,8 @@ static bool known_top_level_key(const char *key) {
       "claudeForecastPaceFactor", "claudeForecastAt",
       "claudeForecastOffsetMin", "codexForecastState",
       "codexForecastPctAtReset", "codexForecastPaceFactor",
-      "codexForecastAt", "codexForecastOffsetMin", "value",
+      "codexForecastAt", "codexForecastOffsetMin",
+      "otaAvailableVersion", "value",
   };
   for (size_t index = 0; index < sizeof keys / sizeof keys[0]; index++) {
     if (strcmp(key, keys[index]) == 0) return true;
@@ -427,6 +428,10 @@ bool tk_tokens_parse(const char *json, size_t len, tk_tokens *out) {
                  t.claude_model_week_label,
                  sizeof t.claude_model_week_label,
                  &t.has_claude_model_week_label);
+  optional_label(root, trust_optional_strings, "otaAvailableVersion",
+                 t.ota_available_version,
+                 sizeof t.ota_available_version,
+                 &t.has_ota_available_version);
   optional_nonnegative_number(
       root, "claudeModelWeekTodayDeltaPct", 100,
       &t.claude_model_week.delta_pct, &t.claude_model_week.has_delta);

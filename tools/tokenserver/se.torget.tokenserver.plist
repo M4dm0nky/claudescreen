@@ -2,7 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Tokenmätarens tjänst som launchd-agent: startar vid inloggning och
-     återstartas om den dör. Antar repot i ~/Torget; redigera annars. -->
+     återstartas om den dör. Antar repot i ~/Torget och användaren
+     niclasvestlund; redigera bägge sökvägarna annars.
+     Loggen bor i ~/Library/Logs (överlever omstart, syns i Konsol-appen;
+     /tmp städas av macOS). Servern roterar den själv vid start när den
+     vuxit förbi taket — launchd har ingen egen rotation.
+     ThrottleInterval är staketet mot respawn-loopar: dör processen direkt
+     vid start väntar launchd 30 s i stället för att fylla loggen. -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
@@ -19,9 +25,11 @@
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>/tmp/torget-tokenserver.log</string>
+  <string>/Users/niclasvestlund/Library/Logs/torget-tokenserver.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/torget-tokenserver.log</string>
+  <string>/Users/niclasvestlund/Library/Logs/torget-tokenserver.log</string>
 </dict>
 </plist>

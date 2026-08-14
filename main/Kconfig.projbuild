@@ -1,0 +1,7 @@
+menu "Torget development diagnostics"
+config TORGET_BOOT_HEALTH_FORCE_FAIL
+    bool "Force pending OTA image to fail its health gate"
+    default n
+    help
+        Development-only failure injection for the physical rollback test.
+endmenu

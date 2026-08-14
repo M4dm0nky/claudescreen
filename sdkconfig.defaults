@@ -10,6 +10,10 @@ CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
+# En ny OTA-avbild måste klara Torgets lokala hälsogrind vid första boot;
+# tills den godkänts kan bootloadern rulla tillbaka till förra luckan.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
 # 8 MB oktal-PSRAM med XIP: LVGL:s ritbuffertar (480x50 dubbelbuffrat) bor här
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y

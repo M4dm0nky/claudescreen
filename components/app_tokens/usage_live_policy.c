@@ -52,13 +52,13 @@ void usage_live_build_header(const tk_agent_provider_status *provider,
 
   out->halo_active = working != NULL;
   if (active_count == 0) {
-    snprintf(out->context, sizeof out->context, "NO ACTIVE CHAT");
+    snprintf(out->context, sizeof out->context, "NO ACTIVE AGENT");
   } else if (active_count == 1 && working) {
     build_now_context(working, out);
   } else if (active_count == 1) {
-    snprintf(out->context, sizeof out->context, "1 CHAT ACTIVE");
+    snprintf(out->context, sizeof out->context, "1 AGENT ACTIVE");
   } else {
-    snprintf(out->context, sizeof out->context, "%u CHATS ACTIVE",
+    snprintf(out->context, sizeof out->context, "%u AGENTS ACTIVE",
              active_count);
   }
 }

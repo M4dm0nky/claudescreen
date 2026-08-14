@@ -30,7 +30,12 @@ conv() { font_conv --font "src/IBMPlexSans-$1.ttf" --size "$2" \
 # Sifferfonter (Bold). Ranger: 0-9, komma, mellanslag, U+00A0, %, en-dash.
 conv Bold     146 "0x30-0x39,0x2C,0x20,0xA0,0x25,0x2013" plex_num_146
 conv Bold     164 "0x30-0x39,0x25,0x2E,0x2013"           plex_num_164
-conv Bold     118 "0x30-0x39,0x20,0x25,0x2E,0xA0,0x2013" plex_num_118
+# 84: OTA-ringens mm:ss-klocka — 118:an svämmar över ringens innerradie
+# (rastergranskning 2026-08-14), 84 är mockupens klockstorlek. Bara det
+# klockan behöver: siffror, kolon, mellanslag.
+conv Bold      84 "0x30-0x39,0x20,0x3A"                  plex_num_84
+# 118 bär kolon sedan 2026-08-14 (kvar för ev. framtida stora klockor).
+conv Bold     118 "0x30-0x39,0x20,0x25,0x2E,0xA0,0x2013,0x3A" plex_num_118
 conv Bold      50 "0x30-0x39,0x25,0x2C,0x2013"           plex_num_50
 # Värdesidans EGNA pengafonter. De delade sifferfonterna får INTE bära "$":
 # dollartecknet är högre än varje siffra, så det växer fontens line_height

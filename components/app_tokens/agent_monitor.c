@@ -71,8 +71,9 @@ static lv_obj_t *create_codex_icon(lv_obj_t *parent, int x, int y) {
 
 /* Pulsen: accentkonturen och ikonringen andas i opacitet under larmets
  * PULSE-fas. Rörelse i befintliga element, aldrig nya ytor; texten står
- * still för läsbarhet. 4 cykler à 1200 ms fyller exakt
- * TK_COMPLETION_PULSE_MS, sedan vilar allt på full opacitet i STATIC. */
+ * still för läsbarhet. Cyklerna à 1200 ms fyller TK_COMPLETION_PULSE_MS
+ * (45 s sedan 2026-08-14 — 4,8 s missades i praktiken), sedan vilar allt
+ * på full opacitet i STATIC. */
 #define COMPLETION_PULSE_CYCLE_MS 1200U
 #define COMPLETION_PULSE_MIN_OPA 100
 
@@ -148,7 +149,7 @@ static void render_completion(uint64_t now_ms) {
   if (event->state == TK_AGENT_WAITING) {
     title = "NEEDS YOU";
     if (event->same_state_count > 1) {
-      snprintf(detail, sizeof detail, "%u CHATS WAITING",
+      snprintf(detail, sizeof detail, "%u AGENTS WAITING",
                (unsigned)event->same_state_count);
     } else {
       snprintf(detail, sizeof detail, "%s",
@@ -158,7 +159,7 @@ static void render_completion(uint64_t now_ms) {
   } else if (event->state == TK_AGENT_ERROR) {
     title = "ERROR";
     if (event->same_state_count > 1) {
-      snprintf(detail, sizeof detail, "%u CHATS NEED ATTENTION",
+      snprintf(detail, sizeof detail, "%u AGENTS NEED ATTENTION",
                (unsigned)event->same_state_count);
     } else {
       snprintf(detail, sizeof detail, "%s",
@@ -166,7 +167,7 @@ static void render_completion(uint64_t now_ms) {
                    ? "CLAUDE NEEDS ATTENTION" : "CODEX NEEDS ATTENTION");
     }
   } else if (event->same_state_count > 1) {
-    snprintf(detail, sizeof detail, "%u CHATS FINISHED",
+    snprintf(detail, sizeof detail, "%u AGENTS FINISHED",
              (unsigned)event->same_state_count);
   } else {
     snprintf(detail, sizeof detail, "%s",

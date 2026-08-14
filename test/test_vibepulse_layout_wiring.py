@@ -270,7 +270,7 @@ assert "render_rail" not in monitor
 assert "mon.rail" not in monitor
 for copy in (
     "NEEDS YOU", "ERROR", "DONE", "CLAUDE IS WAITING", "CODEX IS WAITING",
-    "CHATS WAITING", "NEEDS ATTENTION", "FINISHED", "TAP TO DISMISS",
+    "AGENTS WAITING", "NEEDS ATTENTION", "FINISHED", "TAP TO DISMISS",
 ):
     assert copy in monitor, f"missing attention copy: {copy}"
 

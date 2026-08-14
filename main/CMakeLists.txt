@@ -5,7 +5,8 @@
 # Companion-apparna (Solelkollen, Vibbe/Buddy) är frivilliga: finns de
 # utcheckade dras komponenten in och TORGET_HAVE_* grindar registerposten i
 # registry.c. En färsk klon utifrån bygger bara VibePulse.
-set(TORGET_MAIN_REQUIRES torget_app app_tokens)
+# torget_ota: bootens hälsogrind (boot_health.h) och KEY3:s underhållshåll.
+set(TORGET_MAIN_REQUIRES torget_app app_tokens torget_ota)
 # OBS $ENV{}: den här filen körs TVÅ gånger — en gång i ESP-IDF:s
 # early-expansion (då REQUIRES läses ut) och en gång i det riktiga bygget. I
 # expansionspasset syns INTE cache-/normalvariablerna som rot-CMakeLists.txt
@@ -26,6 +27,7 @@ idf_component_register(
        "rotation.c"
        "registry.c"
        "../platform/torget_ui.c"
+       "../platform/boot_screen.c"
   # ".." ger `#include "secrets.h"` (gitignorad, kopieras ur secrets.h.example)
   INCLUDE_DIRS "." ".." "../platform"
   REQUIRES ${TORGET_MAIN_REQUIRES}
@@ -33,7 +35,10 @@ idf_component_register(
            esp_wifi
            esp_netif
            esp_event
-           esp_timer)
+           esp_timer
+           # bootbanderollens appdeskriptor (esp_app_desc.h) — explicit
+           # hellre än via transitiva beroenden som kan ändras i en IDF-bump
+           esp_app_format)
 
 if(EXISTS "$ENV{TORGET_SOLELKOLLEN_DIR}/app_solelkollen")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE TORGET_HAVE_SOLELKOLLEN)

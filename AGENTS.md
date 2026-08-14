@@ -77,6 +77,16 @@ exact 480 x 480 output at meaningful stages. Review the static physical AMOLED
 before motion. Studio approval never authorizes a flash; obtain explicit user
 authorization for the physical install.
 
+## Logs, errors, and learning from mistakes
+
+`docs/observability.md` maps every log the system generates (device serial,
+tokenserver stdout/launchd file, `GET /` diagnostics, state files, the screen
+itself) and contains the periodic comb routine — follow it when asked to
+comb, audit, or investigate logs or odd behavior. Findings go to
+`docs/observability-backlog.md`. Read `docs/lessons.md` before touching
+pollers, parsers, staleness logic, or the launchd setup; fixes with a
+root-cause story add an entry there.
+
 ## Hårdvarufällorna i kortform (detaljer i spec/hardware.md)
 
 - `bsp_display_lock()` LJUGER (esp_err_t genom bool, spegelvänt) — använd

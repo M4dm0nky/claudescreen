@@ -1,7 +1,10 @@
-# 16 MB flash, ingen OTA (omflashning sker över USB-C — beslut i roadmapen).
-# 4 MB app är rundhänt: LVGL, åtta inbäddade Plex-fonter och certifikatbunten
-# ryms med marginal, och marginalen är gratis på ett 16 MB-kort.
-# Name,   Type, SubType, Offset,  Size
-nvs,      data, nvs,     ,        24K
-phy_init, data, phy,     ,        4K
-factory,  app,  factory, ,        4M
+# Torgets 16 MB-kort med A/B-OTA: en normal uppdatering skriver enbart den
+# inaktiva appluckan, och USB-C förblir sista räddningsvägen. Två lika stora
+# luckor gör att varje bygge som ryms i den ena också ryms i den andra.
+# Resten av flashen lämnas oallokerad med flit — ingen partition utan ägare.
+# Name,    Type, SubType, Offset, Size
+nvs,       data, nvs,     ,       64K
+otadata,   data, ota,     ,       8K
+phy_init,  data, phy,     ,       4K
+ota_0,     app,  ota_0,   ,       5M
+ota_1,     app,  ota_1,   ,       5M

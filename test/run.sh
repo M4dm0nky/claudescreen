@@ -104,12 +104,43 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
   -o /tmp/torget-agent-net-policy-test
 /tmp/torget-agent-net-policy-test
 
+cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/torget_ota/ota_policy.c \
+  test_ota_policy.c \
+  -lm \
+  -o /tmp/torget-ota-policy-test
+/tmp/torget-ota-policy-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/torget_ota/button_policy.c \
+  test_ota_button_policy.c \
+  -lm \
+  -o /tmp/torget-ota-button-policy-test
+/tmp/torget-ota-button-policy-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/torget_ota/notice_policy.c \
+  test_ota_notice_policy.c \
+  -lm \
+  -o /tmp/torget-ota-notice-policy-test
+/tmp/torget-ota-notice-policy-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/torget_ota/boot_health_policy.c \
+  test_boot_health_policy.c \
+  -lm \
+  -o /tmp/torget-boot-health-policy-test
+/tmp/torget-boot-health-policy-test
+
 "$PYTHON_BIN" test_agent_demo_wiring.py
 "$PYTHON_BIN" test_agent_net_wiring.py
 "$PYTHON_BIN" test_target_tls_memory.py
+"$PYTHON_BIN" test_buddy_opt_in.py
 "$PYTHON_BIN" test_lvgl_layer_safety.py
 "$PYTHON_BIN" test_vibepulse_layout_wiring.py
 "$PYTHON_BIN" test_preview_ui.py
+"$PYTHON_BIN" test_ota_partition.py
+"$PYTHON_BIN" test_ota_reopen_wiring.py
 
 cd ..
 "$PYTHON_BIN" -m unittest tools.agent_assets.test_build_agent_images -v
@@ -129,4 +160,5 @@ cd ..
   tools.tokenserver.test_max_tracker \
   tools.tokenserver.test_value_meter \
   tools.tokenserver.test_update_prices \
-  tools.tokenserver.test_codex_usage -v
+  tools.tokenserver.test_codex_usage \
+  tools.tokenserver.test_smoke -v

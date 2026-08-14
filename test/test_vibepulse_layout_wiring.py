@@ -168,9 +168,12 @@ assert "COL_CARD" not in burn
 # whole page, drawn once and labelled once.
 value = source[source.index("static void create_value_row"):]
 value = value[:value.index("static uint64_t agent_packet_age_ms")]
-for copy in ("VALUE", "MONTH TO DATE", "AT LIST API PRICES", "EARNED",
-             "PAID", "BREAK EVEN"):
+for copy in ("VALUE", "MONTH TO DATE", "AT LIST API PRICES", "VIA API",
+             "YOU PAID", "BREAK EVEN"):
     assert f'"{copy}"' in value, f"missing value page copy: {copy}"
+# Nothing on this page is EARNED: the figure is what the month WOULD have
+# cost at API rates, and the saving is the gap to the subscription.
+assert "EARNED" not in source, "the page must not claim money was earned"
 assert "VALUE_HERO_Y" in value and "plex_money_118" in value
 # Three each, and every one marks that provider's own data: its name, its bar
 # fill, and the name in the top slot of the one-provider layout.

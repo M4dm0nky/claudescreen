@@ -225,8 +225,8 @@ int main(void) {
         value_page.state == USAGE_VALUE_OK &&
         strcmp(value_page.hero_text, "1.42\u00d7") == 0 &&
         !value_page.hero_is_word && value_page.hero_ahead);
-  check("the evidence line states the whole argument above it",
-        strcmp(value_page.evidence, "$312 EARNED ON $220 PAID") == 0);
+  check("the evidence line says API cost, never \"earned\"",
+        strcmp(value_page.evidence, "$312 VIA API · $220 PAID") == 0);
   check("both providers get a row",
         value_page.row_count == 2 &&
         value_page.rows[0].provider == USAGE_PROVIDER_CLAUDE &&
@@ -247,8 +247,13 @@ int main(void) {
         value_page.rows[0].bar_fraction < 0.71 &&
         value_page.rows[1].bar_fraction > 0.79 &&
         value_page.rows[1].bar_fraction < 0.81);
+  /* Nothing is EARNED here. The figure is what the month WOULD have cost at
+     API list rates; the saving is the gap to the subscription. Claiming
+     income that does not exist is the one copy error worth a test. */
+  check("no state ever claims the money was earned",
+        strstr(value_page.evidence, "EARNED") == NULL);
   check("the combined pair is kept for the one-provider footer",
-        strcmp(value_page.earned, "$312") == 0 &&
+        strcmp(value_page.api_cost, "$312") == 0 &&
         strcmp(value_page.paid, "$220") == 0);
 
   /* A provider not earning its keep must be visible as such, not averaged

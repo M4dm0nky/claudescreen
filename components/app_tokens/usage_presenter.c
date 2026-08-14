@@ -354,10 +354,12 @@ void usage_presenter_build_value(const tk_tokens *tokens,
       out->hero_ahead = value->multiple >= 1.0;
       format_multiple(value->multiple, out->hero_text,
                       sizeof out->hero_text);
-      format_usd(value->value_usd, out->earned, sizeof out->earned);
+      format_usd(value->value_usd, out->api_cost, sizeof out->api_cost);
       format_usd(value->plan_usd, out->paid, sizeof out->paid);
-      snprintf(out->evidence, sizeof out->evidence, "%s EARNED ON %s PAID",
-               out->earned, out->paid);
+      /* "VIA API", not "EARNED": this is what the month would have cost had
+       * the same tokens been bought at list API rates. */
+      snprintf(out->evidence, sizeof out->evidence, "%s VIA API · %s PAID",
+               out->api_cost, out->paid);
       out->show_rule = 1;
       out->break_even_fraction = 1.0 / USAGE_VALUE_BAR_SCALE;
       break;

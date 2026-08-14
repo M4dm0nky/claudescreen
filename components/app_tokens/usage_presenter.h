@@ -118,10 +118,15 @@ typedef struct {
 
 typedef struct {
   usage_value_state state;
-  /* The argument, stated in full above the hero: "$312 EARNED ON $220 PAID".
+  /* The argument, stated in full above the hero: "$312 VIA API · $220 PAID".
    * The hero is the verdict; this is the evidence it rests on. Without it a
    * multiple has no referent, and a lone dollar figure on a page titled
-   * VALUE is ambiguous between what you spent and what you got. */
+   * VALUE is ambiguous between what you spent and what you got.
+   *
+   * Nothing here is EARNED. The figure is what this month's tokens would
+   * have cost at API list rates had you bought them that way; the saving is
+   * the gap between it and the subscription. Saying "earned" would claim
+   * income that does not exist. */
   char evidence[56];
   char hero_text[USAGE_CARD_PCT_CAP];
   /* 1 when the hero is a WORD and must render in the 48 px headline font. An
@@ -140,7 +145,7 @@ typedef struct {
   int row_count;
   usage_value_row rows[2];
   /* One-provider layout only: the combined pair moves into a stat footer. */
-  char earned[USAGE_CARD_PCT_CAP];
+  char api_cost[USAGE_CARD_PCT_CAP];
   char paid[USAGE_CARD_PCT_CAP];
 } usage_value_page_view;
 

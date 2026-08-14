@@ -141,7 +141,7 @@ typedef struct {
   lv_obj_t *rule_label;
   value_row rows[2];
   /* One-provider layout only: the combined pair moves into a stat footer. */
-  lv_obj_t *stat_earned, *stat_paid, *cap_earned, *cap_paid;
+  lv_obj_t *stat_api, *stat_paid, *cap_api, *cap_paid;
 } value_page;
 
 static struct {
@@ -546,10 +546,10 @@ static void create_value_page(void) {
   lv_obj_set_style_text_letter_space(page->rule_label, 2, 0);
   lv_label_set_text(page->rule_label, "BREAK EVEN");
 
-  create_value_stat(page->tile, &page->stat_earned, &page->cap_earned,
-                    VP_SAFE_X, false, "EARNED");
+  create_value_stat(page->tile, &page->stat_api, &page->cap_api,
+                    VP_SAFE_X, false, "VIA API");
   create_value_stat(page->tile, &page->stat_paid, &page->cap_paid,
-                    258, true, "PAID");
+                    258, true, "YOU PAID");
   create_pager(page->tile, VIEW_VALUE);
 }
 
@@ -666,15 +666,15 @@ static void apply_value(const tk_tokens *tokens) {
   /* The stat footer exists only in the one-provider layout: with two rows the
    * combined pair is already the evidence line, and repeating it is what made
    * the old page read as five competing zones. */
-  const bool stats = solo && view.earned[0] && view.paid[0];
-  lv_obj_t *const footer[] = {page->stat_earned, page->stat_paid,
-                              page->cap_earned, page->cap_paid};
+  const bool stats = solo && view.api_cost[0] && view.paid[0];
+  lv_obj_t *const footer[] = {page->stat_api, page->stat_paid,
+                              page->cap_api, page->cap_paid};
   for (size_t i = 0; i < sizeof footer / sizeof footer[0]; i++) {
     if (stats) lv_obj_remove_flag(footer[i], LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(footer[i], LV_OBJ_FLAG_HIDDEN);
   }
   if (stats) {
-    lv_label_set_text(page->stat_earned, view.earned);
+    lv_label_set_text(page->stat_api, view.api_cost);
     lv_label_set_text(page->stat_paid, view.paid);
   }
 }

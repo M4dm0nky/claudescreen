@@ -490,6 +490,108 @@ int main(void) {
   check_rejected_untouched("trunkerad avvisas", "{\"v\":2,\"dayTok", &t);
   check_rejected_untouched("html avvisas", "<html>502</html>", &t);
 
+
+  /* ---- the value multiple ------------------------------------------
+   * The view must never show a multiple the payload cannot support, so
+   * every one of these asserts a DEMOTION as much as a parse. */
+  {
+    tk_tokens v;
+    char payload[1400];
+    const char *shell =
+        "{\"v\":2,\"dayTokens\":1,\"dayTokensPerHour\":0,"
+        "\"daySessions\":1,\"monthTokens\":1," BASE_NULLS ",\"value\":%s}";
+
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"ok\",\"value_usd\":312.0,\"plan_usd\":100.0,"
+             "\"multiple\":3.12,\"cost_source\":\"configured\","
+             "\"prices_verified\":true}");
+    check("value ok parsas", PARSE(payload, &v));
+    check("value ok ger OK-state", v.value.state == TK_VALUE_OK);
+    check("value ok ger multipel", v.value.has_multiple &&
+          v.value.multiple > 3.11 && v.value.multiple < 3.13);
+    check("value ok ger dollar", v.value.has_value_usd &&
+          v.value.value_usd > 311.9 && v.value.value_usd < 312.1);
+    check("value ok bär configured", v.value.cost_configured == 1);
+    check("value ok bär verified", v.value.prices_verified == 1);
+
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"no_plan_cost\",\"value_usd\":312.0,"
+             "\"plan_usd\":null,\"multiple\":null,"
+             "\"cost_source\":\"unknown\",\"prices_verified\":true}");
+    check("no_plan_cost parsas", PARSE(payload, &v));
+    check("no_plan_cost ger state",
+          v.value.state == TK_VALUE_NO_PLAN_COST);
+    check("no_plan_cost behåller dollar", v.value.has_value_usd);
+    check("no_plan_cost saknar multipel", !v.value.has_multiple);
+
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"partial\",\"value_usd\":312.0,\"plan_usd\":100.0,"
+             "\"multiple\":null,\"cost_source\":\"configured\","
+             "\"prices_verified\":true}");
+    check("partial parsas", PARSE(payload, &v));
+    check("partial ger state", v.value.state == TK_VALUE_PARTIAL);
+    check("partial ger ingen multipel", !v.value.has_multiple);
+
+    /* A state this firmware does not know must show nothing, not guess. */
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"probably_fine\",\"value_usd\":312.0,"
+             "\"multiple\":3.12}");
+    check("okänd state parsas", PARSE(payload, &v));
+    check("okänd state ger unavailable",
+          v.value.state == TK_VALUE_UNAVAILABLE);
+
+    /* ok claimed without the numbers to back it: demote, never render. */
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"ok\",\"value_usd\":312.0,\"plan_usd\":100.0,"
+             "\"multiple\":null}");
+    check("ok utan multipel parsas", PARSE(payload, &v));
+    check("ok utan multipel degraderas",
+          v.value.state == TK_VALUE_NO_PLAN_COST && !v.value.has_multiple);
+
+    /* plan_usd 0 would divide to infinity upstream; refuse the OK bar. */
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"ok\",\"value_usd\":312.0,\"plan_usd\":0,"
+             "\"multiple\":3.12}");
+    check("ok med nollplan parsas", PARSE(payload, &v));
+    check("ok med nollplan degraderas",
+          v.value.state == TK_VALUE_NO_PLAN_COST);
+
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"ok\",\"value_usd\":null,\"plan_usd\":null,"
+             "\"multiple\":null}");
+    check("ok helt utan tal parsas", PARSE(payload, &v));
+    check("ok helt utan tal ger unavailable",
+          v.value.state == TK_VALUE_UNAVAILABLE);
+
+    /* Absent provenance reads as unverified, never as confirmed. */
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"ok\",\"value_usd\":312.0,\"plan_usd\":100.0,"
+             "\"multiple\":3.12}");
+    check("utan provenance parsas", PARSE(payload, &v));
+    check("utan provenance är overifierad", v.value.prices_verified == 0);
+    check("utan cost_source är default", v.value.cost_configured == 0);
+
+    snprintf(payload, sizeof payload, shell, "\"not-an-object\"");
+    check("icke-objekt value parsas", PARSE(payload, &v));
+    check("icke-objekt value ignoreras",
+          v.value.state == TK_VALUE_UNAVAILABLE);
+
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"ok\",\"value_usd\":-5,\"plan_usd\":100.0,"
+             "\"multiple\":3.12}");
+    check("negativ value_usd parsas", PARSE(payload, &v));
+    check("negativ value_usd degraderas",
+          v.value.state == TK_VALUE_UNAVAILABLE);
+
+    /* A payload with no value key at all is the already-flashed case. */
+    snprintf(payload, sizeof payload,
+             "{\"v\":2,\"dayTokens\":1,\"dayTokensPerHour\":0,"
+             "\"daySessions\":1,\"monthTokens\":1," BASE_NULLS "}");
+    check("utan value-nyckel parsas", PARSE(payload, &v));
+    check("utan value-nyckel är unavailable",
+          v.value.state == TK_VALUE_UNAVAILABLE);
+  }
+
   if (failures == 0) { printf("OK: alla tokens-tester gröna\n"); return 0; }
   printf("%d test föll\n", failures);
   return 1;

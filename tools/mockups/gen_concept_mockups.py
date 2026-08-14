@@ -217,6 +217,91 @@ def go_no_go():
     return s + TAIL
 
 
+
+# ============================================================ SCREENSHOT TEST
+# Round two. The filter is no longer "is it non-redundant" but "would a vibe
+# coder post this and would someone else think: I need that."
+
+# ------------------------------------------------------------------ 7. value
+def value_multiple():
+    s = head("Value from your plan: 3.1 times, 312 dollars of API value on a 100 dollar plan")
+    s += hero_chrome("CLAUDE", CLAUDE, "AUGUST")
+    s += t(SAFE, 93, "VALUE FROM YOUR PLAN", 23, MUTED, 500, 2.6)
+    s += t(SAFE, 268, "3.1", 164, TEXT, 700, -6)
+    s += t(SAFE + 232, 268, "\u00d7", 88, GO, 700, 0)
+    # bar with the break-even point marked: past the tick you are winning
+    s += bar(304, [(0.32, TRACK), (0.68, GO)])
+    s += f'<rect x="{SAFE + 0.32*CW - 1.5:.0f}" y="298" width="3" height="36" rx="1.5" fill="{TEXT}"/>'
+    s += t(SAFE + 0.32*CW, 292, "BREAK EVEN", 12, MUTED, 600, 1.4, "middle")
+    s += stat_row("$312", "AT LIST API PRICES", "$100", "YOU PAY", left_col=GO)
+    s += dots(4)
+    return s + TAIL
+
+
+# ------------------------------------------------------------- 8. ai-authored
+def ai_share():
+    s = head("Agent-written today: 84 percent of shipped lines")
+    s += hero_chrome("CLAUDE", CLAUDE, "3 REPOS")
+    s += t(SAFE, 93, "AGENT-WRITTEN TODAY", 23, MUTED, 500, 2.6)
+    s += t(SAFE, 268, "84", 164, TEXT, 700, -6)
+    s += t(SAFE + 210, 268, "%", 88, CLAUDE, 700, 0)
+    s += bar(304, [(0.84, CLAUDE)])
+    s += stat_row("1 240", "LINES SHIPPED", "12", "COMMITS")
+    s += dots(3)
+    return s + TAIL
+
+
+# ---------------------------------------------------------------- 9. now
+def now_playing():
+    s = head("Now playing: what both agents are doing right now")
+    s += hero_chrome("LIVE", TEXT, "2 AGENTS")
+    # agent one, the loud one
+    s += f'<circle cx="{SAFE+7}" cy="120" r="7" fill="{CLAUDE}"/>'
+    s += t(SAFE + 26, 127, "vibepulse", 40, TEXT, 700, -1)
+    s += t(480 - SAFE, 127, "4m 12s", 30, MUTED, 600, 0, "end")
+    s += t(SAFE + 26, 158, "EDITING  tokenserver.py", 19, CLAUDE, 600, 1.4)
+    # a throughput trace: the device looks alive, not like a gauge
+    pts = [(0,26),(18,12),(34,30),(52,6),(68,22),(86,14),(104,34),(122,10),
+           (140,24),(158,4),(176,28),(194,16),(212,32),(230,8),(248,20),
+           (266,12),(284,26),(302,6),(320,22),(338,16),(356,30),(374,10),
+           (392,24),(410,14),(428,28)]
+    d = " ".join(f"{'M' if i==0 else 'L'}{SAFE+x},{212-y}" for i,(x,y) in enumerate(pts))
+    s += f'<path d="{d}" fill="none" stroke="{CLAUDE}" stroke-width="2.5" stroke-linejoin="round" opacity=".85"/>'
+    s += t(SAFE, 238, "1 840 TOK/S", 15, MUTED, 600, 1.6)
+    s += f'<line x1="{SAFE}" y1="262" x2="{480-SAFE}" y2="262" stroke="{HAIR}"/>'
+    # agent two
+    s += f'<circle cx="{SAFE+7}" cy="300" r="7" fill="{CODEX}"/>'
+    s += t(SAFE + 26, 307, "torget", 40, TEXT, 700, -1)
+    s += t(480 - SAFE, 307, "0m 48s", 30, MUTED, 600, 0, "end")
+    s += t(SAFE + 26, 338, "SEARCHING  spec/", 19, CODEX, 600, 1.4)
+    s += f'<line x1="{SAFE}" y1="370" x2="{480-SAFE}" y2="370" stroke="{HAIR}"/>'
+    s += t(SAFE, 404, "NEITHER IS WAITING ON YOU", 17, GO, 600, 1.8)
+    s += dots(0)
+    return s + TAIL
+
+
+# ------------------------------------------------------------ 10. odometer
+def odometer():
+    s = head("Lifetime odometer: 4218903 tokens since the device was plugged in")
+    s += hero_chrome("VIBEPULSE", CLAUDE, "SINCE 14 JUNE")
+    s += t(SAFE, 93, "TOKENS, ALL TIME", 23, MUTED, 500, 2.6)
+    # an odometer wants every digit, so this is smaller than a hero percentage
+    s += t(SAFE, 232, "4 218 903", 88, TEXT, 700, -3)
+    # segmented run, one block per week, the way a physical counter reads
+    x = SAFE
+    for i, frac in enumerate([.4,.55,.7,.5,.85,.65,.95,.75,.6,.9,.8,1.0]):
+        h = 6 + frac * 38
+        col = CLAUDE if i % 3 else CODEX
+        s += f'<rect x="{x:.0f}" y="{318-h:.0f}" width="26" height="{h:.0f}" rx="3" fill="{col}" opacity=".9"/>'
+        x += 35
+    s += t(SAFE, 372, "142", 38, TEXT, 700, -0.6)
+    s += t(SAFE, 404, "SESSIONS", 15, MUTED, 600, 1.6)
+    s += t(480 - SAFE, 372, "61 DAYS", 38, TEXT, 700, -0.6, "end")
+    s += t(480 - SAFE, 404, "PLUGGED IN", 15, MUTED, 600, 1.6, "end")
+    s += dots(4)
+    return s + TAIL
+
+
 MOCKUPS = {
     "latency-meter": latency,
     "approval-prompt": approval,
@@ -224,6 +309,10 @@ MOCKUPS = {
     "panic-stop": panic,
     "review-debt": review_debt,
     "go-no-go": go_no_go,
+    "value-multiple": value_multiple,
+    "ai-share": ai_share,
+    "now-playing": now_playing,
+    "odometer": odometer,
 }
 
 if __name__ == "__main__":

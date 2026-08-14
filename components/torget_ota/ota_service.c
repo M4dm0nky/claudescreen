@@ -308,6 +308,9 @@ static esp_err_t firmware_post_handler(httpd_req_t *req) {
         return reject(req, "400 Bad Request", "not a torget esp32s3 image");
       }
       prefix_checked = true;
+      /* Metadatan är läst: berätta på glaset VAD som är på väg in — den
+       * inkommande avbildens egen versionssträng, aldrig en gissning. */
+      torget_ota_ui_set_version(new_version);
       got = (int)fill; /* skriv hela det insamlade prefixet i ett svep */
       fill = 0;
     }
@@ -401,6 +404,10 @@ static void maintenance_ui_task(void *arg) {
        * håll bevisligen öppnat fönstret. En boot utan uppdatering bär
        * därmed ingen httpd alls (frysläxan 2026-08-14). */
       httpd_surface_start();
+      /* Versionsraden svarar "vad kör enheten NU?" så länge fönstret
+       * väntar — och återpushen varje poll självläker raden efter en
+       * avbruten uppladdning som hann visa sin inkommande version. */
+      torget_ota_ui_set_version(esp_app_get_description()->version);
       torget_ota_ui_set(TG_OTA_UI_OPEN, 0,
                         (int)((left_us + 999999) / 1000000));
     } else if (atomic_compare_exchange_strong(&s_maintenance_until_us,

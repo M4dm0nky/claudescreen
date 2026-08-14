@@ -234,6 +234,7 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
             ("torget-ota-ring-verifying.bmp", top, white, white),
             ("torget-ota-ring-restarting.bmp", top, white, white),
         )
+        muted = (146, 152, 162)
         for name, probe, probe_color, upper_left_color in cases:
             with self.subTest(name=name):
                 image = self.image(name)
@@ -242,6 +243,14 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
                 self.assertEqual(image.getpixel(upper_left), upper_left_color)
                 center_row = [image.getpixel((x, 268)) for x in range(150, 330)]
                 self.assertIn(white, center_row)
+                # Versionsraden under ringen: alltid närvarande, alltid i
+                # muted — körande version vid öppet fönster, inkommande
+                # under överföringen.
+                version_rows = [
+                    image.getpixel((x, y))
+                    for y in range(428, 446) for x in range(100, 380)
+                ]
+                self.assertIn(muted, version_rows)
                 claude = (217, 119, 87)
                 codex = (111, 120, 255)
                 self.assertNotIn(claude, center_row)

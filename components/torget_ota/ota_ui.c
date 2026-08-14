@@ -1,6 +1,7 @@
 #include "ota_ui.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "lvgl.h"
 
@@ -56,6 +57,7 @@ static struct {
   lv_obj_t *center;  /* mm:ss (OPEN) eller procentsiffrorna (övriga)    */
   lv_obj_t *pctsign; /* "%" bredvid siffrorna — dolt i OPEN             */
   lv_obj_t *detail;  /* KEY3 CLOSES / SHA-256 — tomt annars             */
+  lv_obj_t *version; /* körande version (OPEN) / inkommande (övriga)    */
   tg_ota_ui_state rendered_state;
   unsigned rendered_percent;
   int rendered_seconds;
@@ -115,6 +117,15 @@ void torget_ota_ui_create(void) {
   lv_obj_set_style_text_color(ui.detail, COL_DETAIL, 0);
   lv_obj_set_style_text_letter_space(ui.detail, 2, 0);
   lv_label_set_text(ui.detail, "");
+
+  /* Versionsraden under ringen, centrerad — mitt-botten är synligt glas
+   * även med de klippta hörnen (hörnlärdomen från brödsmulorna). */
+  ui.version = lv_label_create(ui.overlay);
+  lv_obj_set_style_text_font(ui.version, &plex_ui_21, 0);
+  lv_obj_set_style_text_color(ui.version, COL_DETAIL, 0);
+  lv_obj_set_style_text_letter_space(ui.version, 2, 0);
+  lv_obj_align(ui.version, LV_ALIGN_TOP_MID, 0, 268 + ARC_SIZE / 2 + 10);
+  lv_label_set_text(ui.version, "");
 
   ui.rendered_state = TG_OTA_UI_HIDDEN;
 }
@@ -213,5 +224,16 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
 
   lv_obj_remove_flag(ui.overlay, LV_OBJ_FLAG_HIDDEN);
   lv_obj_move_foreground(ui.overlay);
+  torget_ui_unlock();
+}
+
+void torget_ota_ui_set_version(const char *version) {
+  if (!ui.overlay || !version) return;
+  if (!torget_ui_try_lock(200)) return;
+  /* Dedupe under låset: vakten återpushar körande version varje halvsekund
+   * (så en avbruten uppladdnings inkommande rad självläker tillbaka) och
+   * oförändrad text får inte bli en invalidering per poll. */
+  if (strcmp(lv_label_get_text(ui.version), version) != 0)
+    lv_label_set_text(ui.version, version);
   torget_ui_unlock();
 }

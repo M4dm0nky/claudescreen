@@ -736,10 +736,14 @@ static int run_vibepulse_static_qa(void) {
   usage_screen_set_stale(false);
 
   /* OTA-ringen (riktning A, 2026-08-14): fyra ärliga lägen — lucktid,
-   * mottagen andel, verifiering och omstart. Overlayn göms igen sist så
-   * en framtida dump efter denna ser apparna, inte ett svart lager. */
+   * mottagen andel, verifiering och omstart. Versionsraden byter från
+   * körande till inkommande version exakt som tjänsten gör det: körande
+   * vid öppet fönster, inkommande så fort metadatan är läst. Overlayn
+   * göms igen sist så en framtida dump efter denna ser apparna. */
+  torget_ota_ui_set_version("v0.2.1-16-g9f9af53");
   torget_ota_ui_set(TG_OTA_UI_OPEN, 0, 583);
   dump_overlay_frame("ota-ring-open");
+  torget_ota_ui_set_version("v0.2.1-24-g4451646");
   torget_ota_ui_set(TG_OTA_UI_RECEIVING, 62, 0);
   dump_overlay_frame("ota-ring-receiving");
   torget_ota_ui_set(TG_OTA_UI_VERIFYING, 100, 0);

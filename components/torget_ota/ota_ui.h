@@ -29,4 +29,11 @@ void torget_ota_ui_create(void);
 void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
                        int seconds_left);
 
+/* Versionsraden under ringen: den KÖRANDE versionen när fönstret öppnas,
+ * den INKOMMANDE så fort uppladdningens metadata är läst — svaret på "vad
+ * är det som installeras?". Bara enhetens egna fakta, aldrig påhitt.
+ * Tar UI-låset med samma 200 ms-regel som set(); ett tappat försök är
+ * kosmetik och nästa anrop skriver om. Samma trådregel som set(). */
+void torget_ota_ui_set_version(const char *version);
+
 #endif

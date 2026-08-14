@@ -216,7 +216,9 @@ one hold, not one per build.
 The tokenserver announces the newest build on your Mac
 (`otaAvailableVersion` on `/api/tokens`); when the screen runs an older
 version it takes the glass with an **UPDATE READY** notice — hold KEY3 to
-receive, tap to snooze (it returns every hour until installed).
+receive — or answer the on-glass LATER/UPDATE pills by touch; tapping
+UPDATE opens the window just like the hold does. A snooze returns every
+hour until installed. Full lifecycle reference: [docs/ota.md](docs/ota.md).
 
 **If someone tells you "this project has no OTA":** they are reading a tree
 where `partitions.csv` still has a single `factory` partition. The OTA

@@ -307,6 +307,20 @@ static void optional_value(const cJSON *root, bool trust_strings,
 
   out->state = claimed;
   out->cost_configured = configured;
+  /* Per-provider breakdown. Optional and independent of the combined
+   * figure: a payload that omits them still renders, and a provider that
+   * spent nothing is absent rather than zero, so the page can tell "not
+   * installed" from "earned nothing". */
+  optional_nonnegative_number(block, "claude_usd", 1000000,
+                              &out->claude_usd, &out->has_claude_usd);
+  optional_nonnegative_number(block, "codex_usd", 1000000,
+                              &out->codex_usd, &out->has_codex_usd);
+  optional_nonnegative_number(block, "claude_plan_usd", 100000,
+                              &out->claude_plan_usd,
+                              &out->has_claude_plan_usd);
+  optional_nonnegative_number(block, "codex_plan_usd", 100000,
+                              &out->codex_plan_usd,
+                              &out->has_codex_plan_usd);
   if (has_usd) { out->value_usd = usd; out->has_value_usd = 1; }
   if (claimed == TK_VALUE_OK) {
     out->plan_usd = plan;

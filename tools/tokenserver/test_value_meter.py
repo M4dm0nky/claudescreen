@@ -186,7 +186,7 @@ class BuildPayloadTest(unittest.TestCase):
     def test_ok_state_reports_the_multiple(self):
         payload = value_meter.build_payload(
             312.0, unpriced_tokens=0, priced_tokens=5_000_000,
-            claude_plan="max5x", cost_override=100.0)
+            claude_plan="max5x", plan_costs={"claude": 100.0})
         self.assertEqual(payload["state"], "ok")
         self.assertEqual(payload["multiple"], 3.12)
         self.assertEqual(payload["value_usd"], 312.0)
@@ -203,7 +203,7 @@ class BuildPayloadTest(unittest.TestCase):
     def test_too_many_unpriced_tokens_suppresses_the_multiple(self):
         payload = value_meter.build_payload(
             312.0, unpriced_tokens=500_000, priced_tokens=500_000,
-            claude_plan="max5x", cost_override=100.0)
+            claude_plan="max5x", plan_costs={"claude": 100.0})
         self.assertEqual(payload["state"], "partial")
         self.assertIsNone(payload["multiple"])
         self.assertEqual(payload["unpriced_token_share"], 0.5)
@@ -211,7 +211,7 @@ class BuildPayloadTest(unittest.TestCase):
     def test_a_trace_of_unpriced_tokens_is_tolerated(self):
         payload = value_meter.build_payload(
             312.0, unpriced_tokens=1_000, priced_tokens=1_000_000,
-            claude_plan="max5x", cost_override=100.0)
+            claude_plan="max5x", plan_costs={"claude": 100.0})
         self.assertEqual(payload["state"], "ok")
         self.assertEqual(payload["multiple"], 3.12)
 
@@ -224,14 +224,14 @@ class BuildPayloadTest(unittest.TestCase):
     def test_zero_usage_is_ok_and_not_a_division_error(self):
         payload = value_meter.build_payload(
             0.0, unpriced_tokens=0, priced_tokens=0,
-            claude_plan="pro", cost_override=20.0)
+            claude_plan="pro", plan_costs={"claude": 20.0})
         self.assertEqual(payload["state"], "ok")
         self.assertEqual(payload["multiple"], 0.0)
         self.assertEqual(payload["unpriced_token_share"], 0.0)
 
     def test_payload_states_its_basis_and_price_date(self):
         payload = value_meter.build_payload(
-            1.0, 0, 1000, claude_plan="pro", cost_override=20.0)
+            1.0, 0, 1000, claude_plan="pro", plan_costs={"claude": 20.0})
         self.assertEqual(payload["basis"], "list API prices")
         self.assertIsNotNone(payload["prices_as_of"])
 
@@ -305,6 +305,57 @@ class CodexPricingTest(unittest.TestCase):
         usd, _ = value_meter.price_usage("gpt-5.6-sol", {
             "input_tokens": 1_000, "cached_input_tokens": 50_000})
         self.assertAlmostEqual(usd, 1_000 * 0.50 / 1_000_000.0)
+
+class PlanCostFlagTest(unittest.TestCase):
+    """--plan PROVIDER=USD. No allowlist: Team, Enterprise, annual billing,
+    EDU and VAT-inclusive pricing all exist and none fit a fixed table."""
+
+    def test_parses_one_entry_per_provider(self):
+        self.assertEqual(
+            value_meter.parse_plan_costs(["claude=200", "codex=20"]),
+            {"claude": 200.0, "codex": 20.0})
+
+    def test_accepts_a_provider_the_table_has_never_heard_of(self):
+        self.assertEqual(value_meter.parse_plan_costs(["cursor=20"]),
+                         {"cursor": 20.0})
+
+    def test_the_deprecated_flag_still_means_claude(self):
+        self.assertEqual(value_meter.parse_plan_costs([], legacy_claude=100.0),
+                         {"claude": 100.0})
+
+    def test_an_explicit_plan_wins_over_the_deprecated_flag(self):
+        self.assertEqual(
+            value_meter.parse_plan_costs(["claude=250"], legacy_claude=100.0),
+            {"claude": 250.0})
+
+    def test_malformed_entries_are_a_hard_error(self):
+        """A mistyped denominator produces a confidently wrong multiple,
+        which is exactly the failure this module exists to avoid."""
+        for bad in ("claude", "claude=", "claude=abc", "claude=0",
+                    "claude=-5", "=200"):
+            with self.assertRaises(ValueError, msg=bad):
+                value_meter.parse_plan_costs([bad])
+
+    def test_each_provider_gets_its_own_cost_in_the_payload(self):
+        payload = value_meter.build_payload(
+            312.0, 0, 1000, plan_costs={"claude": 200.0, "codex": 20.0},
+            claude_usd=280.0, codex_usd=32.0)
+        self.assertEqual(payload["plan_usd"], 220.0)
+        self.assertEqual(payload["claude_usd"], 280.0)
+        self.assertEqual(payload["claude_plan_usd"], 200.0)
+        self.assertEqual(payload["codex_usd"], 32.0)
+        self.assertEqual(payload["codex_plan_usd"], 20.0)
+        self.assertEqual(payload["cost_source"], "configured")
+
+    def test_a_provider_that_spent_nothing_is_absent_not_zero(self):
+        """An empty bar for an agent that is not installed is a lie."""
+        payload = value_meter.build_payload(
+            280.0, 0, 1000, plan_costs={"claude": 200.0},
+            claude_usd=280.0, codex_usd=0.0)
+        self.assertEqual(payload["claude_usd"], 280.0)
+        self.assertNotIn("codex_usd", payload)
+        self.assertNotIn("codex_plan_usd", payload)
+
 
 class GeneratedTableTest(unittest.TestCase):
     """The shipped table is generated, so assert what generation guarantees.

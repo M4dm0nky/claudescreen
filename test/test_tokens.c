@@ -567,6 +567,38 @@ int main(void) {
     check("utan cost_source parsas", PARSE(payload, &v));
     check("utan cost_source är default", v.value.cost_configured == 0);
 
+    /* Per-provider breakdown: optional, and absent means "not installed"
+       rather than "earned nothing", so it must not default to zero-with-has. */
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"ok\",\"value_usd\":312.0,\"plan_usd\":220.0,"
+             "\"multiple\":1.42,\"cost_source\":\"configured\","
+             "\"claude_usd\":280.0,\"claude_plan_usd\":200.0,"
+             "\"codex_usd\":32.0,\"codex_plan_usd\":20.0}");
+    check("per-provider värden parsas", PARSE(payload, &v));
+    check("claude-delen bärs", v.value.has_claude_usd &&
+          v.value.claude_usd > 279.9 && v.value.claude_usd < 280.1 &&
+          v.value.has_claude_plan_usd && v.value.claude_plan_usd > 199.9);
+    check("codex-delen bärs", v.value.has_codex_usd &&
+          v.value.codex_usd > 31.9 && v.value.codex_usd < 32.1 &&
+          v.value.has_codex_plan_usd && v.value.codex_plan_usd > 19.9);
+
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"ok\",\"value_usd\":280.0,\"plan_usd\":200.0,"
+             "\"multiple\":1.40,\"cost_source\":\"configured\","
+             "\"claude_usd\":280.0,\"claude_plan_usd\":200.0}");
+    check("bara claude parsas", PARSE(payload, &v));
+    check("saknad codex-del är frånvarande, inte noll",
+          v.value.has_claude_usd && !v.value.has_codex_usd &&
+          !v.value.has_codex_plan_usd);
+
+    snprintf(payload, sizeof payload, shell,
+             "{\"state\":\"ok\",\"value_usd\":312.0,\"plan_usd\":220.0,"
+             "\"multiple\":1.42,\"claude_usd\":-5,"
+             "\"codex_usd\":\"lots\"}");
+    check("skräp i per-provider parsas", PARSE(payload, &v));
+    check("skräp i per-provider ignoreras, inte litas på",
+          !v.value.has_claude_usd && !v.value.has_codex_usd);
+
     snprintf(payload, sizeof payload, shell, "\"not-an-object\"");
     check("icke-objekt value parsas", PARSE(payload, &v));
     check("icke-objekt value ignoreras",

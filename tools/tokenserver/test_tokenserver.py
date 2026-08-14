@@ -2014,10 +2014,10 @@ class ValueMultipleIntegrationTests(unittest.TestCase):
         tokenserver._file_cache = {}
         self.previous_plan = tokenserver._claude_plan
         self.previous_codex_plan = tokenserver._codex_plan
-        self.previous_override = tokenserver._plan_cost_override
+        self.previous_override = tokenserver._plan_costs
         tokenserver._claude_plan = "max5x"
         tokenserver._codex_plan = None
-        tokenserver._plan_cost_override = 100.0
+        tokenserver._plan_costs = {"claude": 100.0}
         # Point the Codex scan at an empty tree so a developer machine that
         # happens to have ~/.codex cannot leak real usage into these figures.
         self.codex_dir = tempfile.TemporaryDirectory()
@@ -2029,7 +2029,7 @@ class ValueMultipleIntegrationTests(unittest.TestCase):
         tokenserver._file_cache = self.previous_cache
         tokenserver._claude_plan = self.previous_plan
         tokenserver._codex_plan = self.previous_codex_plan
-        tokenserver._plan_cost_override = self.previous_override
+        tokenserver._plan_costs = self.previous_override
         codex_usage.DEFAULT_SESSIONS_DIR = self.previous_codex_root
         codex_usage.reset_cache()
         self.codex_dir.cleanup()
@@ -2101,7 +2101,7 @@ class ValueMultipleIntegrationTests(unittest.TestCase):
     def test_value_is_absent_from_the_firmware_contract_when_unknown(self):
         """An unset plan cost must dash the multiple, not invent one."""
         tokenserver._claude_plan = None
-        tokenserver._plan_cost_override = None
+        tokenserver._plan_costs = {}
         with tempfile.TemporaryDirectory() as temp_dir:
             projects = Path(temp_dir)
             (projects / "a.jsonl").write_text(self._line("one"))

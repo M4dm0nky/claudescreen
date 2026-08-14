@@ -103,12 +103,15 @@ _cache_lock = threading.Lock()
 _file_cache = {}   # path -> stat, parsed offset, month and compact records
 
 # The value multiple's denominator and price table. Subscription prices are
-# not part of any API price list, so the operator supplies them: --claude-plan
-# and --codex-plan select a default (flagged unverified in prices.json), while
-# --plan-cost-usd states what is actually paid and always wins.
+# not in any API price list and no API reports which plan you are on, so the
+# operator states what they pay, per provider: --plan claude=200 --plan
+# codex=20. No allowlist of plan names -- Team, Enterprise, annual billing,
+# EDU and VAT-inclusive pricing all exist and none of them fit a fixed table.
+# --claude-plan/--codex-plan still select the Max Tracker badge, and their
+# list prices remain the fallback when nothing is declared.
 _claude_plan = None
 _codex_plan = None
-_plan_cost_override = None
+_plan_costs = {}
 _price_table = None
 _last_result = None
 _last_computed = 0.0
@@ -322,7 +325,8 @@ def _compute(projects_dir: Path, max_tracker_store=None):
             month_unpriced_tokens + codex_unpriced,
             month_priced_tokens + codex_priced,
             claude_plan=_claude_plan, codex_plan=_codex_plan,
-            cost_override=_plan_cost_override, table=_price_table),
+            plan_costs=_plan_costs, table=_price_table,
+            claude_usd=month_value_usd, codex_usd=codex_usd),
         "at": now.isoformat(timespec="seconds"),
     }
 
@@ -1578,10 +1582,16 @@ def _build_arg_parser():
         help="Claude-planen för Max Trackers badge (frivillig, allowlistad "
              "i max_tracker.PLAN_LABELS)")
     ap.add_argument(
+        "--plan", action="append", metavar="PROVIDER=USD", default=[],
+        help="what a subscription actually costs per month, in USD: "
+             "--plan claude=200 --plan codex=20. Repeatable, one per "
+             "provider, no allowlist of plan names. USD because the API list "
+             "prices it is compared against are USD -- convert once if you "
+             "pay in something else. Without it the provider's public list "
+             "price is used and the payload marks the figure as a default")
+    ap.add_argument(
         "--plan-cost-usd", type=float, default=None,
-        help="what the subscription actually costs per month in USD -- the "
-             "value multiple's denominator. Without it an UNVERIFIED default "
-             "from --claude-plan/--codex-plan is used and the payload says so")
+        help="deprecated alias for --plan claude=USD")
     ap.add_argument(
         "--prices", default=None,
         help="path to a JSON file merged over tools/tokenserver/prices.json "
@@ -1621,10 +1631,11 @@ def main():
     ap = _build_arg_parser()
     args = ap.parse_args()
 
-    global _claude_plan, _codex_plan, _plan_cost_override, _price_table
+    global _claude_plan, _codex_plan, _plan_costs, _price_table
     _claude_plan = args.claude_plan
     _codex_plan = args.codex_plan
-    _plan_cost_override = args.plan_cost_usd
+    _plan_costs = value_meter.parse_plan_costs(
+        args.plan, legacy_claude=args.plan_cost_usd)
     # A bad --prices file is a hard startup failure, never a silent fallback:
     # pricing against rates the operator believes they replaced is exactly the
     # failure the value multiple exists to avoid.

@@ -314,11 +314,49 @@ def price_usage(model: Optional[str], usage: Any,
 # Payload
 # --------------------------------------------------------------------------
 
+def parse_plan_costs(entries, legacy_claude=None) -> dict:
+    """Parse repeated ``provider=usd`` strings into ``{provider: usd}``.
+
+    No allowlist of provider or plan names: Team, Enterprise, annual billing,
+    EDU and VAT-inclusive pricing all exist, and none of them fit a fixed
+    table. A malformed entry is a hard startup error rather than a silently
+    ignored one -- a mistyped denominator produces a confidently wrong
+    multiple, which is the failure this module exists to avoid.
+    """
+    costs: dict[str, float] = {}
+    if legacy_claude is not None:
+        amount = _number(legacy_claude)
+        if amount is None or amount <= 0:
+            raise ValueError(
+                f"--plan-cost-usd must be a positive number, got "
+                f"{legacy_claude!r}")
+        costs["claude"] = amount
+    for entry in entries or []:
+        provider, separator, raw = str(entry).partition("=")
+        provider = provider.strip().lower()
+        if not separator or not provider:
+            raise ValueError(
+                f"--plan expects PROVIDER=USD, got {entry!r} "
+                f"(for example: --plan claude=200)")
+        try:
+            amount = _number(float(raw))
+        except ValueError:
+            amount = None
+        if amount is None or amount <= 0:
+            raise ValueError(
+                f"--plan {provider} needs a positive monthly cost in USD, "
+                f"got {raw!r}")
+        costs[provider] = amount
+    return costs
+
+
 def build_payload(value_usd: float, unpriced_tokens: int, priced_tokens: int,
                   claude_plan: Optional[str] = None,
                   codex_plan: Optional[str] = None,
-                  cost_override: Optional[float] = None,
-                  table: Optional[PriceTable] = None) -> dict:
+                  plan_costs: Optional[dict] = None,
+                  table: Optional[PriceTable] = None,
+                  claude_usd: Optional[float] = None,
+                  codex_usd: Optional[float] = None) -> dict:
     """Build the additive ``value`` block for the tokenserver payload.
 
     ``state`` is what the firmware branches on:
@@ -340,9 +378,11 @@ def build_payload(value_usd: float, unpriced_tokens: int, priced_tokens: int,
     unpriced_share = (unpriced_tokens / total) if total else 0.0
     prices = table or default_table()
 
+    plan_costs = plan_costs or {}
     claude_cost, claude_src = prices.plan_cost(
-        "claude", claude_plan, cost_override)
-    codex_cost, codex_src = prices.plan_cost("codex", codex_plan)
+        "claude", claude_plan, plan_costs.get("claude"))
+    codex_cost, codex_src = prices.plan_cost(
+        "codex", codex_plan, plan_costs.get("codex"))
 
     costs = [c for c in (claude_cost, codex_cost) if c is not None]
     plan_usd = sum(costs) if costs else None
@@ -359,6 +399,18 @@ def build_payload(value_usd: float, unpriced_tokens: int, priced_tokens: int,
         "prices_as_of": prices.as_of(),
         "unpriced_token_share": round(unpriced_share, 4),
     }
+
+    # Per-provider breakdown, so the display can show which subscription is
+    # earning its keep. Emitted only for a provider that actually spent
+    # something: a zero row would draw an empty bar for an agent that is not
+    # installed. Costs ride along so each bar gets its OWN break-even.
+    for name, spent, cost in (("claude", claude_usd, claude_cost),
+                              ("codex", codex_usd, codex_cost)):
+        if spent is None or spent <= 0:
+            continue
+        payload[f"{name}_usd"] = round(spent, 2)
+        if cost is not None:
+            payload[f"{name}_plan_usd"] = cost
 
     if unpriced_share > UNPRICED_TOLERANCE:
         payload["state"] = "partial"

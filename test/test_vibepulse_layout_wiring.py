@@ -180,6 +180,13 @@ assert "VALUE_HERO_Y" in value and "plex_money_118" in value
 assert value.count("COL_CLAUDE") == 3 and value.count("COL_CODEX") == 3, \
     "provider accents must mark provider data and nothing else"
 assert "COL_MONEY" in value, "the combined hero wears the money accent"
+# A provider is recognised the same way on every screen: mark first, name
+# second, at the quota header's own icon/name offsets.
+assert value.count("create_claude_icon(") == 2 and \
+       value.count("create_codex_icon(") == 2, \
+    "both layouts carry the provider mark, not just the two-row one"
+assert "#define VALUE_ROW_NAME_X 42" in source, \
+    "name offset must mirror the quota header's 22/64 pair"
 assert "lv_obj_move_foreground(page->rule);" in value, \
     "the rule must draw over the fills it crosses"
 assert "#define VALUE_RULE_X (VP_SAFE_X + VP_CONTENT_W / 2 - 1)" in source, \
@@ -194,9 +201,9 @@ for member in ("tile", "evidence", "hero", "rule", "rule_label"):
     assert f"*{member};" in value_page_struct, f"value_page must own {member}"
 assert "value_row rows[2];" in value_page_struct
 
-value_row_struct = source[source.index("typedef struct {\n  lv_obj_t *root;\n  lv_obj_t *name;"):]
+value_row_struct = source[source.index("typedef struct {\n  lv_obj_t *root;\n  lv_obj_t *icon;"):]
 value_row_struct = value_row_struct[:value_row_struct.index("} value_row;")]
-for member in ("root", "name", "money", "track", "fill"):
+for member in ("root", "icon", "name", "money", "track", "fill"):
     assert f"*{member};" in value_row_struct, f"value_row must own {member}"
 assert "*marker;" not in value_row_struct, \
     "per-row ticks are replaced by one shared rule"

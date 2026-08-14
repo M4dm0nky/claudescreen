@@ -127,6 +127,7 @@ typedef struct {
 
 typedef struct {
   lv_obj_t *root;
+  lv_obj_t *icon;
   lv_obj_t *name;
   lv_obj_t *money;
   lv_obj_t *track;
@@ -139,6 +140,8 @@ typedef struct {
   lv_obj_t *hero;
   lv_obj_t *rule;
   lv_obj_t *rule_label;
+  /* One-provider layout: the identity moves to the top slot, mark and all. */
+  lv_obj_t *solo_icon[2];
   value_row rows[2];
   /* One-provider layout only: the combined pair moves into a stat footer. */
   lv_obj_t *stat_api, *stat_paid, *cap_api, *cap_paid;
@@ -449,9 +452,9 @@ static void create_burn_rate_page(void) {
  * and the same shape here with the opposite meaning made the two pages
  * indistinguishable at a glance. */
 #define VALUE_HERO_X 18
-#define VALUE_HERO_Y 104
+#define VALUE_HERO_Y 124
 #define VALUE_MONEY_HERO_X 19
-#define VALUE_MONEY_HERO_Y 112
+#define VALUE_MONEY_HERO_Y 132
 #define VALUE_WORD_HERO_X 19
 #define VALUE_WORD_HERO_Y 213
 #define VALUE_EVIDENCE_Y 72
@@ -462,6 +465,9 @@ static void create_burn_rate_page(void) {
 #define VALUE_ROW_PITCH 84
 /* money_35's baseline sits 28 px into its box, ui_16's 14 px. */
 #define VALUE_ROW_NAME_DY 14
+/* Icon x=0/name x=42 mirrors the quota header's 22/64 pair exactly. */
+#define VALUE_ROW_NAME_X 42
+#define VALUE_ROW_ICON_DY 2
 #define VALUE_ROW_BAR_DY 40
 #define VALUE_RULE_Y 284
 #define VALUE_RULE_H 124
@@ -476,11 +482,21 @@ static void create_value_row(lv_obj_t *tile, value_row *row,
   lv_obj_set_pos(row->root, VP_SAFE_X, VALUE_ROW_MONEY_Y);
   lv_obj_set_size(row->root, VP_CONTENT_W, VALUE_ROW_BAR_DY + VP_BAR_H);
 
+  /* Same 32 px asset and same 42 px name offset the quota pages use for
+   * their header identity, so a provider is recognised the same way on every
+   * screen -- by its mark first, its name second. */
+  if (provider == USAGE_PROVIDER_CLAUDE) {
+    create_claude_icon(row->root, 0, VALUE_ROW_ICON_DY);
+    row->icon = lv_obj_get_child(row->root, -1);
+  } else {
+    row->icon = create_codex_icon(row->root, 0, VALUE_ROW_ICON_DY);
+  }
+
   /* The provider accent on the name is the only thing separating the two
    * rows at two metres, and it marks that provider's own data. */
   row->name = label(row->root, &plex_ui_16,
                     provider == USAGE_PROVIDER_CLAUDE ? COL_CLAUDE : COL_CODEX,
-                    0, VALUE_ROW_NAME_DY, 200, 18);
+                    VALUE_ROW_NAME_X, VALUE_ROW_NAME_DY, 200, 18);
   lv_obj_set_style_text_letter_space(row->name, 2, 0);
   row->money = label(row->root, &plex_money_35, COL_WHITE,
                      VP_CONTENT_W - 240, 0, 240, 35);
@@ -520,6 +536,13 @@ static void create_value_page(void) {
   page->tile = new_tile(VIEW_VALUE);
   create_analytics_header(page->tile, "VALUE", "MONTH TO DATE",
                           "AT LIST API PRICES");
+
+  create_claude_icon(page->tile, VP_SAFE_X, VALUE_EVIDENCE_Y - 6);
+  page->solo_icon[0] = lv_obj_get_child(page->tile, -1);
+  page->solo_icon[1] = create_codex_icon(page->tile, VP_SAFE_X,
+                                         VALUE_EVIDENCE_Y - 6);
+  for (int i = 0; i < 2; i++)
+    lv_obj_add_flag(page->solo_icon[i], LV_OBJ_FLAG_HIDDEN);
 
   page->evidence = label(page->tile, &plex_ui_21, COL_LABEL,
                          VP_SAFE_X, VALUE_EVIDENCE_Y, VP_CONTENT_W, 25);
@@ -572,9 +595,11 @@ static void apply_value_row(value_row *row, const usage_value_row *view,
   if (solo) {
     lv_obj_add_flag(row->name, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(row->money, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(row->icon, LV_OBJ_FLAG_HIDDEN);
   } else {
     lv_obj_remove_flag(row->name, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(row->money, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(row->icon, LV_OBJ_FLAG_HIDDEN);
   }
 
   if (!view->has_bar) {
@@ -635,6 +660,17 @@ static void apply_value(const tk_tokens *tokens) {
             : COL_LABEL, 0);
   lv_label_set_text(page->evidence,
                     named ? view.rows[0].name : view.evidence);
+  /* Indent the text past the mark in the one-provider layout, exactly as the
+   * quota header does, and show only the provider that is actually there. */
+  lv_obj_set_pos(page->evidence,
+                 named ? VP_SAFE_X + VALUE_ROW_NAME_X : VP_SAFE_X,
+                 VALUE_EVIDENCE_Y);
+  for (int i = 0; i < 2; i++) {
+    const bool show = named &&
+        (view.rows[0].provider == USAGE_PROVIDER_CLAUDE) == (i == 0);
+    if (show) lv_obj_remove_flag(page->solo_icon[i], LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(page->solo_icon[i], LV_OBJ_FLAG_HIDDEN);
+  }
   apply_value_hero(page, &view);
 
   /* One provider gets the house shape instead of a centred stub: taller bar

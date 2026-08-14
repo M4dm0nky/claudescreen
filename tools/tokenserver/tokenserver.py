@@ -303,6 +303,13 @@ _probe_headers = []
 _probe_unknown_buckets = []
 _probe_cooldown_until = 0.0
 _probe_failure_streak = 0
+# Döda tokens (värde → orsak): en kandidat som fått 401/403 skickas ALDRIG
+# igen. Det var mönstret bakom 429-straffrutan: nyckelringstokenen dog på
+# natten och Desktops frusna processtoken hamrade API:t varje probecykel i
+# timmar (loggen 2026-08-14 03:51–10:45 visar sex straffrundor i rad). En
+# förnyad token har ett NYTT värde och provas därmed automatiskt igen;
+# ordboken kapas vid 8 poster så den aldrig kan växa fritt.
+_dead_tokens = {}
 
 
 _CLAUDE_DESKTOP_PROCESS = re.compile(
@@ -555,6 +562,11 @@ def _probe_limits():
 
     token = None
     for candidate, expires_at in candidates:
+        if candidate in _dead_tokens:
+            # Värdet är redan avvisat av API:t — vänta på ett nytt i stället
+            # för att elda på 429-straffrutan med ett känt dött token.
+            _probe_status = "token_dead_awaiting_refresh"
+            continue
         if expires_at and expires_at / 1000 < time.time():
             # Tokenen har gått ut; Claude Code förnyar den i nyckelringen
             # nästa gång den pratar med API:t — vänta och läs om.
@@ -588,7 +600,12 @@ def _probe_limits():
                 return None
             if error.code in (401, 403):
                 # Avvisad token säger inget om nästa källa — prova den innan
-                # vi ger upp.
+                # vi ger upp. Men skicka ALDRIG samma värde igen: det är dött
+                # tills källan levererar ett nytt (ett felmarkerat värde
+                # självläker på samma sätt, nästa förnyelse byter strängen).
+                _dead_tokens[candidate] = f"http_{error.code}"
+                while len(_dead_tokens) > 8:
+                    _dead_tokens.pop(next(iter(_dead_tokens)))
                 continue
             token = candidate
             break

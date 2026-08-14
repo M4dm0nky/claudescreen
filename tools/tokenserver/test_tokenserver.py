@@ -192,6 +192,7 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
                 tokenserver, "_read_oauth_candidates",
                 return_value=[("stale-process-token", None),
                               ("fresh-keychain-token", None)]), \
+                mock.patch.object(tokenserver, "_dead_tokens", {}), \
                 mock.patch.object(tokenserver.urllib.request, "urlopen",
                                   side_effect=fake_urlopen):
             found = tokenserver._probe_limits()
@@ -201,6 +202,63 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
         self.assertEqual([auth for _, auth in calls],
                          ["Bearer stale-process-token",
                           "Bearer fresh-keychain-token"])
+
+    def test_probe_never_resends_a_dead_token(self):
+        """429-straffrutan 2026-08-14: nyckelringstokenen dog på natten och
+        Desktops frusna processtoken hamrades mot API:t varje cykel i timmar.
+        Ett värde som fått 401 ska aldrig lämna Macen igen."""
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(req.get_header("Authorization"))
+            raise urllib.error.HTTPError(
+                req.get_full_url(), 401, "Unauthorized", None, None)
+
+        with mock.patch.object(tokenserver, "_read_oauth_candidates",
+                               return_value=[("dead-token", None)]), \
+                mock.patch.object(tokenserver, "_dead_tokens", {}), \
+                mock.patch.object(tokenserver, "_probe_cooldown_until", 0.0), \
+                mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                  side_effect=fake_urlopen):
+            first = tokenserver._probe_limits()
+            second = tokenserver._probe_limits()
+            status = tokenserver._probe_status
+
+        self.assertIsNone(first)
+        self.assertIsNone(second)
+        # Exakt ETT nätanrop: avvisningen minns och andra cykeln rör inte
+        # nätet alls med det döda värdet.
+        self.assertEqual(calls, ["Bearer dead-token"])
+        self.assertEqual(status, "token_dead_awaiting_refresh")
+
+    def test_probe_retries_a_refreshed_token_value(self):
+        """Dödmarkeringen sitter på VÄRDET: när källan levererar en ny
+        sträng (Claude Code förnyade i nyckelringen) provas den direkt."""
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(req.get_header("Authorization"))
+            if req.get_header("Authorization") == "Bearer dead-token":
+                raise urllib.error.HTTPError(
+                    req.get_full_url(), 401, "Unauthorized", None, None)
+            return _FakeUsageResponse({"limits": [
+                {"kind": "weekly_all", "percent": 41,
+                 "resets_at": "2100-01-02T00:00:00+00:00"},
+            ]})
+
+        candidates = [[("dead-token", None)], [("refreshed-token", None)]]
+        with mock.patch.object(tokenserver, "_read_oauth_candidates",
+                               side_effect=lambda: candidates.pop(0)), \
+                mock.patch.object(tokenserver, "_dead_tokens", {}), \
+                mock.patch.object(tokenserver, "_probe_cooldown_until", 0.0), \
+                mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                  side_effect=fake_urlopen):
+            first = tokenserver._probe_limits()
+            second = tokenserver._probe_limits()
+
+        self.assertIsNone(first)
+        self.assertEqual(second["weekPct"], 41.0)
+        self.assertEqual(calls, ["Bearer dead-token", "Bearer refreshed-token"])
 
     def test_probe_ok_when_session_window_lapsed(self):
         """Speglar ett live-svar 2026-08-13: sessionsfönstret hade löpt ut

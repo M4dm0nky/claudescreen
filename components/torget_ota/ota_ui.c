@@ -177,8 +177,13 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
 
   if (state == TG_OTA_UI_OPEN) {
     /* Bågen är kvarvarande lucktid: full vid nytt håll, dränerad vid 0.
-     * Klockan sätts i 84:an — 118:an svämmade över ringens innerradie
-     * (rastergranskningen 2026-08-14). */
+     * REVERSE ankrar den vita bågen i slutvinkeln (toppen) och ritar
+     * värdets andel BAKÅT — startkanten vandrar då medurs från toppen när
+     * tiden rinner, som en äggklocka. NORMAL-läget lät slutkanten krypa
+     * moturs, vilket kändes baklänges på glaset (fysisk granskning
+     * 2026-08-14). Klockan sätts i 84:an — 118:an svämmade över ringens
+     * innerradie (rastergranskningen samma dag). */
+    lv_arc_set_mode(ui.arc, LV_ARC_MODE_REVERSE);
     lv_arc_set_value(ui.arc,
                      (int32_t)((seconds_left * 100) / WINDOW_SECONDS));
     char clock[8];
@@ -188,8 +193,9 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
     lv_label_set_text(ui.center, clock);
     lv_obj_add_flag(ui.pctsign, LV_OBJ_FLAG_HIDDEN);
   } else {
-    /* RECEIVING fyller bågen med mottagen andel; VERIFYING/RESTARTING
-     * anropas med 100 och sluter cirkeln. */
+    /* RECEIVING fyller bågen medurs med mottagen andel; VERIFYING/
+     * RESTARTING anropas med 100 och sluter cirkeln. */
+    lv_arc_set_mode(ui.arc, LV_ARC_MODE_NORMAL);
     lv_arc_set_value(ui.arc, (int32_t)percent);
     char digits[8];
     snprintf(digits, sizeof digits, "%u", percent);

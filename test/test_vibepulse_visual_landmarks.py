@@ -220,21 +220,25 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
         cirkel (VERIFYING/RESTARTING) täcker båda. Centrumraden bär vita
         siffror i alla lägen. Ingen provideraccent någonstans."""
         top = (240, 128)          # 0 grader, bågens start
+        right = (380, 268)        # 90 grader medurs fran toppen
         upper_left = (141, 169)   # 315 grader medurs fran toppen
         track = (48, 50, 56)
         white = (255, 255, 255)
 
+        # OPEN dräneras MEDURS (REVERSE-läget, äggklockan): gapet börjar
+        # strax medurs om toppen, så referenspunkten är höger sida i stället
+        # för toppixeln. Fyllnadslägena mäts vid bågens start på toppen.
         cases = (
-            ("torget-ota-ring-open.bmp", white, white),
-            ("torget-ota-ring-receiving.bmp", white, track),
-            ("torget-ota-ring-verifying.bmp", white, white),
-            ("torget-ota-ring-restarting.bmp", white, white),
+            ("torget-ota-ring-open.bmp", right, white, white),
+            ("torget-ota-ring-receiving.bmp", top, white, track),
+            ("torget-ota-ring-verifying.bmp", top, white, white),
+            ("torget-ota-ring-restarting.bmp", top, white, white),
         )
-        for name, top_color, upper_left_color in cases:
+        for name, probe, probe_color, upper_left_color in cases:
             with self.subTest(name=name):
                 image = self.image(name)
                 self.assertEqual(image.getpixel((5, 5)), (0, 0, 0))
-                self.assertEqual(image.getpixel(top), top_color)
+                self.assertEqual(image.getpixel(probe), probe_color)
                 self.assertEqual(image.getpixel(upper_left), upper_left_color)
                 center_row = [image.getpixel((x, 268)) for x in range(150, 330)]
                 self.assertIn(white, center_row)

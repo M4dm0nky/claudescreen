@@ -139,6 +139,35 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
         self.assertNotIn("modelPct", parsed)
         self.assertNotIn("modelLabel", parsed)
 
+    def test_ota_available_reads_newest_valid_torget_binary(self):
+        """Annonsen läser versionen ur torget.bin:s appbeskrivning: rätt
+        magi, rätt projekt, nyaste mtime vinner; skräp och främmande
+        projekt annonseras aldrig."""
+        def fake_bin(version, project=b"torget"):
+            desc = (b"\x32\x54\xcd\xab" + b"\x00" * 12 +
+                    version.ljust(32, "\x00").encode() +
+                    project.ljust(32, b"\x00"))
+            return b"\x00" * 32 + desc
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            old = root / "build" / "torget.bin"
+            new = root / "build-diag" / "torget.bin"
+            junk = root / "build-x" / "torget.bin"
+            for path in (old, new, junk):
+                path.parent.mkdir(parents=True)
+            old.write_bytes(fake_bin("v0.1.0-old"))
+            new.write_bytes(fake_bin("v0.2.0-new"))
+            junk.write_bytes(fake_bin("v9.9.9", project=b"vibbe"))
+            os.utime(old, (1_000_000, 1_000_000))
+            os.utime(new, (2_000_000, 2_000_000))
+            os.utime(junk, (3_000_000, 3_000_000))
+
+            with mock.patch.object(tokenserver, "_OTA_BUILD_ROOT", root), \
+                    mock.patch.object(tokenserver, "_ota_desc_cache", {}):
+                self.assertEqual(
+                    tokenserver._ota_available_version(), "v0.2.0-new")
+
     def test_desktop_process_token_wins_over_expired_keychain_token(self):
         process_command = (
             "/Users/test/Library/Application Support/Claude/claude-code/"

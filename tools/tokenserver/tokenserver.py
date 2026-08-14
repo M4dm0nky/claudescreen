@@ -601,6 +601,56 @@ def _save_probe_state():
         pass  # utan disk är beteendet som förr: bättre än att krascha
 
 
+# ---------------------------------------------------------------------------
+# OTA-annonsen: senaste bygget på Macen, läst ur torget.bin:s inbäddade
+# appbeskrivning — samma sanning som enheten själv rapporterar om sin
+# körande version. Enheten jämför och visar UPDATE READY-notisen vid
+# skillnad (beslut 2026-08-14). Bara version och byggtid annonseras,
+# aldrig sökvägar eller innehåll.
+
+_OTA_BUILD_ROOT = Path(__file__).resolve().parents[2]
+_ota_desc_cache = {}  # path -> (mtime, version|None)
+
+
+def _read_app_desc_version(path):
+    """esp_app_desc_t bor på offset 32 (imageheader 24 B + segmentheader
+    8 B): magic_word, secure_version, reserv[2], version[32], project[32].
+    Fel magi eller fel projekt ⇒ None — hellre tyst än fel avbild."""
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(32)
+            desc = handle.read(80)
+    except OSError:
+        return None
+    if len(desc) < 80:
+        return None
+    if desc[:4] != b"\x32\x54\xcd\xab":  # ESP_APP_DESC_MAGIC_WORD, LE
+        return None
+    project = desc[48:80].split(b"\x00")[0].decode("utf-8", "replace")
+    if project != "torget":
+        return None
+    version = desc[16:48].split(b"\x00")[0].decode("utf-8", "replace")
+    return version or None
+
+
+def _ota_available_version():
+    newest = None  # (mtime, version)
+    for path in _OTA_BUILD_ROOT.glob("build*/torget.bin"):
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        cached = _ota_desc_cache.get(str(path))
+        if cached and cached[0] == mtime:
+            version = cached[1]
+        else:
+            version = _read_app_desc_version(path)
+            _ota_desc_cache[str(path)] = (mtime, version)
+        if version and (newest is None or mtime > newest[0]):
+            newest = (mtime, version)
+    return newest[1] if newest else None
+
+
 def _hold_probe_lock():
     """Icke-blockerande flock; returnerar filobjektet (= låset) eller None."""
     try:
@@ -1564,6 +1614,9 @@ def get_snapshot(projects_dir: Path, history=None, now_ts=None,
                                now=current_ts))
     _add_forecast(result, "claude", claude_forecast)
     _add_forecast(result, "codex", codex_forecast)
+    # OTA-annonsen rider på kvotpollen: noll ny infrastruktur, och enheten
+    # avgör själv (mot sin körande version) om notisen ska visas.
+    result["otaAvailableVersion"] = _ota_available_version()
     result["v"] = 2
     return result
 

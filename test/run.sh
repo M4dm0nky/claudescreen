@@ -119,6 +119,13 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
 /tmp/torget-ota-button-policy-test
 
 cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/torget_ota/notice_policy.c \
+  test_ota_notice_policy.c \
+  -lm \
+  -o /tmp/torget-ota-notice-policy-test
+/tmp/torget-ota-notice-policy-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
   ../components/torget_ota/boot_health_policy.c \
   test_boot_health_policy.c \
   -lm \

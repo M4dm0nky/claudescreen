@@ -25,6 +25,11 @@ void torget_ota_service_open_maintenance(void);
  * LVGL-tasken — overlayn göms och servern stoppas av vakten, inte här. */
 void torget_ota_service_close_maintenance(void);
 
+/* OTA-annonsen fran kvotpollen (plattformens torget_update_available
+ * vidarebefordrar hit): NULL/tom strang slacker annonsen. Jamforelsen mot
+ * korande version och notisens tjatrytm bor i tjansten/notice_policy. */
+void torget_ota_service_update_available(const char *version);
+
 /* Är fönstret öppet just nu? Atomär läsning, säkert från alla taskar. */
 bool torget_ota_service_maintenance_open(void);
 

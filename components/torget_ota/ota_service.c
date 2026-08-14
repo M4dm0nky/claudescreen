@@ -18,6 +18,7 @@
 #include "esp_timer.h"
 #include "mbedtls/sha256.h"
 
+#include "notice_policy.h"
 #include "ota_policy.h"
 #include "ota_ui.h"
 #include "secrets.h"
@@ -382,6 +383,34 @@ static esp_err_t firmware_post_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
+/* -------------------------------------------------------- OTA-annonsen */
+
+/* Annonsen skrivs av appens hämttask (via torget_update_available i main)
+ * och läses av vakten — en kort kritisk sektion räcker för en 32-bytes
+ * sträng som byts på sin höjd en gång per bygge. */
+static portMUX_TYPE s_notice_mux = portMUX_INITIALIZER_UNLOCKED;
+static char s_announced_version[32];
+static bool s_has_announcement;
+
+void torget_ota_service_update_available(const char *version) {
+  taskENTER_CRITICAL(&s_notice_mux);
+  if (version && version[0]) {
+    strlcpy(s_announced_version, version, sizeof s_announced_version);
+    s_has_announcement = true;
+  } else {
+    s_has_announcement = false;
+  }
+  taskEXIT_CRITICAL(&s_notice_mux);
+}
+
+static bool notice_announced_copy(char *out, size_t capacity) {
+  taskENTER_CRITICAL(&s_notice_mux);
+  bool has = s_has_announcement;
+  if (has) strlcpy(out, s_announced_version, capacity);
+  taskEXIT_CRITICAL(&s_notice_mux);
+  return has;
+}
+
 /* ------------------------------------------------- fönstrets UI-pollning */
 
 /* Overlayn drivs härifrån och från httpd-handlern — ALDRIG från LVGL-
@@ -393,10 +422,38 @@ static void httpd_surface_stop(void);
 
 static void maintenance_ui_task(void *arg) {
   (void)arg;
+  static tg_notice_policy notice;
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(500));
     if (atomic_load(&s_upload_active)) continue; /* handlern äger overlayn */
     int64_t until = atomic_load(&s_maintenance_until_us);
+
+    /* UPDATE READY-notisen körs FÖRE fönsterlogiken: upptaget läge
+     * (öppet fönster/överföring) trycker undan takeovern via policyn,
+     * och fönsterbranchen nedan skriver ändå sitt eget läge efteråt. */
+    int64_t now_us = esp_timer_get_time();
+    char announced[32];
+    bool has_announced = notice_announced_copy(announced, sizeof announced);
+    bool differs = has_announced &&
+        strncmp(announced, esp_app_get_description()->version,
+                sizeof announced) != 0;
+    bool busy = until != 0 && (until - now_us) > 0;
+    if (notice.showing && torget_ota_ui_take_tap())
+      tg_notice_dismiss(&notice, now_us);
+    switch (tg_notice_update(&notice, differs, busy, now_us)) {
+      case TG_NOTICE_SHOW:
+        ESP_LOGI(TAG, "uppdatering annonserad (%s) — notisen tar glaset",
+                 announced);
+        torget_ota_ui_set_version(announced);
+        torget_ota_ui_set(TG_OTA_UI_NOTICE, 0, 0);
+        break;
+      case TG_NOTICE_HIDE:
+        torget_ota_ui_set(TG_OTA_UI_HIDDEN, 0, 0);
+        break;
+      case TG_NOTICE_NONE:
+        break;
+    }
+
     if (until == 0) continue;
     int64_t left_us = until - esp_timer_get_time();
     if (left_us > 0) {

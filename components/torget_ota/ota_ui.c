@@ -1,5 +1,6 @@
 #include "ota_ui.h"
 
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -49,6 +50,19 @@ extern const lv_font_t plex_ui_21;
 
 /* Fönstret är tio minuter; bågen mappar sekunder → 0..100 mot det taket. */
 #define WINDOW_SECONDS 600
+
+/* Trycket pa notisen: LVGL-tasken satter bara en atomar flagga — tjanstens
+ * vakt konsumerar den och driver policyn. Ingen tjanstelogik i eventet. */
+static atomic_bool s_tapped;
+
+static void overlay_clicked_cb(lv_event_t *event) {
+  (void)event;
+  atomic_store(&s_tapped, true);
+}
+
+bool torget_ota_ui_take_tap(void) {
+  return atomic_exchange(&s_tapped, false);
+}
 
 static struct {
   lv_obj_t *overlay;
@@ -128,6 +142,7 @@ void torget_ota_ui_create(void) {
   lv_label_set_text(ui.version, "");
 
   ui.rendered_state = TG_OTA_UI_HIDDEN;
+  lv_obj_add_event_cb(ui.overlay, overlay_clicked_cb, LV_EVENT_CLICKED, NULL);
 }
 
 static const char *state_word(tg_ota_ui_state state) {
@@ -136,6 +151,7 @@ static const char *state_word(tg_ota_ui_state state) {
     case TG_OTA_UI_RECEIVING:  return "RECEIVING";
     case TG_OTA_UI_VERIFYING:  return "VERIFYING";
     case TG_OTA_UI_RESTARTING: return "RESTARTING";
+    case TG_OTA_UI_NOTICE:     return "UPDATE";
     default:                   return "";
   }
 }
@@ -147,6 +163,7 @@ static const char *state_detail(tg_ota_ui_state state) {
   switch (state) {
     case TG_OTA_UI_OPEN:      return "KEY3 CLOSES";
     case TG_OTA_UI_VERIFYING: return "SHA-256";
+    case TG_OTA_UI_NOTICE:    return "HOLD KEY3 · TAP SNOOZES";
     default:                  return "";
   }
 }
@@ -186,7 +203,17 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
   lv_label_set_text(ui.word, state_word(state));
   lv_label_set_text(ui.detail, state_detail(state));
 
-  if (state == TG_OTA_UI_OPEN) {
+  if (state == TG_OTA_UI_NOTICE) {
+    /* Takeovern: UPDATE overst, READY stort i ringen, versionen som
+     * vantar pa versionsraden (tjansten pushar den fore SHOW) och
+     * utgangarna i detaljraden. Bagen vilar som spar — pulsen ar en
+     * framtida rorelsegrind, inte en smygpremiar. */
+    lv_arc_set_mode(ui.arc, LV_ARC_MODE_NORMAL);
+    lv_arc_set_value(ui.arc, 0);
+    lv_obj_set_style_text_font(ui.center, &plex_attention_52, 0);
+    lv_label_set_text(ui.center, "READY");
+    lv_obj_add_flag(ui.pctsign, LV_OBJ_FLAG_HIDDEN);
+  } else if (state == TG_OTA_UI_OPEN) {
     /* Bågen är kvarvarande lucktid: full vid nytt håll, dränerad vid 0.
      * REVERSE ankrar den vita bågen i slutvinkeln (toppen) och ritar
      * värdets andel BAKÅT — startkanten vandrar då medurs från toppen när

@@ -37,6 +37,11 @@ int64_t torget_now_us(void);
  * fixtures behöver inget nät. */
 void torget_net_wait(void);
 
+/* OTA-annonsen fran kvotpollen: appen ager natet (P25) och lamnar bara
+ * vidare strangen; plattformen jamfor mot korande version och driver
+ * UPDATE READY-notisen. NULL = ingen annons i senaste svaret. */
+void torget_update_available(const char *version);
+
 /* Appens sätt att hålla skärmen vaken: "något händer hos mig". Solelkollen
  * kallar den när solen producerar, Tokenmätaren när tokens brinner. Utan
  * anrop på 15 min (och utan touch på 30 s) rampar plattformen ner till

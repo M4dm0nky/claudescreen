@@ -62,6 +62,10 @@ typedef struct {
   tk_limit codex_session, codex_week;
   char claude_model_week_label[TK_QUOTA_LABEL_CAP];
   int has_claude_model_week_label;
+  /* OTA-annonsen: senaste byggets version pa Macen. Enheten jamfor sjalv
+   * mot sin korande version — servern pastas aldrig veta vad som kor. */
+  char ota_available_version[TK_QUOTA_LABEL_CAP];
+  int has_ota_available_version;
   tk_forecast claude_forecast, codex_forecast;
 } tk_tokens;
 

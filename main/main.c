@@ -99,6 +99,10 @@ void torget_net_wait(void) {
 
 void torget_keep_awake(void) { s_last_activity_us = esp_timer_get_time(); }
 
+void torget_update_available(const char *version) {
+  torget_ota_service_update_available(version);
+}
+
 /* ------------------------------------------------------------------- wifi */
 
 /* Bootdiagnostik, medvetet permanent: skanna EN gång från nättasken (inte

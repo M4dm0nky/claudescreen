@@ -165,6 +165,7 @@ EXPECTED = {
     "torget-ota-ring-receiving.bmp",
     "torget-ota-ring-verifying.bmp",
     "torget-ota-ring-restarting.bmp",
+    "torget-ota-ring-notice.bmp",
 }
 
 
@@ -233,6 +234,9 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
             ("torget-ota-ring-receiving.bmp", top, white, track),
             ("torget-ota-ring-verifying.bmp", top, white, white),
             ("torget-ota-ring-restarting.bmp", top, white, white),
+            # NOTICE: bagen vilar som rent spar — takeovern bar ordet,
+            # READY i mitten och versionen som vantar.
+            ("torget-ota-ring-notice.bmp", top, track, track),
         )
         muted = (146, 152, 162)
         for name, probe, probe_color, upper_left_color in cases:

@@ -1,6 +1,8 @@
 #ifndef TORGET_OTA_UI_H
 #define TORGET_OTA_UI_H
 
+#include <stdbool.h>
+
 /*
  * Underhållsoverlayn: fyra stora statiska lägen på LVGL:s topplager, dolda
  * tills KEY3-hållet öppnar fönstret. Overlayn bor UTANFÖR appträdet med
@@ -18,6 +20,7 @@ typedef enum {
   TG_OTA_UI_RECEIVING,  /* "RECEIVING" + procent + balk             */
   TG_OTA_UI_VERIFYING,  /* "VERIFYING"                              */
   TG_OTA_UI_RESTARTING, /* "RESTARTING"                             */
+  TG_OTA_UI_NOTICE,     /* "UPDATE READY"-takeovern (annonserat bygge) */
 } tg_ota_ui_state;
 
 /* Bygg overlayn (dold). Kallas EN gång efter torget_ui_create(), medan
@@ -35,5 +38,10 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
  * Tar UI-låset med samma 200 ms-regel som set(); ett tappat försök är
  * kosmetik och nästa anrop skriver om. Samma trådregel som set(). */
 void torget_ota_ui_set_version(const char *version);
+
+/* Notisens avfärdande: overlayn slukar touch, och ett tryck i NOTICE-läget
+ * sätter en atomär flagga som tjänstens vakt konsumerar (LVGL-tasken får
+ * aldrig själv röra tjänstelogik). Returnerar true en gång per tryck. */
+bool torget_ota_ui_take_tap(void);
 
 #endif

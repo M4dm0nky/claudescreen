@@ -750,6 +750,10 @@ static int run_vibepulse_static_qa(void) {
   dump_overlay_frame("ota-ring-verifying");
   torget_ota_ui_set(TG_OTA_UI_RESTARTING, 100, 0);
   dump_overlay_frame("ota-ring-restarting");
+  /* UPDATE READY-takeovern: annonserad version pa versionsraden. */
+  torget_ota_ui_set_version("v0.2.1-31-gnotice");
+  torget_ota_ui_set(TG_OTA_UI_NOTICE, 0, 0);
+  dump_overlay_frame("ota-ring-notice");
   torget_ota_ui_set(TG_OTA_UI_HIDDEN, 0, 0);
 
   return capture_failures == 0 ? 0 : 1;

@@ -38,6 +38,9 @@ class GitHubWiringTests(unittest.TestCase):
         self.assertIn('"FORKS"', ui)
         self.assertNotIn("ISSUES", ui)
         self.assertNotIn("COMMITS", ui)
+        style = read("components/app_tokens/project_star_style.h")
+        self.assertIn("TK_PROJECT_STAR_COLOR_HEX 0xF2B84B", style)
+        self.assertIn("TK_PROJECT_STAR_COLOR_HEX", ui)
 
     def test_popup_is_app_local_static_and_below_agent_attention(self):
         ui = read("components/app_tokens/usage_screen.c")

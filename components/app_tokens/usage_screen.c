@@ -13,6 +13,7 @@
 #include "project_star_event.h"
 #include "project_star_chime.h"
 #include "project_star_popup.h"
+#include "project_star_style.h"
 #include "torget.h"
 #include "usage_live_policy.h"
 #include "usage_presenter.h"
@@ -41,7 +42,7 @@ extern const lv_font_t plex_text_17;
 #define COL_WHITE     lv_color_hex(VP_COLOR_TEXT)
 #define COL_CLAUDE    lv_color_hex(VP_COLOR_CLAUDE)
 #define COL_CODEX     lv_color_hex(VP_COLOR_CODEX)
-#define COL_STAR      lv_color_hex(VP_COLOR_STAR)
+#define COL_STAR      lv_color_hex(TK_PROJECT_STAR_COLOR_HEX)
 #define COL_CLAUDE_MUTED lv_color_hex(0x8A4F42)
 #define COL_CODEX_MUTED  lv_color_hex(0x454B8A)
 #define COL_DOT       lv_color_hex(0x41444A)

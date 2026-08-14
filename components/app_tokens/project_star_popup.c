@@ -5,6 +5,7 @@
 
 #include "project_star_assets.h"
 #include "project_star_popup_policy.h"
+#include "project_star_style.h"
 #include "vibepulse_layout.generated.h"
 
 extern const lv_font_t plex_num_38;
@@ -15,9 +16,9 @@ extern const lv_font_t plex_ui_14;
 #define COL_BLACK lv_color_hex(VP_COLOR_BACKGROUND)
 #define COL_WHITE lv_color_hex(VP_COLOR_TEXT)
 #define COL_MUTED lv_color_hex(VP_COLOR_MUTED)
-#define COL_REPO lv_color_hex(0x858C97)
-#define COL_STAR lv_color_hex(VP_COLOR_STAR)
-#define COL_STAR_EDGE lv_color_hex(0xF8D47D)
+#define COL_REPO lv_color_hex(TK_PROJECT_STAR_REPO_COLOR_HEX)
+#define COL_STAR lv_color_hex(TK_PROJECT_STAR_COLOR_HEX)
+#define COL_STAR_EDGE lv_color_hex(TK_PROJECT_STAR_EDGE_COLOR_HEX)
 
 /* The approved star is drawn as ten tiny triangles directly into LVGL's
  * current layer. That gives us a filled silhouette without a canvas, bitmap

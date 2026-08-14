@@ -20,6 +20,11 @@ typedef enum {
 } tg_button_action;
 
 typedef struct {
+  /* Väpning: policyn litar inte på pinnen förrän den bevisat sig genom
+   * ett släppt (högt) sample. GPIO18 lästes låg vid boot på den fysiska
+   * enheten 2026-08-14 och öppnade underhållsfönstret utan att någon
+   * rörde knappen — en ovänd policy får aldrig se det hända igen. */
+  bool armed;
   bool was_down;
   bool hold_fired;
   int64_t pressed_at_us;

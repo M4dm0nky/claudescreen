@@ -136,14 +136,34 @@ static void boot_health_task(void *arg) {
         tg_boot_health_decide(&health, esp_timer_get_time());
     if (decision == TG_HEALTH_ACCEPT) {
       /* Godkännande sker ENDAST via den officiella rollback-API:n — allt
-       * annat lämnar otadata i ett läge bootloadern inte förstår. */
-      ESP_ERROR_CHECK(esp_ota_mark_app_valid_cancel_rollback());
+       * annat lämnar otadata i ett läge bootloadern inte förstår. Ett
+       * misslyckat skrivförsök får inte abortera en frisk enhet: logga och
+       * försök igen nästa poll, otadata kan vara upptaget en stund. */
+      esp_err_t marked = esp_ota_mark_app_valid_cancel_rollback();
+      if (marked != ESP_OK) {
+        ESP_LOGE(TAG, "kunde inte godkänna avbilden (%s) — nytt försök",
+                 esp_err_to_name(marked));
+        vTaskDelay(pdMS_TO_TICKS(POLL_MS));
+        continue;
+      }
       ESP_LOGI(TAG, "avbilden godkänd: alla lokala bevis på plats");
       break;
     }
     if (decision == TG_HEALTH_ROLLBACK) {
       uint32_t missing = TG_HEALTH_REQUIRED & ~health.passed;
       const esp_app_desc_t *desc = esp_app_get_description();
+      if (esp_ota_check_rollback_is_possible() != true) {
+        /* Ingen giltig granne att falla tillbaka till (ota_1 aldrig
+         * skriven). Att fälla avbilden nu vore att beordra bootloadern
+         * in i en tom slot — obootbart, och enheten kan bara räddas
+         * över USB. En haltande app på glaset slår en död bräda:
+         * godkänn under protest och skrik i loggen. */
+        ESP_LOGE(TAG, "hälsogrinden fällde avbilden (saknade bevis 0x%02x) "
+                      "men ingen giltig granne finns — stannar i drift",
+                 (unsigned)(TG_HEALTH_REQUIRED & ~health.passed));
+        esp_ota_mark_app_valid_cancel_rollback();
+        break;
+      }
       ESP_LOGE(TAG, "avbilden fälls: saknade bevis 0x%02x, version %s",
                (unsigned)missing, desc->version);
       store_rollback_from(desc->version);
@@ -172,7 +192,12 @@ void torget_boot_health_start(void) {
   }
   if (state != ESP_OTA_IMG_PENDING_VERIFY) {
     /* Policyn aktiveras BARA för en väntande avbild; esp_ota_mark_* får
-     * inte anropas för en redan stabil boot. */
+     * inte anropas för en redan stabil boot. Logga tillståndet numeriskt:
+     * en esptool-flashad avbild vilar här som UNDEFINED (0x3/0xffffffff),
+     * en riktig OTA går vidare — skillnaden ska synas i bootloggen, inte
+     * gissas fram i efterhand (obduktionen 2026-08-14). */
+    ESP_LOGI(TAG, "hälsogrinden vilar: %s i tillstånd 0x%x (ej väntande)",
+             running->label, (unsigned)state);
     record_neighbor_abort(running);
     return;
   }
@@ -180,5 +205,11 @@ void torget_boot_health_start(void) {
   ESP_LOGI(TAG, "första boot på %s: hälsogrinden aktiv (%d s minimum, %d s deadline)",
            running->label, (int)(TG_HEALTH_MIN_UPTIME_US / 1000000),
            (int)(TG_HEALTH_DEADLINE_US / 1000000));
-  xTaskCreate(boot_health_task, "boot-health", 4096, NULL, 4, NULL);
+  if (xTaskCreate(boot_health_task, "boot-health", 4096, NULL, 4, NULL) !=
+      pdPASS) {
+    /* Utan vakt blir avbilden aldrig godkänd och bootloadern fäller den
+     * vid nästa omstart — det får inte ske tyst. */
+    ESP_LOGE(TAG, "boot-health-tasken kunde inte skapas — avbilden förblir "
+                  "väntande och riskerar rollback vid nästa boot");
+  }
 }

@@ -21,6 +21,9 @@ void torget_ota_service_start(void);
 /* KEY3-hållets väg in: öppna (eller förläng) underhållsfönstret tio
  * minuter. Endast atomärt tillstånd — säkert att kalla från LVGL-tasken. */
 void torget_ota_service_open_maintenance(void);
+/* Nödutgången: stänger fönstret i förtid. Atomär och säker att anropa från
+ * LVGL-tasken — overlayn göms och servern stoppas av vakten, inte här. */
+void torget_ota_service_close_maintenance(void);
 
 /* Är fönstret öppet just nu? Atomär läsning, säkert från alla taskar. */
 bool torget_ota_service_maintenance_open(void);

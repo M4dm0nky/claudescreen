@@ -102,8 +102,14 @@ assert "lv_layer_top()" in ota_ui, "overlay must be created on lv_layer_top()"
 assert "lv_screen_active" not in ota_ui, (
     "the overlay must never touch the screen the apps live on"
 )
-assert "torget_ui_lock()" in ota_ui and "torget_ui_unlock()" in ota_ui, (
-    "widget updates must happen under the shared UI lock"
+# Frysläxan 2026-08-14: overlayn tar låset TIDSBEGRÄNSAT och hoppar hellre
+# över en bildruta än blockerar — ett evigt låsförsök från OTA-tasken var
+# exakt så hela panelen frös. Oändlig väntan är förbjuden här.
+assert "torget_ui_try_lock(200)" in ota_ui and "torget_ui_unlock()" in ota_ui, (
+    "widget updates must take the shared UI lock with a bounded timeout"
+)
+assert "torget_ui_lock()" not in ota_ui, (
+    "the OTA overlay must never wait forever on the UI lock"
 )
 
 # Native fonts only. plex_text_32 (kr/%/GWh glyphs) and plex_num_50 (no
@@ -219,11 +225,40 @@ assert "key3_was_down" not in main_c, (
     "the raw KEY3 edge check must be replaced by the button policy"
 )
 assert "torget_ota_service_open_maintenance" in main_c
+# Nödutgången: ett kort tryck medan fönstret är öppet stänger det. Tio
+# minuter total svart låda utan flyktväg gjorde en frisk enhet omöjlig att
+# skilja från en hängd (2026-08-14).
+assert "torget_ota_service_close_maintenance" in main_c, (
+    "a short KEY3 press while the window is open must close it"
+)
+# Bootordningen efter frysläxan: nättasken (apparnas kritiska bana) skapas
+# FÖRE OTA-vakten, och vid boot startas ingen httpd alls — servern föds
+# lat i vaktens task när fönstret öppnas och dör när det stängs.
 assert re.search(
-    r"wifi_start\(\);\s*(/\*.*?\*/\s*)?torget_ota_service_start\(\);",
+    r"wifi_start\(\);(.(?!torget_ota_service_start))*?torget-net(.(?!httpd_start))*?torget_ota_service_start\(\);",
     main_c,
     re.DOTALL,
-), "the OTA listener must start immediately after wifi_start()"
+), "boot order: wifi, then torget-net, then the lazy OTA watcher — no httpd"
+
+# Den lata ytan i siffror: httpd startas och stoppas ENBART av vakten, och
+# serverns sockelbudget kan aldrig svälja apparnas (lwip har 10 totalt).
+watcher_start = service[service.index("static void httpd_surface_start"):]
+watcher_start = watcher_start[:watcher_start.index("void torget_ota_service_start")]
+assert "httpd_start" in watcher_start and "max_open_sockets = 2" in watcher_start
+service_boot = service[service.index("void torget_ota_service_start"):]
+assert "httpd_start" not in service_boot, (
+    "boot must not start httpd — the surface is born when the window opens"
+)
+assert "httpd_surface_stop" in service, "closing the window must stop httpd"
+assert "pdPASS" in service_boot, "the watcher xTaskCreate must be checked"
+
+# Väpningen och anti-brick-vakten är kontrakt, inte detaljer.
+button_h = (root / "components/torget_ota/button_policy.h").read_text(encoding="utf-8")
+assert "bool armed;" in button_h, "the button policy must carry the arming flag"
+health = (root / "components/torget_ota/boot_health.c").read_text(encoding="utf-8")
+assert "esp_ota_check_rollback_is_possible" in health, (
+    "rolling back into a blank slot bricks the unit — the verdict must be guarded"
+)
 
 print("OK: OTA service streams to the inactive slot behind token and policy")
 

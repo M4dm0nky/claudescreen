@@ -86,6 +86,7 @@ static int max_tracker_fixture_idx;
  * låset är en no-op och nätväntan meningslös (fixtures behöver inget nät). */
 void torget_ui_lock(void)   {}
 void torget_ui_unlock(void) {}
+bool torget_ui_try_lock(uint32_t timeout_ms) { (void)timeout_ms; return true; }
 void torget_net_wait(void)  {}
 void torget_keep_awake(void) {} /* ljusrampen finns bara på panelen */
 

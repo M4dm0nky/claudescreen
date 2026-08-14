@@ -87,6 +87,9 @@ static EventGroupHandle_t s_net_events;
  */
 void torget_ui_lock(void)   { ESP_ERROR_CHECK(esp_lv_adapter_lock(-1)); }
 void torget_ui_unlock(void) { esp_lv_adapter_unlock(); }
+bool torget_ui_try_lock(uint32_t timeout_ms) {
+  return esp_lv_adapter_lock((int32_t)timeout_ms) == ESP_OK;
+}
 
 int64_t torget_now_us(void) { return esp_timer_get_time(); }
 
@@ -264,9 +267,11 @@ static void tick_cb(lv_timer_t *t) {
   if (key3_down)
     s_last_touch_us = now; /* knappkontakt är aktivitet, precis som touch */
   if (key3_action == TG_BUTTON_NEXT_APP) {
-    /* Öppet underhållsfönster undertrycker appbyte: handen på KEY3 hör
-     * till uppdateringsflödet, och overlayn täcker ändå apparna. */
+    /* Öppet fönster: samma tryck som annars byter app blir nödutgången —
+     * tio minuter utan flyktväg gjorde en frisk enhet omöjlig att skilja
+     * från en hängd (2026-08-14). Stängningen är atomär och ofarlig här. */
     if (!torget_ota_service_maintenance_open()) torget_app_next();
+    else torget_ota_service_close_maintenance();
   } else if (key3_action == TG_BUTTON_OPEN_MAINTENANCE) {
     torget_ota_service_open_maintenance();
   }
@@ -450,10 +455,20 @@ void app_main(void) {
   lv_timer_create(tick_cb, TICK_EVERY_MS, NULL);
   torget_ui_unlock();
 
+  /* Fysisk sanning i loggen: KEY3:s råa nivå vid boot. Låg utan finger =
+   * pinnen är inte att lita på förrän knappolicyns väpning släppt igenom
+   * den (så hände 2026-08-14, då ett fönster öppnade sig självt). */
+  ESP_LOGI(TAG, "KEY3 rå nivå vid boot: %d (1 = släppt)",
+           gpio_get_level(GPIO_NUM_18));
+
   wifi_start();
-  /* OTA-lyssnaren direkt efter wifi_start: sockeln binds innan stationen
-   * ens fått IP och blir nåbar på det gränssnitt som kommer upp. Utan
-   * TG_OTA_TOKEN i secrets.h är uppladdningen avstängd; status svarar. */
+  /* Nättasken FÖRE OTA-vakten: apparnas dataväg är plattformens kritiska
+   * bana och får aldrig stå bakom en valfri funktion i minneskön. */
+  if (xTaskCreate(net_task, "torget-net", 4096, NULL, 5, NULL) != pdPASS)
+    ESP_LOGE(TAG, "torget-net kunde inte skapas — apparna får aldrig data");
+  /* OTA-ytan är LAT: vid boot startar bara den lilla fönstervakten.
+   * Http-servern och dess minneskostnad existerar först när ett KEY3-håll
+   * öppnat underhållsfönstret — en boot utan uppdatering ska ha samma
+   * minnesprofil som en build helt utan OTA (frysläxan 2026-08-14). */
   torget_ota_service_start();
-  xTaskCreate(net_task, "torget-net", 4096, NULL, 5, NULL);
 }

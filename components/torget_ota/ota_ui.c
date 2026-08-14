@@ -106,7 +106,11 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
   /* mm:ss-formatet bär max 99:59; fönstret är 10 min så taket är teori. */
   if (seconds_left > 99 * 60 + 59) seconds_left = 99 * 60 + 59;
 
-  torget_ui_lock();
+  /* Tidsbegränsat lås: får vi inte UI-låset på 200 ms hoppar vi över den
+   * här bildrutan i stället för att blockera — nästa halvsekundpoll gör om
+   * försöket. En overlay som släpar en sekund är kosmetik; en OTA-task som
+   * står fast i ett evigt låsförsök var exakt så panelen frös 2026-08-14. */
+  if (!torget_ui_try_lock(200)) return;
   /* Nyckla om-ritningen på synligt innehåll: underhållstasken pollar varje
    * halvsekund och ska inte invalidera pixlar som inte bytt värde. Nyckeln
    * läses under låset så två anropare aldrig ser en halvskriven trippel. */

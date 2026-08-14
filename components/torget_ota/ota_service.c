@@ -69,6 +69,15 @@ bool torget_ota_service_maintenance_open(void) {
   return esp_timer_get_time() < atomic_load(&s_maintenance_until_us);
 }
 
+void torget_ota_service_close_maintenance(void) {
+  /* Sätt fönstret till "utgånget men inte noll": vakten ser skillnaden på
+   * sin nästa halvsekundpoll, gömmer overlayn och stoppar servern i sin
+   * egen task. Att skriva 0 direkt hade lämnat overlayn synlig för evigt,
+   * och att röra LVGL härifrån (LVGL-tasken) är förbjudet. */
+  int64_t open_until = atomic_load(&s_maintenance_until_us);
+  if (open_until > 1) atomic_store(&s_maintenance_until_us, 1);
+}
+
 /* Konstanttidsjämförelse: varje byte XOR:as och OR:as ihop, så tiden är
  * densamma oavsett var första avvikelsen sitter — svarstiden får inte
  * läcka hur många inledande tecken av token som stämde. */
@@ -376,6 +385,9 @@ static esp_err_t firmware_post_handler(httpd_req_t *req) {
  * tasken, eftersom torget_ota_ui_set tar UI-låset självt. En halvsekunds
  * poll räcker: nedräkningen är i hela sekunder och dedupe:n i ota_ui gör
  * oförändrade poll gratis. */
+static void httpd_surface_start(void);
+static void httpd_surface_stop(void);
+
 static void maintenance_ui_task(void *arg) {
   (void)arg;
   for (;;) {
@@ -385,14 +397,19 @@ static void maintenance_ui_task(void *arg) {
     if (until == 0) continue;
     int64_t left_us = until - esp_timer_get_time();
     if (left_us > 0) {
+      /* Lat yta: servern och dess minneskostnad föds först nu, när ett
+       * håll bevisligen öppnat fönstret. En boot utan uppdatering bär
+       * därmed ingen httpd alls (frysläxan 2026-08-14). */
+      httpd_surface_start();
       torget_ota_ui_set(TG_OTA_UI_OPEN, 0,
                         (int)((left_us + 999999) / 1000000));
     } else if (atomic_compare_exchange_strong(&s_maintenance_until_us,
                                               &until, 0)) {
-      /* Fönstret gick ut: göm overlayn. Bytet sker atomärt så ett nytt
-       * KEY3-håll som hann emellan aldrig nollas bort. Uppladdningar får
-       * åter 403 via policyns CLOSED — samma klocka, samma sanning. */
+      /* Fönstret gick ut eller stängdes i förtid: göm overlayn och lämna
+       * tillbaka serverns minne. Bytet sker atomärt så ett nytt KEY3-håll
+       * som hann emellan aldrig nollas bort. */
       torget_ota_ui_set(TG_OTA_UI_HIDDEN, 0, 0);
+      httpd_surface_stop();
       ESP_LOGI(TAG, "underhållsfönstret stängt");
     }
   }
@@ -400,24 +417,18 @@ static void maintenance_ui_task(void *arg) {
 
 /* ------------------------------------------------------------------ start */
 
-void torget_ota_service_start(void) {
-  if (s_server) return; /* idempotent: wifi-omstarter får inte dubblera oss */
-
-#ifdef TG_OTA_TOKEN
-  s_token_usable = token_charset_valid();
-  if (!s_token_usable)
-    ESP_LOGE(TAG, "OTA-tokenet i secrets.h är inte 64 små hextecken — "
-                  "uppladdning avstängd");
-#else
-  s_token_usable = false;
-  ESP_LOGI(TAG, "inget OTA-token i secrets.h — uppladdning avstängd");
-#endif
+static void httpd_surface_start(void) {
+  if (s_server) return; /* idempotent: vakten pollar varje halvsekund */
 
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = TG_OTA_HTTP_PORT;
   /* SHA-kontext, esp_ota-anrop och svarsbyggen bor på handlerstacken. */
   config.stack_size = 8192;
   config.lru_purge_enable = true;
+  /* En uppladdare + en statuskoll. Lwip-budgeten är 10 sockar totalt för
+   * hela enheten — apparnas hämtningar får aldrig stå utan för att en
+   * LAN-scanner höll OTA-porten sysselsatt. */
+  config.max_open_sockets = 2;
   esp_err_t err = httpd_start(&s_server, &config);
   if (err != ESP_OK) {
     s_server = NULL;
@@ -437,10 +448,40 @@ void torget_ota_service_start(void) {
   };
   httpd_register_uri_handler(s_server, &status_uri);
   httpd_register_uri_handler(s_server, &firmware_uri);
+  ESP_LOGI(TAG, "OTA-lyssnaren uppe på port %d", TG_OTA_HTTP_PORT);
+}
 
-  /* 8192, inte 3072: tasken kör lv_label_set_text/layout under UI-låset,
+static void httpd_surface_stop(void) {
+  if (!s_server) return;
+  httpd_stop(s_server);
+  s_server = NULL;
+  ESP_LOGI(TAG, "OTA-lyssnaren stoppad — minnet åter till apparna");
+}
+
+void torget_ota_service_start(void) {
+  static bool s_started;
+  if (s_started) return; /* idempotent: wifi-omstarter får inte dubblera oss */
+  s_started = true;
+
+#ifdef TG_OTA_TOKEN
+  s_token_usable = token_charset_valid();
+  if (!s_token_usable)
+    ESP_LOGE(TAG, "OTA-tokenet i secrets.h är inte 64 små hextecken — "
+                  "uppladdning avstängd");
+#else
+  s_token_usable = false;
+  ESP_LOGI(TAG, "inget OTA-token i secrets.h — uppladdning avstängd");
+#endif
+
+  /* Vid boot startar ENDAST vakten. Http-servern föds i vaktens task när
+   * fönstret öppnas och dör när det stängs — en boot utan uppdatering ska
+   * ha samma minnesprofil som en build helt utan OTA.
+   *
+   * 8192, inte 3072: tasken kör lv_label_set_text/layout under UI-låset,
    * och LVGL:s textmotor åt upp 3 KB på riktig panel — tasken dog med
    * låset i handen och frös hela glaset (2026-08-14, första fönstret). */
-  xTaskCreate(maintenance_ui_task, "ota-ui", 8192, NULL, 3, NULL);
-  ESP_LOGI(TAG, "OTA-lyssnaren uppe på port %d", TG_OTA_HTTP_PORT);
+  if (xTaskCreate(maintenance_ui_task, "ota-ui", 8192, NULL, 3, NULL) !=
+      pdPASS) {
+    ESP_LOGE(TAG, "ota-vakten kunde inte skapas — OTA avstängd denna boot");
+  }
 }

@@ -24,6 +24,9 @@
  * en apptask sker under det här låset. */
 void torget_ui_lock(void);
 void torget_ui_unlock(void);
+/* Tidsbegränsad variant för tasks som hellre tappar en bilduppdatering än
+ * blockerar: true = låset taget (para med torget_ui_unlock), false = ge upp. */
+bool torget_ui_try_lock(uint32_t timeout_ms);
 
 /* Monoton mikrosekundsklocka — tickerns och stale-trösklarnas tidsbas.
  * Serverklockor används aldrig som tidsbas (Solelkollen-regeln). */

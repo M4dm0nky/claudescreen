@@ -4,6 +4,15 @@ tg_button_action tg_button_update(tg_button_policy *policy,
                                   bool down, int64_t now_us) {
   if (!policy) return TG_BUTTON_NONE;
 
+  if (!policy->armed) {
+    /* Ovänd policy: allt före det första höga samplet ignoreras. En pinne
+     * som läser låg från boot (svag pull-up, kapsling, kabelhantering) kan
+     * därmed aldrig syntetisera vare sig appbyte eller tresekundershåll —
+     * knappen finns för policyn först när den bevisat att den kan släppas. */
+    if (!down) policy->armed = true;
+    return TG_BUTTON_NONE;
+  }
+
   if (down) {
     if (!policy->was_down) {
       /* Tiden tas ENDAST på uppe-till-nere-flanken. En nollad policy

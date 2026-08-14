@@ -54,12 +54,14 @@ if __package__:
     from .max_tracker import MaxTrackerStore
     from .quota_cache import CachedQuota, QuotaCache
     from .usage_history import Forecast, UsageHistory
+    from . import value_meter
 else:  # direktkörning: python3 tools/tokenserver/tokenserver.py
     from agent_status import AgentStatusService
     from codex_rollout import codex_rollout_rate_limits, observation_timestamp
     from max_tracker import MaxTrackerStore
     from quota_cache import CachedQuota, QuotaCache
     from usage_history import Forecast, UsageHistory
+    import value_meter
 
 RECOMPUTE_EVERY_S = 30
 LIMITS_EVERY_S = 120  # rate-limit-proben: snäll mot API:t, färsk nog för hyllan
@@ -89,10 +91,20 @@ MAX_TRACKER_BACKFILL_TICK_S = 0.5  # samma kadens som agent_status.POLL_S
 MAX_TRACKER_CLAUDE_SESSION_MINUTES = 300   # 5 timmar
 MAX_TRACKER_CLAUDE_WEEK_MINUTES = 10080    # 7 dygn
 
-# (day, ts, tokens, session, key) per loggrad med usage — det minsta som
-# behövs för dag-, månads-, takt- och sessionsaggregaten.
+# (day, ts, tokens, session, key, usd, unpriced) per loggrad med usage — det
+# minsta som behövs för dag-, månads-, takt- och sessionsaggregaten, plus
+# radens listprisvärde. Värdet bärs PER RAD, inte som en filsumma, så att
+# nyckel-dedupliceringen i _compute gäller det lika självklart som tokens:
+# en dubblerad rad får varken räknas två gånger i tokens eller i dollar.
 _cache_lock = threading.Lock()
 _file_cache = {}   # path -> stat, parsed offset, month and compact records
+
+# Nämnaren i värdemultipeln. Prenumerationspriser ingår inte i API:ets
+# prislista, så de sätts av operatören: --claude-plan ger ett defaultvärde
+# (omarkerat som overifierat i value_meter), --plan-cost-usd ger det exakta
+# belopp användaren faktiskt betalar och vinner alltid.
+_claude_plan = None
+_plan_cost_override = None
 _last_result = None
 _last_computed = 0.0
 _snapshot_refreshing = False
@@ -179,12 +191,20 @@ def _parse_file(path: Path, month_start: datetime, start_offset=0):
                 msg_id = (entry.get("message") or {}).get("id")
                 req_id = entry.get("requestId")
                 key = f"{msg_id}:{req_id}" if msg_id and req_id else None
+                day = ts.strftime("%Y-%m-%d")
+                # Prissätts mot radens EGEN dag, inte mot dagens datum: en rad
+                # från innan ett intropris löper ut ska behålla intropriset
+                # även när den läses i efterhand.
+                usd, unpriced = value_meter.price_usage(
+                    (entry.get("message") or {}).get("model"), usage, day)
                 records.append((
-                    ts.strftime("%Y-%m-%d"),
+                    day,
                     ts.timestamp(),
                     tokens,
                     entry.get("sessionId") or str(path),
                     key,
+                    usd,
+                    unpriced,
                 ))
     except OSError:
         pass  # borttagen under läsning — nästa skanning ser det
@@ -192,7 +212,7 @@ def _parse_file(path: Path, month_start: datetime, start_offset=0):
 
 
 def _observe_claude_volume(store, records):
-    for day, _ts, tokens, _session, _key in records:
+    for day, _ts, tokens, _session, _key, _usd, _unpriced in records:
         store.observe_volume("claude", day, tokens)
 
 
@@ -257,15 +277,23 @@ def _compute(projects_dir: Path, max_tracker_store=None):
     day_tokens = 0
     month_tokens = 0
     hour_tokens = 0
+    month_value_usd = 0.0
+    month_priced_tokens = 0
+    month_unpriced_tokens = 0
     day_sessions = set()
     seen = set()
     for entry in _file_cache.values():
-        for day, ts, tokens, session, key in entry["records"]:
+        for day, ts, tokens, session, key, usd, unpriced in entry["records"]:
             if key is not None:
                 if key in seen:
                     continue
                 seen.add(key)
             month_tokens += tokens
+            month_value_usd += usd
+            if unpriced:
+                month_unpriced_tokens += unpriced
+            else:
+                month_priced_tokens += tokens
             if day == today:
                 day_tokens += tokens
                 day_sessions.add(session)
@@ -278,6 +306,11 @@ def _compute(projects_dir: Path, max_tracker_store=None):
         "dayTokensPerHour": hour_tokens,  # senaste timmen = takt per timme
         "daySessions": len(day_sessions),
         "monthTokens": month_tokens,
+        # Additiv nyckel: tokens_parse.c:219 hoppar över okända toppnycklar,
+        # så redan flashade skärmar ignorerar den utan att fela.
+        "value": value_meter.build_payload(
+            month_value_usd, month_unpriced_tokens, month_priced_tokens,
+            plan=_claude_plan, cost_override=_plan_cost_override),
         "at": now.isoformat(timespec="seconds"),
     }
 
@@ -1533,6 +1566,11 @@ def _build_arg_parser():
         help="Claude-planen för Max Trackers badge (frivillig, allowlistad "
              "i max_tracker.PLAN_LABELS)")
     ap.add_argument(
+        "--plan-cost-usd", type=float, default=None,
+        help="vad Claude-planen faktiskt kostar per månad i USD — nämnaren i "
+             "värdemultipeln. Utan den används ett OVERIFIERAT defaultvärde "
+             "från --claude-plan, och payloaden märker det som sådant")
+    ap.add_argument(
         "--codex-plan", choices=["plus", "pro"], default=None,
         help="Codex-planen för Max Trackers badge (frivillig, allowlistad "
              "i max_tracker.PLAN_LABELS)")
@@ -1564,6 +1602,10 @@ def _run_max_tracker_backfill(store, stop_event):
 def main():
     ap = _build_arg_parser()
     args = ap.parse_args()
+
+    global _claude_plan, _plan_cost_override
+    _claude_plan = args.claude_plan
+    _plan_cost_override = args.plan_cost_usd
 
     Handler.projects_dir = Path(args.dir)
     if not Handler.projects_dir.is_dir():

@@ -106,14 +106,20 @@ typedef enum {
 
 typedef struct {
   usage_value_state state;
-  char subhead[USAGE_VALUE_TEXT_CAP];
-  /* Hero, split because the 164 px numeral font carries no multiplication
-   * sign -- digits, '.', '%' and en dash only. The unit rides in a separate
-   * label and is suppressed when the hero is a dash. */
-  char multiple_text[USAGE_CARD_PCT_CAP];
-  int show_unit;
-  char value_text[USAGE_CARD_PCT_CAP];
+  char eyebrow[USAGE_VALUE_TEXT_CAP];
+  /* The hero is a DOLLAR amount, not the multiple. "$312" is understood at a
+   * glance from across a room; "3.12x" needs a beat and a caption to land,
+   * which is exactly what a shelf display does not get. The multiple keeps
+   * its place as the thing that makes the dollars mean something, one size
+   * down in the stat row. */
+  char hero_text[USAGE_CARD_PCT_CAP];
+  /* 1 when the hero is a WORD, not a figure, and must render in the 48 px
+   * headline font. An en dash set at 164 px is a bare white rectangle -- it
+   * reads as a rendering fault rather than as "unknown", so no degraded
+   * state is allowed to use it. */
+  int hero_is_word;
   char plan_text[USAGE_CARD_PCT_CAP];
+  char multiple_text[USAGE_CARD_PCT_CAP];
   char plan_caption[USAGE_VALUE_TEXT_CAP];
   /* Bar position on a FIXED 0..2x scale, so break-even sits permanently at
    * the halfway marker and the fill is comparable from one day to the next.

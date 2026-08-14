@@ -163,35 +163,53 @@ assert "251" in burn, "Burn Rate rows need the approved separator"
 assert "COL_CARD" not in burn
 
 # Value page. Held to the same contract as the quota pages: shared layout
-# tokens, no provider accent on a figure that sums both providers, and the
-# hero unit split out because the 164 px numeral font has no multiply sign.
+# tokens, and no provider accent on a figure that sums both providers.
 value = source[source.index("static void create_value_page"):]
 value = value[:value.index("static uint64_t agent_packet_age_ms")]
-for copy in ("VALUE", "MONTH TO DATE", "AT LIST PRICES", "USD OF VALUE",
-             "USD PAID", "BREAK EVEN"):
+for copy in ("VALUE", "MONTH TO DATE", "AT LIST API PRICES", "YOU PAID",
+             "WHAT YOU PAID", "BREAK EVEN"):
     assert f'"{copy}"' in value, f"missing value page copy: {copy}"
 assert "VP_BAR_Y" in value and "VP_BAR_H" in value
-assert "VP_PERCENT_Y" in value and "plex_num_164" in value
-assert "lv_obj_set_size(page->marker, 3, VP_BAR_H + 8);" in value
+assert "VALUE_HERO_Y" in value and "plex_money_118" in value
+assert "lv_obj_set_size(page->marker, 3, VP_BAR_H);" in value
 assert "COL_CLAUDE" not in value and "COL_CODEX" not in value, \
     "a combined Claude+Codex figure must not wear either provider accent"
-assert "plex_headline_48" in value, "the hero unit needs its own font"
 
 value_page_struct = source[source.index("} tracker_page;"):]
 value_page_struct = value_page_struct[:value_page_struct.index("} value_page;")]
-for member in ("subhead", "multiple", "unit", "track", "fill", "marker",
-               "value", "plan", "plan_caption"):
+for member in ("eyebrow", "hero", "track", "fill", "marker", "multiple",
+               "plan", "plan_caption"):
     assert f"*{member};" in value_page_struct, f"value_page must own {member}"
+assert "*unit;" not in value_page_struct, \
+    "the hero is one label again: '$' lives in the 164 px font"
 
 apply_value = source[source.index("static void apply_value"):]
 apply_value = apply_value[:apply_value.index("static uint64_t agent_packet_age_ms")]
 assert "usage_presenter_build_value(tokens, &view);" in apply_value, \
     "the page must render the presenter's view, never tk_value directly"
-assert "lv_obj_update_layout(page->multiple);" in apply_value, \
-    "the unit is placed from the hero's measured width, not last frame's"
 assert "view.break_even_fraction" in apply_value
 assert "lv_obj_add_flag(page->track, LV_OBJ_FLAG_HIDDEN)" not in apply_value, \
     "the empty track stays, matching the quota pages' no-data state"
+
+# The value page has its OWN money fonts. A "$" is taller than every digit,
+# so putting it in a shared numeral font grows line_height and shifts every
+# already-reviewed page that uses it. Pin both the new recipes and the
+# absence of "$" from the shared ones.
+for recipe, glyph in (("conv Bold     118 \"0x30-0x39,0x24", "plex_money_118"),
+                      ("conv Bold      35 \"0x20,0x24", "plex_money_35")):
+    line = next((line for line in font_script.splitlines()
+                 if line.startswith(recipe)), "")
+    assert line.endswith(glyph), f"missing money font recipe: {glyph}"
+for shared in ("conv Bold     164", "conv Bold     146", "conv Bold      50"):
+    line = next(line for line in font_script.splitlines()
+                if line.startswith(shared))
+    assert "0x24" not in line, \
+        f"{shared} must not carry '$': it would shift approved pages"
+for path, symbol in (("plex_money_118", "plex_money_118"),
+                     ("plex_money_35", "plex_money_35")):
+    generated = root / f"platform/fonts/{path}.c"
+    assert generated.is_file(), f"missing generated money font: {path}"
+    assert f"const lv_font_t {symbol}" in generated.read_text()
 
 for removed_volume in (
     "rendered_volume_value", "rendered_volume_sessions",

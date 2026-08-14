@@ -212,20 +212,22 @@ int main(void) {
   value_ok.value.multiple = 3.12;
   value_ok.value.cost_configured = 1;
   usage_presenter_build_value(&value_ok, &value_page);
-  check("value ok renders the multiple",
+  check("value ok leads with dollars, not the multiple",
         value_page.state == USAGE_VALUE_OK &&
-        strcmp(value_page.multiple_text, "3.12") == 0 &&
-        value_page.show_unit);
-  check("value ok renders both dollar figures",
-        strcmp(value_page.value_text, "312") == 0 &&
-        strcmp(value_page.plan_text, "100") == 0);
+        strcmp(value_page.hero_text, "$312") == 0 &&
+        !value_page.hero_is_word);
+  check("value ok renders the plan cost and the multiple",
+        strcmp(value_page.plan_text, "$100") == 0 &&
+        strcmp(value_page.multiple_text, "3.12\u00d7") == 0);
+  check("value ok says what the hero is",
+        strcmp(value_page.eyebrow, "YOU GOT") == 0);
   check("value ok past break-even fills the bar",
         value_page.show_bar && value_page.bar_fraction > 0.999);
   check("break-even sits at the halfway marker",
         value_page.break_even_fraction > 0.499 &&
         value_page.break_even_fraction < 0.501);
   check("configured cost is not captioned as an estimate",
-        strcmp(value_page.plan_caption, "USD PAID") == 0);
+        strcmp(value_page.plan_caption, "YOU PAID") == 0);
 
   /* On the 2x scale, 0.4x sits at a fifth of the bar -- left of the marker. */
   tk_tokens value_half = value_ok;
@@ -243,7 +245,7 @@ int main(void) {
   value_near.value.multiple = 0.97;
   usage_presenter_build_value(&value_near, &value_page);
   check("just under break-even keeps two decimals",
-        strcmp(value_page.multiple_text, "0.97") == 0);
+        strcmp(value_page.multiple_text, "0.97\u00d7") == 0);
 
   /* The defect the fixed scale exists to fix: anchoring the bar's end at
    * break-even put 0.97x and 3.12x within 3% of each other, so the bar said
@@ -260,15 +262,15 @@ int main(void) {
   value_big.value.multiple = 12.4;
   usage_presenter_build_value(&value_big, &value_page);
   check("large multiples drop to one decimal",
-        strcmp(value_page.multiple_text, "12.4") == 0);
-  check("thousands are space-grouped",
-        strcmp(value_page.value_text, "1 240") == 0);
+        strcmp(value_page.multiple_text, "12.4\u00d7") == 0);
+  check("thousands are comma-grouped behind the dollar sign",
+        strcmp(value_page.hero_text, "$1,240") == 0);
 
   tk_tokens value_default_cost = value_ok;
   value_default_cost.value.cost_configured = 0;
   usage_presenter_build_value(&value_default_cost, &value_page);
   check("an unstated plan cost is captioned as an estimate",
-        strcmp(value_page.plan_caption, "USD PAID (EST)") == 0);
+        strcmp(value_page.plan_caption, "YOU PAID (EST)") == 0);
 
   tk_tokens value_no_plan = {0};
   value_no_plan.value.state = TK_VALUE_NO_PLAN_COST;
@@ -277,36 +279,48 @@ int main(void) {
   usage_presenter_build_value(&value_no_plan, &value_page);
   check("no plan cost keeps the dollars but dashes the multiple",
         value_page.state == USAGE_VALUE_NO_PLAN_COST &&
-        strcmp(value_page.value_text, "312") == 0 &&
+        strcmp(value_page.hero_text, "$312") == 0 &&
         strcmp(value_page.multiple_text, "–") == 0 &&
-        !value_page.show_unit && !value_page.show_bar);
+        strcmp(value_page.plan_text, "–") == 0 &&
+        !value_page.show_bar);
+  check("no plan cost tells the owner how to fix it",
+        strcmp(value_page.eyebrow, "SET YOUR PLAN COST") == 0);
   check("a dash is never captioned as an estimate",
-        strcmp(value_page.plan_caption, "USD PAID") == 0);
+        strcmp(value_page.plan_caption, "YOU PAID") == 0);
 
   tk_tokens value_partial = {0};
   value_partial.value.state = TK_VALUE_PARTIAL;
   value_partial.value.has_value_usd = 1;
   value_partial.value.value_usd = 312.0;
   usage_presenter_build_value(&value_partial, &value_page);
-  check("partial dashes everything including the dollars",
+  check("partial says unpriced, not no-data: the usage is real",
         value_page.state == USAGE_VALUE_PARTIAL &&
+        strcmp(value_page.hero_text, "UNPRICED") == 0 &&
+        value_page.hero_is_word &&
+        strcmp(value_page.eyebrow, "SOME MODELS UNKNOWN") == 0 &&
         strcmp(value_page.multiple_text, "–") == 0 &&
-        strcmp(value_page.value_text, "–") == 0 &&
         !value_page.show_bar);
 
   tk_tokens value_absent = {0};
   usage_presenter_build_value(&value_absent, &value_page);
-  check("absent value block shows nothing at all",
+  /* Never an en dash as the hero: set at 164 px a dash is a bare white
+     rectangle and reads as a rendering fault rather than as "unknown". */
+  check("absent value block shows a word, never a giant dash",
         value_page.state == USAGE_VALUE_UNAVAILABLE &&
+        strcmp(value_page.hero_text, "NO DATA") == 0 &&
+        value_page.hero_is_word &&
+        value_page.eyebrow[0] == '\0' &&
         strcmp(value_page.multiple_text, "–") == 0 &&
-        strcmp(value_page.value_text, "–") == 0 &&
         strcmp(value_page.plan_text, "–") == 0 &&
-        !value_page.show_bar && !value_page.show_unit);
+        !value_page.show_bar);
 
   usage_presenter_build_value(NULL, &value_page);
   check("null tokens are safe and show nothing",
         value_page.state == USAGE_VALUE_UNAVAILABLE &&
         !value_page.show_bar);
+  check("a real figure is never rendered in the word font",
+        !value_page.hero_is_word ||
+        strcmp(value_page.hero_text, "NO DATA") == 0);
 
   if (failures == 0) {
     printf("OK: all usage presenter tests pass\n");

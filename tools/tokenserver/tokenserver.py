@@ -63,7 +63,9 @@ else:  # direktkörning: python3 tools/tokenserver/tokenserver.py
     from usage_history import Forecast, UsageHistory
 
 RECOMPUTE_EVERY_S = 30
-LIMITS_EVERY_S = 120  # rate-limit-proben: snäll mot API:t, färsk nog för hyllan
+LIMITS_EVERY_S = 240  # rate-limit-proben: 15 anrop/h — kontots bucket delas
+                      # med Claude Code självt, och kvoten rör sig långsamt;
+                      # panelens 30 s-pollar får ändå cachat svar direkt
 
 
 def _read_server_rev():
@@ -564,6 +566,40 @@ def _usage_request(token):
 _PROBE_LOCK_PATH = (Path.home() / "Library" / "Application Support" /
                     "VibePulse" / "claude-probe.lock")
 
+# Straffrutan ÖVERLEVER omstarter: cooldownen var ren minnesstat, så varje
+# serveromstart glömde pågående backoff och petade direkt på den heta
+# bucketen igen (sett två gånger 2026-08-14, båda självförvållade). Filen
+# bor bredvid probelåset och läses lat vid första probecykeln.
+_PROBE_STATE_PATH = (Path.home() / "Library" / "Application Support" /
+                     "VibePulse" / "claude-probe-state.json")
+_probe_state_loaded = False
+
+
+def _load_probe_state():
+    global _probe_state_loaded, _probe_cooldown_until, _probe_status
+    if _probe_state_loaded:
+        return
+    _probe_state_loaded = True
+    try:
+        data = json.loads(_PROBE_STATE_PATH.read_text(encoding="utf-8"))
+        until = float(data.get("cooldown_until", 0.0))
+    except (OSError, ValueError, TypeError):
+        return
+    if math.isfinite(until) and until > time.time():
+        _probe_cooldown_until = until
+        _probe_status = (f"usage_http_429 + backoff_until_"
+                         f"{datetime.fromtimestamp(until):%H:%M} (persisted)")
+
+
+def _save_probe_state():
+    try:
+        _PROBE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _PROBE_STATE_PATH.write_text(
+            json.dumps({"cooldown_until": _probe_cooldown_until}),
+            encoding="utf-8")
+    except OSError:
+        pass  # utan disk är beteendet som förr: bättre än att krascha
+
 
 def _hold_probe_lock():
     """Icke-blockerande flock; returnerar filobjektet (= låset) eller None."""
@@ -585,6 +621,7 @@ def _probe_limits():
     weekPct, weekResetMin} eller None om något saknas på vägen."""
     global _probe_status, _probe_headers, _probe_unknown_buckets, \
         _probe_cooldown_until
+    _load_probe_state()
     if time.time() < _probe_cooldown_until:
         # I nedkylning efter 429 — statusen står kvar på backoff-strängen.
         return None
@@ -645,6 +682,7 @@ def _probe_limits_locked():
                 _probe_status = (
                     f"usage_http_429 + backoff_until_"
                     f"{datetime.fromtimestamp(_probe_cooldown_until):%H:%M}")
+                _save_probe_state()  # en omstart får inte glömma straffet
                 return None
             if error.code in (401, 403):
                 # Avvisad token säger inget om nästa källa — prova den innan
@@ -1471,25 +1509,28 @@ def get_snapshot(projects_dir: Path, history=None, now_ts=None,
             _mark_max_tracker_dirty(max_tracker_store)
 
     claude_session_reset = session_reset_at
-    claude_week_reset = (
-        claude_week["reset_at"] if claude_week["live"] else None)
-    claude_model_reset = (
-        claude_model["reset_at"] if claude_model["live"] else None)
-    codex_week_reset = (
-        codex_week["reset_at"] if codex_week["live"] else None)
+    # Reset-tiderna tas från posten oavsett live/cache: en cachad post bär
+    # sin cykels riktiga reset (quota_cache räknar ut poster vid passerad
+    # reset), och deltan "idag" ska ÖVERLEVA en 429-mörkläggning — panelen
+    # får bli ärligt äldre (stale-flaggan), aldrig tom (kravet 2026-08-14:
+    # skottsäkert för alla som kör detta). I historiken SPELAS däremot bara
+    # live-observationer in — en cachad procent är ingen ny mätning.
+    claude_week_reset = claude_week["reset_at"]
+    claude_model_reset = claude_model["reset_at"]
+    codex_week_reset = codex_week["reset_at"]
     quota_samples = [
         (provider, window, pct, reset_at)
-        for provider, window, pct, reset_at in (
+        for provider, window, pct, reset_at, is_live in (
             ("claude", "session", result["claudeSessionPct"],
-             claude_session_reset),
+             claude_session_reset, True),
             ("claude", "week", result["claudeWeekPct"],
-             claude_week_reset),
+             claude_week_reset, claude_week["live"]),
             ("claude", "model_week", result["claudeModelWeekPct"],
-             claude_model_reset),
+             claude_model_reset, claude_model["live"]),
             ("codex", "week", result["codexWeekPct"],
-             codex_week_reset),
+             codex_week_reset, codex_week["live"]),
         )
-        if pct is not None and reset_at is not None
+        if is_live and pct is not None and reset_at is not None
     ]
     usage_history.record_many(quota_samples, at=current_ts)
 

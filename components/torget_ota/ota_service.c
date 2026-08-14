@@ -484,4 +484,19 @@ void torget_ota_service_start(void) {
       pdPASS) {
     ESP_LOGE(TAG, "ota-vakten kunde inte skapas — OTA avstängd denna boot");
   }
+
+  /* Första boot på en nyss OTA:ad avbild (PENDING_VERIFY) återöppnar
+   * fönstret av sig självt: den som itererar (flasha, prova, flasha igen)
+   * ska hålla KEY3 EN gång per arbetspass, inte en gång per bygge
+   * (beslut 2026-08-14). Samtycket är inte urholkat — kedjan startade i
+   * ett fysiskt håll, fönstret är lika tidsbegränsat som annars och ett
+   * kort tryck stänger det. En esptool-flashad boot (UNDEFINED/VALID) har
+   * inget föregående håll och lämnas stängd. */
+  const esp_partition_t *running = esp_ota_get_running_partition();
+  esp_ota_img_states_t state;
+  if (esp_ota_get_state_partition(running, &state) == ESP_OK &&
+      state == ESP_OTA_IMG_PENDING_VERIFY) {
+    ESP_LOGI(TAG, "nyss uppdaterad avbild: underhållsfönstret återöppnas");
+    torget_ota_service_open_maintenance();
+  }
 }

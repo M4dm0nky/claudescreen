@@ -5,6 +5,7 @@
 
 #include "tokens.h"
 #include "agent_status.h"
+#include "github_status.h"
 #include "max_tracker.h"
 
 /*
@@ -25,6 +26,7 @@ enum {
   VIEW_BURN_RATE = 3,
   VIEW_TRACKER_CLAUDE = 4,
   VIEW_TRACKER_CODEX = 5,
+  VIEW_GITHUB = 6,
 };
 
 /* Ett lyckat /api/tokens-svar. Snappar tickern, stämplar färskhet och
@@ -37,9 +39,14 @@ void tokens_apply_agent_status(const tk_agent_snapshot *snapshot);
 /* Ett lyckat /api/max-tracker-svar, redan parsat och under UI-låset. */
 void tokens_apply_max_tracker(const tk_max_tracker *t);
 
+/* One strict /api/github payload. The optional page and popup have separate
+ * compile-time switches; either can consume the same feed. */
+void tokens_apply_github(const tk_github_status *status);
+
 /* Targetets 1 Hz-hämtning. Utan TK_AGENT_STATUS_URL loggas avstängt läge
  * och ingen task eller HTTP-klient skapas. */
 void tokens_agent_net_start(void);
+void tokens_github_net_start(void);
 
 /* Hoppa till en VibePulse-vy utan animation — bänkens och BMP-dumparnas
  * ratt. */

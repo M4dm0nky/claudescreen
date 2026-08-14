@@ -54,12 +54,14 @@ from pathlib import Path
 if __package__:
     from .agent_status import AgentStatusService
     from .codex_rollout import codex_rollout_rate_limits, observation_timestamp
+    from .github_monitor import GitHubMonitor, disabled_snapshot, normalize_repo
     from .max_tracker import MaxTrackerStore
     from .quota_cache import CachedQuota, QuotaCache
     from .usage_history import Forecast, UsageHistory
 else:  # direktkörning: python3 tools/tokenserver/tokenserver.py
     from agent_status import AgentStatusService
     from codex_rollout import codex_rollout_rate_limits, observation_timestamp
+    from github_monitor import GitHubMonitor, disabled_snapshot, normalize_repo
     from max_tracker import MaxTrackerStore
     from quota_cache import CachedQuota, QuotaCache
     from usage_history import Forecast, UsageHistory
@@ -1792,6 +1794,7 @@ class Handler(BaseHTTPRequestHandler):
     projects_dir = None  # sätts i main
     agent_status = None  # bakgrundstjänst, sätts i main
     max_tracker_store = None  # sätts i main
+    github_monitor = None  # frivillig publik repo-monitor, sätts i main
     plans = {"claude": None, "codex": None}  # sätts i main från --*-plan
 
     def _send(self, code, payload):
@@ -1857,6 +1860,10 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(lambda: self.agent_status.snapshot())
         elif self.path == "/api/max-tracker":
             self._reply(self._max_tracker_payload)
+        elif self.path == "/api/github":
+            self._reply(lambda: (self.github_monitor.snapshot()
+                                 if self.github_monitor is not None
+                                 else disabled_snapshot()))
         elif self.path == "/":
             self._reply(self._root_payload)
         else:
@@ -1868,13 +1875,17 @@ class Handler(BaseHTTPRequestHandler):
         # emellan ge None i subtraktionen (500 på själva diagnostikrutten)
         # och en nystartad episod ge ok=true med varaktighet bredvid.
         failing_since = _compute_failing_since
+        endpoints = ["/api/tokens", "/api/agent-status",
+                     "/api/max-tracker", "/api/github"]
         return {"service": "torget-tokenserver",
                 "rev": _SERVER_REV,
                 "srcFingerprint": _SERVER_SRC,
                 "startedAt": _SERVER_STARTED,
                 "endpoint": "/api/tokens",
-                "endpoints": ["/api/tokens", "/api/agent-status",
-                              "/api/max-tracker"],
+                "endpoints": endpoints,
+                "github": (self.github_monitor.snapshot()
+                           if self.github_monitor is not None
+                           else disabled_snapshot()),
                 "claudeProbe": _probe_status,
                 "ratelimitHeaders": _probe_headers,
                 "unknownRateLimitBuckets": _probe_unknown_buckets,
@@ -1907,6 +1918,11 @@ def _build_arg_parser():
         "--codex-plan", choices=["plus", "pro"], default=None,
         help="Codex-planen för Max Trackers badge (frivillig, allowlistad "
              "i max_tracker.PLAN_LABELS)")
+    ap.add_argument(
+        "--github-repo", type=normalize_repo,
+        default=os.environ.get("VIBEPULSE_GITHUB_REPO") or None,
+        help="Frivilligt publikt GitHub-repo som owner/repository. "
+             "Kan också sättas med VIBEPULSE_GITHUB_REPO.")
     return ap
 
 
@@ -1950,6 +1966,14 @@ def main():
         daemon=True,
     ).start()
     log.info("startar: rev %s", _SERVER_REV)
+
+    github_monitor = None
+    if args.github_repo:
+        github_monitor = GitHubMonitor(args.github_repo)
+        github_monitor.start()
+        log.info("GitHub-monitor startad för publika repot %s",
+                 args.github_repo)
+    Handler.github_monitor = github_monitor
 
     Handler.projects_dir = Path(args.dir)
     if not Handler.projects_dir.is_dir():
@@ -2004,12 +2028,14 @@ def main():
     try:
         srv = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
         log.info("serverar http://0.0.0.0:%d/api/tokens, "
-                 "/api/agent-status och /api/max-tracker "
+                 "/api/agent-status, /api/max-tracker och /api/github "
                  "(LAN — exponera inte utåt)", args.port)
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        if github_monitor is not None:
+            github_monitor.stop()
         backfill_stop.set()
         backfill_thread.join(timeout=max(1.0, MAX_TRACKER_BACKFILL_TICK_S * 4))
         try:

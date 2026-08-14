@@ -13,7 +13,7 @@ attention_fonts = (
     (root / "platform/fonts/plex_attention_52.c", "plex_attention_52"),
 )
 
-assert "#define TK_USAGE_SCREEN_VIEWS 6" in header
+assert "#define TK_USAGE_SCREEN_VIEWS (6 + TK_GITHUB_SCREEN_ENABLED)" in header
 for enum_literal in (
     "VIEW_CLAUDE_FABLE = 0",
     "VIEW_CLAUDE_ALL = 1",
@@ -21,6 +21,7 @@ for enum_literal in (
     "VIEW_BURN_RATE = 3",
     "VIEW_TRACKER_CLAUDE = 4",
     "VIEW_TRACKER_CODEX = 5",
+    "VIEW_GITHUB = 6",
 ):
     assert enum_literal in app_header
 assert "VIEW_VOLUME" not in app_header
@@ -70,6 +71,10 @@ create = create[:create.index("void usage_screen_apply_tokens")]
 assert create.count("create_quota_page(") == 3
 assert create.count("create_burn_rate_page(") == 1
 assert create.count("create_tracker_page(") == 2
+assert "create_github_page();" in create
+assert create.index("tk_project_star_popup_create(root);") < create.index(
+    "tk_agent_monitor_create(root);"
+)
 assert "tk_agent_monitor_create(root);" in create
 
 quota = source[source.index("static void create_quota_page"):]
@@ -286,4 +291,4 @@ for anchor in (31, 246, 321, 365, 430):
 assert "int usage_screen_current_view(void);" in header
 assert "usage_screen_current_view()" in sim
 
-print("OK: VibePulse six-page full-screen layout wiring")
+print("OK: VibePulse optional seven-page full-screen layout wiring")

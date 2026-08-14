@@ -73,6 +73,11 @@ add_executable(torget-sim
   ../components/app_tokens/agent_net_policy.c
   ../components/app_tokens/agent_monitor.c
   ../components/app_tokens/agent_assets.c
+  ../components/app_tokens/github_status_parse.c
+  ../components/app_tokens/project_star_popup_policy.c
+  ../components/app_tokens/project_star_assets.c
+  ../components/app_tokens/project_star_chime.c
+  ../components/app_tokens/project_star_popup.c
   ../components/app_tokens/max_tracker_parse.c
   ../components/app_tokens/max_tracker_presenter.c
   ../components/torget_fmt/fmt_sv.c
@@ -86,7 +91,11 @@ add_executable(torget-sim
 
 # Simulatorn läser de riktiga fixture-filerna genom de delade parsrarna.
 get_filename_component(FIXTURES_ABS "${CMAKE_CURRENT_SOURCE_DIR}/../sim-fixtures" ABSOLUTE)
-target_compile_definitions(torget-sim PRIVATE FIXTURES_DIR="${FIXTURES_ABS}")
+target_compile_definitions(torget-sim PRIVATE
+  FIXTURES_DIR="${FIXTURES_ABS}"
+  TK_GITHUB_SCREEN_ENABLED=1
+  TK_GITHUB_NOTIFICATIONS_ENABLED=1
+  TK_GITHUB_SOUND_ENABLED=1)
 
 target_include_directories(torget-sim PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"

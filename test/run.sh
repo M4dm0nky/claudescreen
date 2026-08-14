@@ -69,6 +69,26 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
 /tmp/torget-agent-status-test
 
 cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/app_tokens/github_status_parse.c \
+  test_github_status.c /tmp/torget-cjson.o \
+  -lm \
+  -o /tmp/torget-github-status-test
+/tmp/torget-github-status-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/app_tokens/project_star_popup_policy.c \
+  test_project_star_popup_policy.c \
+  -o /tmp/torget-project-star-popup-policy-test
+/tmp/torget-project-star-popup-policy-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
+  -DTK_GITHUB_SOUND_ENABLED=1 \
+  ../components/app_tokens/project_star_chime.c \
+  test_project_star_chime.c \
+  -o /tmp/torget-project-star-chime-test
+/tmp/torget-project-star-chime-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
   ../components/app_tokens/agent_usage.c \
   test_agent_usage.c \
   -lm \
@@ -134,6 +154,8 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
 
 "$PYTHON_BIN" test_agent_demo_wiring.py
 "$PYTHON_BIN" test_agent_net_wiring.py
+"$PYTHON_BIN" test_github_wiring.py
+"$PYTHON_BIN" test_project_star_assets.py
 "$PYTHON_BIN" test_target_tls_memory.py
 "$PYTHON_BIN" test_buddy_opt_in.py
 "$PYTHON_BIN" test_lvgl_layer_safety.py
@@ -154,6 +176,7 @@ cd ..
 "$PYTHON_BIN" test/test_token_body_capacity.py
 "$PYTHON_BIN" -m unittest tools.test_hardware_registry -v
 "$PYTHON_BIN" -m unittest \
+  tools.tokenserver.test_github_monitor \
   tools.tokenserver.test_tokenserver \
   tools.tokenserver.test_agent_status \
   tools.tokenserver.test_usage_history \

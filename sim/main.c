@@ -28,6 +28,7 @@
 #include "agent_monitor.h"
 #include "agent_monitor_policy.h"
 #include "agent_status_parse.h"
+#include "github_status_parse.h"
 #include "max_tracker_parse.h"
 #include "boot_screen.h"
 #include "ota_ui.h"
@@ -81,6 +82,7 @@ static const char *const MAX_TRACKER_FIXTURES[] = {
   "max-tracker-empty.json",
 };
 static int max_tracker_fixture_idx;
+static int github_fixture_seq;
 
 /* ---------------------------------------------- plattforms-API:t (torget.h) */
 
@@ -345,6 +347,27 @@ static void apply_max_tracker_fixture(int idx) {
   feed_max_tracker_file(MAX_TRACKER_FIXTURES[max_tracker_fixture_idx]);
 }
 
+static void apply_github_file(const char *file, bool unique_event) {
+  size_t len = 0;
+  char *json = read_fixture(file, &len);
+  tk_github_status status;
+  if (json && tk_github_status_parse(json, len, &status)) {
+    if (unique_event && status.has_event) {
+      github_fixture_seq++;
+      snprintf(status.event_id, sizeof status.event_id, "sim-star-%d",
+               github_fixture_seq);
+      status.stars += github_fixture_seq - 1;
+      status.event_stars = status.stars;
+    }
+    tokens_apply_github(&status);
+    printf("github: %s (%s)\n", file,
+           status.has_data ? "data" : "waiting");
+  } else {
+    printf("github: %s avvisad\n", file);
+  }
+  free(json);
+}
+
 static tk_agent_snapshot static_working_snapshot(tk_agent_provider provider,
                                                  const char *model,
                                                  const char *effort) {
@@ -465,21 +488,22 @@ static void platform_tour_cb(lv_timer_t *t) {
 
 /* Tangent 1-4: Solelkollen-fixtur. T: mata VibePulse. S: nästa agentläge.
  * L: launchern. [ och ] bläddrar VibePulse-sidor; N byter app (KEY3).
- * M: nästa Max Tracker-fixtur. LVGL:s SDL-drivrutin
+ * M: nästa Max Tracker-fixtur. G: simulera en ny GitHub-stjärna.
+ * LVGL:s SDL-drivrutin
  * pumpar eventen, så ren tangentbordspollning räcker — ingen indev-
  * rördragning för ett bänkverktyg. */
 static void poll_keys(lv_timer_t *t) {
   (void)t;
-  static bool held[11];
+  static bool held[12];
   const Uint8 *ks = SDL_GetKeyboardState(NULL);
-  const SDL_Scancode keys[11] = { SDL_SCANCODE_1, SDL_SCANCODE_2,
+  const SDL_Scancode keys[12] = { SDL_SCANCODE_1, SDL_SCANCODE_2,
                                   SDL_SCANCODE_3, SDL_SCANCODE_4,
                                   SDL_SCANCODE_T, SDL_SCANCODE_S,
                                   SDL_SCANCODE_L, SDL_SCANCODE_N,
                                   SDL_SCANCODE_LEFTBRACKET,
                                   SDL_SCANCODE_RIGHTBRACKET,
-                                  SDL_SCANCODE_M };
-  for (int i = 0; i < 11; i++) {
+                                  SDL_SCANCODE_M, SDL_SCANCODE_G };
+  for (int i = 0; i < 12; i++) {
     bool down = ks[keys[i]];
     if (down && !held[i]) {
       if (i < 4) {
@@ -501,7 +525,12 @@ static void poll_keys(lv_timer_t *t) {
         if (view >= TK_USAGE_SCREEN_VIEWS) view = 0;
         tokens_show_view(view);
       }
-      else apply_max_tracker_fixture(max_tracker_fixture_idx + 1);
+      else if (i == 10)
+        apply_max_tracker_fixture(max_tracker_fixture_idx + 1);
+      else {
+        torget_app_show(SIM_APP_VIBEPULSE);
+        apply_github_file("github-star.json", true);
+      }
     }
     held[i] = down;
   }
@@ -659,6 +688,27 @@ static int run_vibepulse_static_qa(void) {
   dump_frame("vibepulse-claude-missing");
   tokens_show_view(VIEW_CODEX_WEEKLY);
   dump_frame("vibepulse-codex-missing");
+
+  /* GitHub is one optional full-screen project section: stars dominate,
+   * forks stay secondary, and provenance is tested with identical metrics. */
+  apply_github_file("github.json", false);
+  tokens_show_view(VIEW_GITHUB);
+  dump_frame("vibepulse-github-live");
+  apply_github_file("github-stale.json", false);
+  dump_frame("vibepulse-github-cached");
+  apply_github_file("github-missing.json", false);
+  dump_frame("vibepulse-github-missing");
+
+  /* The same simulated star event overlays an unrelated current page and
+   * hides without changing that page. Motion is intentionally not part of
+   * this static gate. */
+  apply_github_file("github.json", false);
+  tokens_show_view(VIEW_CODEX_WEEKLY);
+  dump_frame("vibepulse-github-popup-before");
+  apply_github_file("github-star.json", true);
+  dump_frame("vibepulse-github-star-popup");
+  usage_screen_tick(torget_now_us() + 121000000LL);
+  dump_frame("vibepulse-github-popup-return");
 
   tk_agent_snapshot attention = static_attention_snapshot(
       TK_AGENT_PROVIDER_CLAUDE, TK_AGENT_WAITING,
@@ -818,7 +868,7 @@ int main(int argc, char **argv) {
   setvbuf(stdout, NULL, _IOLBF, 0);
   lv_init();
   lv_display_t *disp = lv_sdl_window_create(480, 480);
-  lv_sdl_window_set_title(disp, "Torget 480x480 — S agentstatus, T VibePulse, M Max Tracker, [ och ] VibePulse-vy, N nästa app, L launcher");
+  lv_sdl_window_set_title(disp, "Torget 480x480 — G GitHub-star, S agentstatus, T VibePulse, M Max Tracker, [ och ] vy, N nästa app, L launcher");
   lv_sdl_mouse_create();
 
   torget_ui_create(); /* bygger apparna via registret, går in i app 0 */

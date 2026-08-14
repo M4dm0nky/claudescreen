@@ -6,14 +6,21 @@
 #include "agent_assets.h"
 #include "agent_monitor.h"
 #include "app_tokens.h"
+#include "app_tokens_config.h"
+#include "github_status.h"
 #include "max_tracker.h"
 #include "max_tracker_presenter.h"
+#include "project_star_event.h"
+#include "project_star_chime.h"
+#include "project_star_popup.h"
 #include "torget.h"
 #include "usage_live_policy.h"
 #include "usage_presenter.h"
 #include "vibepulse_layout.generated.h"
 
 extern const lv_font_t plex_num_164;
+extern const lv_font_t plex_num_118;
+extern const lv_font_t plex_num_84;
 extern const lv_font_t plex_num_38;
 extern const lv_font_t plex_headline_48;
 extern const lv_font_t plex_stat_35;
@@ -34,6 +41,7 @@ extern const lv_font_t plex_text_17;
 #define COL_WHITE     lv_color_hex(VP_COLOR_TEXT)
 #define COL_CLAUDE    lv_color_hex(VP_COLOR_CLAUDE)
 #define COL_CODEX     lv_color_hex(VP_COLOR_CODEX)
+#define COL_STAR      lv_color_hex(VP_COLOR_STAR)
 #define COL_CLAUDE_MUTED lv_color_hex(0x8A4F42)
 #define COL_CODEX_MUTED  lv_color_hex(0x454B8A)
 #define COL_DOT       lv_color_hex(0x41444A)
@@ -123,12 +131,24 @@ typedef struct {
   bool quota_stale;
 } tracker_page;
 
+typedef struct {
+  lv_obj_t *tile;
+  lv_obj_t *project;
+  lv_obj_t *provenance;
+  lv_obj_t *stars;
+  lv_obj_t *forks;
+  bool has_data;
+} github_page;
+
 static struct {
   lv_obj_t *tileview;
   lv_obj_t *tiles[TK_USAGE_SCREEN_VIEWS];
   quota_page quotas[3];
   forecast_row forecast_rows[2];
   tracker_page trackers[2];
+#if TK_GITHUB_SCREEN_ENABLED
+  github_page github;
+#endif
   tk_agent_snapshot agent_snapshot;
   int64_t agent_applied_at_us;
   int64_t last_now_us;
@@ -269,7 +289,7 @@ static void create_analytics_header(lv_obj_t *tile, const char *title,
 }
 
 static void create_pager(lv_obj_t *tile, int active) {
-  int x = 209;
+  int x = TK_USAGE_SCREEN_VIEWS == 6 ? 209 : 198;
   for (int i = 0; i < TK_USAGE_SCREEN_VIEWS; i++) {
     int width = i == active ? 18 : 6;
     lv_obj_t *dot = bare(tile);
@@ -281,6 +301,102 @@ static void create_pager(lv_obj_t *tile, int active) {
     x += width + 5;
   }
 }
+
+#if TK_GITHUB_SCREEN_ENABLED
+static lv_obj_t *new_tile(int index);
+
+static void compact_count(int32_t value, char *out, size_t cap) {
+  if (value < 1000000) {
+    snprintf(out, cap, "%ld", (long)value);
+  } else if (value < 1000000000) {
+    snprintf(out, cap, "%.1fM", (double)value / 1000000.0);
+  } else {
+    snprintf(out, cap, "%.1fB", (double)value / 1000000000.0);
+  }
+}
+
+static void set_star_hero(int32_t stars) {
+  char text[24];
+  const lv_font_t *font = &plex_num_164;
+  if (stars <= 999) {
+    snprintf(text, sizeof text, "%ld", (long)stars);
+  } else if (stars <= 99999) {
+    font = &plex_num_118;
+    snprintf(text, sizeof text, "%ld", (long)stars);
+  } else if (stars <= 999999) {
+    font = &plex_num_84;
+    snprintf(text, sizeof text, "%ld", (long)stars);
+  } else {
+    font = &plex_stat_35;
+    compact_count(stars, text, sizeof text);
+  }
+  lv_obj_set_style_text_font(ui.github.stars, font, 0);
+  lv_label_set_text(ui.github.stars, text);
+}
+
+static void create_github_page(void) {
+  github_page *page = &ui.github;
+  memset(page, 0, sizeof *page);
+  page->tile = new_tile(VIEW_GITHUB);
+
+  lv_obj_t *heading = label(page->tile, &plex_ui_21, COL_WHITE,
+                            VP_SAFE_X, 23, 170, 30);
+  lv_obj_set_style_text_letter_space(heading, 2, 0);
+  lv_label_set_text(heading, "GITHUB");
+  page->project = label(page->tile, &plex_ui_14, COL_META,
+                        180, 21, 278, 18);
+  lv_obj_set_style_text_align(page->project, LV_TEXT_ALIGN_RIGHT, 0);
+  page->provenance = label(page->tile, &plex_ui_12, COL_MUTED,
+                           280, 42, 178, 16);
+  lv_obj_set_style_text_align(page->provenance, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_set_style_text_letter_space(page->provenance, 2, 0);
+  create_hairline(page->tile, HEADER_LINE_Y);
+
+  lv_obj_t *stars_label = label(page->tile, &plex_ui_21, COL_STAR,
+                                VP_SAFE_X, 88, VP_CONTENT_W, 30);
+  lv_obj_set_style_text_align(stars_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_letter_space(stars_label, 3, 0);
+  lv_label_set_text(stars_label, "STARS");
+
+  page->stars = label(page->tile, &plex_num_164, COL_WHITE,
+                      16, 128, 448, 190);
+  lv_obj_set_style_text_align(page->stars, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_letter_space(page->stars, -7, 0);
+  lv_label_set_text(page->stars, "–");
+
+  create_hairline(page->tile, 354);
+  lv_obj_t *forks_label = label(page->tile, &plex_ui_14, COL_MUTED,
+                                VP_SAFE_X, 378, VP_CONTENT_W, 20);
+  lv_obj_set_style_text_align(forks_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_letter_space(forks_label, 2, 0);
+  lv_label_set_text(forks_label, "FORKS");
+  page->forks = label(page->tile, &plex_stat_35, COL_WHITE,
+                      VP_SAFE_X, 407, VP_CONTENT_W, 43);
+  lv_obj_set_style_text_align(page->forks, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(page->forks, "–");
+  create_pager(page->tile, VIEW_GITHUB);
+}
+
+static void apply_github_page(const tk_github_status *status) {
+  github_page *page = &ui.github;
+  lv_label_set_text(page->project, status->project);
+  lv_label_set_text(page->provenance,
+                    !status->has_data ? "WAITING" :
+                    status->stale ? "CACHED" : "LIVE");
+  if (!status->has_data) {
+    lv_obj_set_style_text_font(page->stars, &plex_num_164, 0);
+    lv_label_set_text(page->stars, "–");
+    lv_label_set_text(page->forks, "–");
+    page->has_data = false;
+    return;
+  }
+  set_star_hero(status->stars);
+  char forks[24];
+  compact_count(status->forks, forks, sizeof forks);
+  lv_label_set_text(page->forks, forks);
+  page->has_data = true;
+}
+#endif
 
 static lv_obj_t *new_tile(int index) {
   lv_dir_t direction = index == 0 ? LV_DIR_RIGHT :
@@ -698,6 +814,14 @@ void usage_screen_create(lv_obj_t *root) {
   create_burn_rate_page();
   create_tracker_page(&ui.trackers[0], VIEW_TRACKER_CLAUDE, false);
   create_tracker_page(&ui.trackers[1], VIEW_TRACKER_CODEX, true);
+#if TK_GITHUB_SCREEN_ENABLED
+  create_github_page();
+#endif
+#if TK_GITHUB_NOTIFICATIONS_ENABLED
+  /* Created before the agent monitor: NEEDS YOU/ERROR/DONE always retain
+   * transient priority over a project star. */
+  tk_project_star_popup_create(root);
+#endif
   tk_agent_monitor_create(root);
 }
 
@@ -713,6 +837,30 @@ void usage_screen_apply_tokens(const tk_tokens *tokens) {
 void usage_screen_apply_max_tracker(const tk_max_tracker *t) {
   if (!t) return;
   for (int i = 0; i < 2; i++) apply_tracker_page(&ui.trackers[i], t);
+}
+
+void usage_screen_apply_github(const tk_github_status *status) {
+  if (!status || !status->enabled) return;
+#if TK_GITHUB_SCREEN_ENABLED
+  apply_github_page(status);
+#endif
+#if TK_GITHUB_NOTIFICATIONS_ENABLED
+  if (status->has_event && !status->stale) {
+    tk_project_star_event event = {0};
+    snprintf(event.id, sizeof event.id, "%s", status->event_id);
+    snprintf(event.source, sizeof event.source, "GITHUB");
+    snprintf(event.repo, sizeof event.repo, "%s", status->repo);
+    snprintf(event.project, sizeof event.project, "%s", status->project);
+    event.stars = status->event_stars;
+    event.has_actor = status->has_actor;
+    if (status->has_actor)
+      snprintf(event.actor, sizeof event.actor, "%s", status->actor);
+    if (tk_project_star_popup_show(&event, ui.last_now_us)) {
+      torget_keep_awake();
+      (void)tk_project_star_chime_request();
+    }
+  }
+#endif
 }
 
 void usage_screen_apply_agent(const tk_agent_snapshot *snapshot,
@@ -732,6 +880,9 @@ void usage_screen_tick(int64_t now_us) {
   for (int i = 0; i < 3; i++) refresh_header(&ui.quotas[i], now_us);
   for (int i = 0; i < 2; i++) refresh_tracker_header(&ui.trackers[i], now_us);
   tk_agent_monitor_tick(now_us);
+#if TK_GITHUB_NOTIFICATIONS_ENABLED
+  tk_project_star_popup_tick(now_us);
+#endif
 }
 
 void usage_screen_set_stale(bool stale) {

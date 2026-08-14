@@ -145,6 +145,12 @@ EXPECTED = {
     "torget-vibepulse-codex-multi-chat.bmp",
     "torget-vibepulse-codex-idle.bmp",
     "torget-vibepulse-codex-stale.bmp",
+    "torget-vibepulse-github-live.bmp",
+    "torget-vibepulse-github-cached.bmp",
+    "torget-vibepulse-github-missing.bmp",
+    "torget-vibepulse-github-popup-before.bmp",
+    "torget-vibepulse-github-star-popup.bmp",
+    "torget-vibepulse-github-popup-return.bmp",
     "torget-vibepulse-claude-today-missing.bmp",
     "torget-vibepulse-claude-today-contradictory.bmp",
     "torget-vibepulse-claude-zero-total.bmp",
@@ -216,6 +222,37 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
         for name in sorted(EXPECTED):
             with self.subTest(name=name):
                 self.assertEqual(self.image(name).size, (480, 480))
+
+    def test_github_star_popup_uses_full_black_stage_and_large_filled_star(self):
+        before = self.image("torget-vibepulse-github-popup-before.bmp")
+        popup = self.image("torget-vibepulse-github-star-popup.bmp")
+        gold = (242, 184, 75)
+
+        # The former Codex header hairline is fully covered, not merely
+        # readable through a phone-notification-style translucent panel.
+        self.assertNotEqual(before.getpixel((240, 63)), (0, 0, 0))
+        self.assertEqual(popup.getpixel((240, 63)), (0, 0, 0))
+        self.assertNotIn(
+            (111, 120, 255),
+            popup.crop((0, 55, 480, 75)).get_flattened_data(),
+        )
+
+        hero = list(popup.crop((130, 80, 350, 300)).get_flattened_data())
+        self.assertGreater(sum(pixel == gold for pixel in hero), 9000)
+        self.assertEqual(popup.getpixel((240, 190)), gold)
+
+        header = list(popup.crop((16, 16, 464, 50)).get_flattened_data())
+        actor = list(popup.crop((20, 327, 460, 357)).get_flattened_data())
+        total = list(popup.crop((140, 378, 440, 426)).get_flattened_data())
+        self.assertTrue(any(pixel != (0, 0, 0) for pixel in header))
+        self.assertIn((255, 255, 255), actor)
+        self.assertIn(gold, total)
+        self.assertIn((255, 255, 255), total)
+
+    def test_github_star_popup_returns_to_identical_previous_frame(self):
+        before = self.image("torget-vibepulse-github-popup-before.bmp")
+        returned = self.image("torget-vibepulse-github-popup-return.bmp")
+        self.assertEqual(returned.tobytes(), before.tobytes())
 
     def test_ota_ring_states_show_honest_arc_and_center(self):
         """Ringen (riktning A, 2026-08-14): bågens mitt är (240, 268), band-
@@ -796,8 +833,8 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
                 self.assertNotEqual(image.getpixel((rect[2] + 1, mid_y)),
                                     MAX_RED)
 
-    def test_tracker_pager_shows_six_dots(self):
-        # TK_USAGE_SCREEN_VIEWS == 6: create_pager draws one dot per view,
+    def test_tracker_pager_shows_seven_dots_in_github_simulator(self):
+        # The simulator opts into GitHub, so create_pager draws seven dots,
         # the active one 18px wide and the rest 6px, all on one pixel row
         # with nothing else sharing it — so counting horizontal runs of
         # non-black pixels on that row is an exact dot count and pattern.
@@ -811,7 +848,7 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
             with self.subTest(name=name):
                 image = self.image(name)
                 runs = dot_runs(image, PAGER_ROW_Y)
-                self.assertEqual(len(runs), 6)
+                self.assertEqual(len(runs), 7)
                 widths = [end - start + 1 for start, end in runs]
                 self.assertEqual(widths[active_index], 18)
                 for i, width in enumerate(widths):

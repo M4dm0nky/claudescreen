@@ -302,10 +302,97 @@ def odometer():
     return s + TAIL
 
 
+# ------------------------------------------- 11. needs you: the v1 question
+def needs_you_question():
+    """The v1 answering screen: Claude's own recommendation, one accept.
+
+    The options Claude generated are NOT rendered here — v1 shows the option
+    it recommends and sends everyone who wants the alternatives back to the
+    terminal. Nothing is accepted by silence; the countdown says so.
+    """
+    s = head("Needs you: Claude recommends new auth layer, with approve and leave it")
+    s += f'<rect x="14" y="14" width="452" height="452" rx="40" fill="none" stroke="{CLAUDE}" stroke-width="2"/>'
+    s += t(240, 48, "CLAUDE · VIBEPULSE", 20, CLAUDE, 700, 3.4, "middle")
+    # the question is context; the recommendation is the thing you act on
+    s += t(240, 92, "Which authentication approach?", 22, MUTED, 500, 0, "middle")
+    s += f'<rect x="{SAFE}" y="116" width="{CW}" height="140" rx="12" fill="#0B0F15" stroke="{HAIR}"/>'
+    s += t(240, 150, "CLAUDE RECOMMENDS", 16, CLAUDE, 700, 2.6, "middle", MONO)
+    s += t(240, 196, "New auth layer", 38, TEXT, 700, -0.5, "middle")
+    s += t(240, 228, "Cleaner architecture", 19, MUTED, 400, 0, "middle")
+    # one committing control, full width
+    s += f'<rect x="{SAFE}" y="278" width="{CW}" height="70" rx="12" fill="#0E1F19" stroke="{GO}" stroke-width="2"/>'
+    s += t(240, 322, "APPROVE", 24, GO, 700, 2.4, "middle")
+    s += f'<rect x="{SAFE}" y="362" width="{CW}" height="54" rx="12" fill="none" stroke="{TRACK}" stroke-width="2" stroke-dasharray="6 5"/>'
+    s += t(240, 396, "LEAVE IT — MORE OPTIONS IN TERMINAL", 17, MUTED, 600, 1.6, "middle")
+    s += t(240, 446, "118s LEFT · THEN THE TERMINAL ASKS", 16, DIM, 500, 1.6, "middle")
+    return s + TAIL
+
+
+# -------------------------------- 12. needs you: the full list (v2 concept)
+def needs_you_options():
+    """v2 only, and only if v1 proves people want it: every option, with
+    select-then-confirm so a mis-tap cannot answer anything. Rows are 64 px
+    (~5 mm) which is below the comfortable touch minimum — hence the separate
+    confirm."""
+    s = head("Needs you: four options with select then confirm")
+    s += f'<rect x="14" y="14" width="452" height="452" rx="40" fill="none" stroke="{CLAUDE}" stroke-width="2"/>'
+    s += t(240, 46, "CLAUDE · VIBEPULSE", 20, CLAUDE, 700, 3.4, "middle")
+    s += t(SAFE, 92, "How should I migrate?", 26, TEXT, 600, -0.3)
+    rows = [
+        ("A", "Expand-and-contract", True),
+        ("B", "Big-bang migration", False),
+        ("C", "Dual-write shadow", False),
+        ("D", "Keep current schema", False),
+    ]
+    y = 114
+    for key, label, selected in rows:
+        stroke = CLAUDE if selected else HAIR
+        col = TEXT if selected else MUTED
+        keycol = CLAUDE if selected else DIM
+        s += (f'<rect x="{SAFE}" y="{y}" width="{CW}" height="64" rx="12" '
+              f'fill="none" stroke="{stroke}" stroke-width="2"/>')
+        s += t(SAFE + 22, y + 40, key, 21, keycol, 700, 0, "start", MONO)
+        s += t(SAFE + 54, y + 41, label, 24, col, 600, -0.2)
+        y += 72
+    # the description of what is selected, then the only committing tap
+    s += t(SAFE, 424, "Safest with live traffic", 17, MUTED, 400, 0)
+    s += f'<rect x="278" y="402" width="180" height="52" rx="26" fill="{CLAUDE}"/>'
+    s += t(368, 436, "CONFIRM A", 20, BG, 700, 1.5, "middle")
+    return s + TAIL
+
+
+# ------------------------------------------- 13. needs you: done, no filler
+def needs_you_done():
+    """Completion with verification, and exactly one genuine next action.
+    Zero actions is the honest default — the schema allows an empty list and
+    the panel renders nothing rather than inventing CONTINUE or REVIEW."""
+    s = head("Done: GitHub star notification added, build and tests green, one next action")
+    s += f'<rect x="14" y="14" width="452" height="452" rx="40" fill="none" stroke="{GO}" stroke-width="2"/>'
+    s += t(240, 48, "CLAUDE · VIBEPULSE", 20, MUTED, 700, 3.4, "middle")
+    s += t(240, 116, "DONE", 72, GO, 700, -1, "middle")
+    s += t(240, 158, "GitHub star notification added", 22, TEXT, 500, 0, "middle")
+    # verification: facts the bridge can check itself, not a claim from the model
+    s += f'<rect x="{SAFE}" y="192" width="{CW}" height="92" rx="12" fill="#0B0F15" stroke="{HAIR}"/>'
+    s += t(115, 232, "BUILD", 15, MUTED, 600, 1.8, "middle")
+    s += t(115, 262, "PASS", 26, GO, 700, 0, "middle")
+    s += t(240, 232, "TESTS", 15, MUTED, 600, 1.8, "middle")
+    s += t(240, 262, "PASS", 26, GO, 700, 0, "middle")
+    s += t(365, 232, "FILES", 15, MUTED, 600, 1.8, "middle")
+    s += t(365, 262, "6", 26, TEXT, 700, 0, "middle")
+    # the single action Claude can genuinely execute; never manufactured
+    s += f'<rect x="{SAFE}" y="312" width="{CW}" height="66" rx="12" fill="none" stroke="{CLAUDE}" stroke-width="2"/>'
+    s += t(240, 353, "TEST A STAR", 23, CLAUDE, 700, 2.2, "middle")
+    s += t(240, 424, "TAP TO DISMISS", 17, DIM, 600, 1.8, "middle")
+    return s + TAIL
+
+
 MOCKUPS = {
     "latency-meter": latency,
     "approval-prompt": approval,
     "approval-truncated": approval_truncated,
+    "needs-you-question": needs_you_question,
+    "needs-you-options": needs_you_options,
+    "needs-you-done": needs_you_done,
     "panic-stop": panic,
     "review-debt": review_debt,
     "go-no-go": go_no_go,

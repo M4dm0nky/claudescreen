@@ -28,41 +28,60 @@ rather than repeated.
 
 ---
 
-## What you would actually see
+## The approved design direction (2026-08-16)
 
-Three concept frames, exact 480 x 480, regenerated with
-`python3 tools/mockups/gen_concept_mockups.py`.
+Five frames, exact 480 x 480, regenerated with
+`python3 tools/mockups/gen_needsyou_v2.py`. **Approved by the owner as the
+direction** after two expert critiques (small-display ergonomics; the
+vibecoder's shelf-photo test) and a less-is-more audit. Approved as
+*concepts*: the LVGL raster remains the visual authority, the LVGL captures
+still need Studio approval, and nothing here authorizes a flash.
 
-> ⚠️ **Concept mockups.** Not Studio captures, not approved design, not
-> physically reviewed, no flash implied. They show intent, not an LVGL port.
+![Attract stage](img/mockups/needs-you-v2-attract.png)
+![Question](img/mockups/needs-you-v2-question.png)
+![Approval](img/mockups/needs-you-v2-approval.png)
+![Private](img/mockups/needs-you-v2-private.png)
+![Payoff](img/mockups/needs-you-v2-payoff.png)
 
-### The v1 question screen
+What the direction locks:
 
-![Needs you: Claude recommends new auth layer, with approve and leave it](img/mockups/needs-you-question.png)
+- **Two-stage summon.** Stage A (attract) is the old alert's soul — mascot in
+  a ring, one huge word — with the ring now a **depleting countdown**: the
+  timer is pre-attentive, and the "118s left" text is gone. Any tap brings the
+  decision screen. One dominant thing at both distances.
+- **The mascot is back and emotes**, cell-accurate to the shipped asset,
+  integer pixel scales only: asking (cocked eye, raised arm), alert
+  (attract), happy chevron-eyes ^ ^ (payoff). It never begs, never sulks at a
+  deny, never gestures at the recommended option.
+- **Touch floor is law: every target ≥ 90 px** (the v1 screens undershot
+  their own 7 mm floor by ~40%). APPROVE is a filled 96 px slab — outline
+  pills vanish at distance. DENY is restrained red (`#E5484D`), a deliberate,
+  contained break of the one-accent rule for the one destructive control, and
+  exists **only where the command is readable**. LEAVE IT stays gray.
+- **The payload is the hero and it is sacred**: the command in large Plex
+  Mono directly on black, tool demoted to a chip; never decorated,
+  paraphrased or truncated-for-a-joke. Personality lives in the chrome only.
+- **Less is more, enforced**: no text under 14 px, no two lines carrying one
+  idea, three type roles per screen, project name demoted into the eyebrow,
+  the question footer is the honest option count ("1 MORE OPTION IN
+  TERMINAL", from `options_total`).
+- **The private screen has no buttons.** With nothing readable there is no
+  decision: tap anywhere hands the prompt to the terminal immediately; the
+  mascot renders at 60% so public-vs-private reads across the room by
+  brightness; KEY3 long-press remains the emergency deny-everything.
+  Blind-deny buttons were removed as a footgun.
+- **The persuasion ceiling**: filled APPROVE directly under CLAUDE RECOMMENDS
+  is the maximum acceptable nudge. No animation toward the button, no mascot
+  gaze at it. The ring always maps to the real terminal-fallback time; the
+  payoff's echo line is always the verbatim approved item. The payoff
+  *animation* waits behind the motion gate; v2 ships it as a static beat.
 
-The decision this document lands on. Claude's **own** recommended option is the
-hero; one APPROVE target commits it; LEAVE IT sends the decision back to the
-terminal. The alternatives are deliberately **not** rendered in v1 — anyone who
-wants them walks back to the desk. The countdown says what happens if you do
-nothing: the terminal asks. Nothing is ever accepted by silence.
+### Superseded earlier concepts
 
-### The full option list — v2 only, if v1 earns it
-
-![Needs you: four options with select then confirm](img/mockups/needs-you-options.png)
-
-Four 64 px rows is ~5.2 mm per target, below the comfortable touch minimum,
-which is why tapping a row only *moves the selection* and a separate CONFIRM is
-the only committing tap. A mis-tap costs nothing. Build this only if real usage
-shows people want the alternatives on the glass.
-
-### Completion, with no manufactured work
-
-![Done: GitHub star notification added, build and tests green, one next action](img/mockups/needs-you-done.png)
-
-Verification facts the bridge can check for itself, and **at most two** genuine
-next actions — schema-enforced, not prompt-enforced. Zero actions is the honest
-default and renders as DONE with no buttons. CONTINUE, REVIEW, MORE and NEXT
-never appear.
+`needs-you-question/options/done.png` under `img/mockups/` are the v1
+concepts this direction replaces (kept for the record). The select-then-
+confirm option list and the DONE/next-action screen remain future work and
+will be redrawn in this design language when their stages arrive.
 
 ---
 

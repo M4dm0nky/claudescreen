@@ -2014,6 +2014,43 @@ def _run_max_tracker_backfill(store, stop_event):
             break
 
 
+def _read_github_token():
+    """A read-only GitHub token for the stargazer read, from env or a
+    git-ignored file. Never committed; only ever sent to api.github.com.
+
+    Order: ``GITHUB_TOKEN``/``TG_GITHUB_TOKEN`` env, then ``~/.torget-github-token``
+    (stable across worktrees), then ``<repo>/.github-token``. A dedicated
+    fine-grained token scoped to public repositories, read-only, is enough --
+    GitHub only requires the request to be *authenticated*, not privileged.
+    """
+    for name in ("GITHUB_TOKEN", "TG_GITHUB_TOKEN"):
+        value = os.environ.get(name)
+        if value and value.strip():
+            return value.strip()
+    repo_root = Path(__file__).resolve().parents[2]
+    for path in (Path.home() / ".torget-github-token",
+                 repo_root / ".github-token"):
+        try:
+            token = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if token:
+            return token
+    # secrets.h -- the git-ignored C secret store, home of TG_OTA_TOKEN.
+    # Parsed the same way tools/ota-flash.sh reads its token:
+    #   #define TG_GITHUB_TOKEN "github_pat_..."
+    try:
+        header = (repo_root / "secrets.h").read_text(
+            encoding="utf-8", errors="ignore")
+        match = re.search(
+            r'#\s*define\s+TG_GITHUB_TOKEN\s+"([^"]+)"', header)
+        if match and match.group(1).strip():
+            return match.group(1).strip()
+    except OSError:
+        pass
+    return None
+
+
 def main():
     ap = _build_arg_parser()
     args = ap.parse_args()
@@ -2044,10 +2081,12 @@ def main():
 
     github_monitor = None
     if args.github_repo:
-        github_monitor = GitHubMonitor(args.github_repo)
+        github_token = _read_github_token()
+        github_monitor = GitHubMonitor(args.github_repo, token=github_token)
         github_monitor.start()
-        log.info("GitHub-monitor startad för publika repot %s",
-                 args.github_repo)
+        log.info("GitHub-monitor startad för publika repot %s (stargazare: %s)",
+                 args.github_repo,
+                 "auth" if github_token else "anonym — namn blir 'någon'")
     Handler.github_monitor = github_monitor
 
     Handler.projects_dir = Path(args.dir)

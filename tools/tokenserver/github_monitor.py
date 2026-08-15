@@ -38,9 +38,15 @@ def normalize_repo(value: str) -> str:
 class GitHubMonitor:
     """Poll one public repository without ever raising into tokenserver."""
 
-    def __init__(self, repo, *, opener=None, clock=None, wall_clock=None,
-                 poll_seconds=POLL_SECONDS):
+    def __init__(self, repo, *, token=None, opener=None, clock=None,
+                 wall_clock=None, poll_seconds=POLL_SECONDS):
         self.repo = normalize_repo(repo)
+        # A read-only token. GitHub requires auth for the star+json media type
+        # (the "who starred, and when" read) even on a PUBLIC repo -- without
+        # it that call 401s and the star popup can only ever say "someone".
+        # The plain repo/count read stays fine unauthenticated; the token just
+        # lifts the stargazer read and the rate limit.
+        self._token = (token or "").strip() or None
         self._opener = opener or urllib.request.urlopen
         self._clock = clock or time.monotonic
         self._wall_clock = wall_clock or time.time
@@ -57,14 +63,16 @@ class GitHubMonitor:
         self._last_error = None
         self._next_poll_at = 0.0
 
-    @staticmethod
-    def _headers(stargazers=False):
-        return {
+    def _headers(self, stargazers=False):
+        headers = {
             "Accept": ("application/vnd.github.star+json" if stargazers
                        else "application/vnd.github+json"),
             "User-Agent": "VibePulse-public-repo-monitor/1",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        return headers
 
     def _fetch_json(self, url, *, stargazers=False):
         request = urllib.request.Request(
@@ -88,29 +96,37 @@ class GitHubMonitor:
             return None
 
     def _latest_stargazer(self, count):
-        page = max(1, (count - 1) // 100 + 1)
+        """Newest starrer, read the READ-ONLY way, via the repo events feed.
+
+        The REST stargazers list with ``starred_at`` is gated behind a WRITE
+        permission (GitHub answers ``X-Accepted-GitHub-Permissions:
+        metadata=read; contents=write`` and 403s a read-only token). The public
+        repository events feed carries the same fact -- a ``WatchEvent`` is a
+        star, with its ``actor`` and ``created_at`` -- and needs only
+        ``metadata=read``, the least privilege this popup should ever hold. The
+        feed is newest-first, so the first ``WatchEvent`` is the latest star.
+
+        ``count`` is unused now (the events feed needs no pagination) but the
+        signature stays so the caller is untouched.
+        """
+        del count
         owner, repo = (urllib.parse.quote(part, safe="")
                        for part in self.repo.split("/", 1))
-        url = (f"https://api.github.com/repos/{owner}/{repo}/stargazers"
-               f"?per_page=100&page={page}")
-        payload = self._fetch_json(url, stargazers=True)
+        url = (f"https://api.github.com/repos/{owner}/{repo}/events"
+               f"?per_page=30")
+        payload = self._fetch_json(url)
         if not isinstance(payload, list):
-            raise ValueError("GitHub stargazers response was not a list")
-
-        candidates = []
+            raise ValueError("GitHub events response was not a list")
         for item in payload:
-            if not isinstance(item, dict):
+            if not isinstance(item, dict) or item.get("type") != "WatchEvent":
                 continue
-            user = item.get("user")
-            login = user.get("login") if isinstance(user, dict) else None
-            starred_at = self._parse_star_time(item.get("starred_at"))
-            if isinstance(login, str) and login and starred_at is not None:
-                candidates.append((starred_at, login))
-        if not candidates:
-            return None, None
-        starred_at, login = max(candidates, key=lambda pair: pair[0])
-        return login, starred_at.astimezone(timezone.utc).isoformat().replace(
-            "+00:00", "Z")
+            actor = item.get("actor")
+            login = actor.get("login") if isinstance(actor, dict) else None
+            created = self._parse_star_time(item.get("created_at"))
+            if isinstance(login, str) and login and created is not None:
+                return login, created.astimezone(
+                    timezone.utc).isoformat().replace("+00:00", "Z")
+        return None, None
 
     @staticmethod
     def _retry_delay(error, wall_now):

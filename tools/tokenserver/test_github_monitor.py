@@ -77,14 +77,20 @@ class GitHubMonitorTests(unittest.TestCase):
 
     def test_count_increase_publishes_latest_actor_and_new_count(self):
         clock = Clock()
+        # The newest star is read the READ-ONLY way -- from the events feed
+        # (metadata=read), not the write-gated stargazers list. The feed is
+        # newest-first; the first WatchEvent wins and non-star events are
+        # skipped.
         opener = Opener([
             repo(41),
             repo(42),
             [
-                {"starred_at": "2026-08-14T18:01:00Z",
-                 "user": {"login": "earlier"}},
-                {"starred_at": "2026-08-14T18:02:00Z",
-                 "user": {"login": "octocat"}},
+                {"type": "PushEvent", "actor": {"login": "pusher"},
+                 "created_at": "2026-08-14T18:03:00Z"},
+                {"type": "WatchEvent", "actor": {"login": "octocat"},
+                 "created_at": "2026-08-14T18:02:00Z"},
+                {"type": "WatchEvent", "actor": {"login": "earlier"},
+                 "created_at": "2026-08-14T18:01:00Z"},
             ],
         ])
         monitor = GitHubMonitor("niclas/vibepulse", opener=opener,
@@ -98,11 +104,10 @@ class GitHubMonitorTests(unittest.TestCase):
         self.assertEqual(snap["actor"], "octocat")
         self.assertEqual(snap["eventStars"], 42)
         self.assertEqual(snap["eventId"], "2026-08-14T18:02:00Z")
-        star_request = opener.requests[-1][0]
-        self.assertIn("/stargazers?per_page=100&page=1",
-                      star_request.full_url)
-        self.assertEqual(star_request.headers["Accept"],
-                         "application/vnd.github.star+json")
+        events_request = opener.requests[-1][0]
+        self.assertIn("/events?per_page=30", events_request.full_url)
+        self.assertEqual(events_request.headers["Accept"],
+                         "application/vnd.github+json")
 
     def test_count_only_event_survives_stargazer_failure(self):
         clock = Clock()

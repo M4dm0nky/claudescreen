@@ -308,6 +308,43 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(
             body["hookSpecificOutput"]["decision"]["behavior"], "deny")
 
+    def test_unmarked_questions_are_alert_only(self):
+        # Claude did not mark a recommendation, so there is nothing the panel
+        # may claim and commit on one tap. First-option is a convention, not
+        # a recommendation — the design doc's "never invent a recommendation".
+        entry = self.store.park("question", question_event(options=[
+            {"label": "Redis", "description": "Shared"},
+            {"label": "In-process", "description": "No infra"},
+        ]), 120)
+        public = self.store.pending_public()
+        self.assertFalse(public["marked"])
+        self.assertFalse(public["can_approve"])
+        # the alert still carries enough to walk over on
+        self.assertEqual(public["title"], "Redis")
+        ok, reason = self.answer(entry.request_id, "approve")
+        self.assertFalse(ok)
+        self.assertIn("terminal", reason)
+        # deny and leave_it still work
+        ok, _ = self.answer(entry.request_id, "leave_it")
+        self.assertTrue(ok)
+        self.assertIsNone(self.store.await_verdict(entry))
+
+    def test_marked_questions_stay_approvable_wherever_the_mark_sits(self):
+        entry = self.store.park("question", question_event(options=[
+            {"label": "Redis", "description": "Shared"},
+            {"label": "In-process (Recommended)", "description": "No infra"},
+        ]), 120)
+        public = self.store.pending_public()
+        self.assertTrue(public["marked"])
+        self.assertTrue(public["can_approve"])
+        self.assertEqual(public["title"], "In-process")
+        ok, _ = self.answer(entry.request_id, "approve")
+        self.assertTrue(ok)
+        body = self.store.await_verdict(entry)
+        self.assertEqual(
+            body["hookSpecificOutput"]["updatedInput"]["answers"],
+            {"Which auth approach?": "In-process (Recommended)"})
+
     def test_unreadable_command_cannot_be_approved(self):
         long_command = "npm test -- " + "x" * 200
         self.store.park("approval", approval_event(long_command), 120)

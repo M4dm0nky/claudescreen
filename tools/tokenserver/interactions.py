@@ -215,20 +215,28 @@ def question_view(question: Dict[str, Any],
                   reveal: bool) -> Tuple[Dict[str, Any], int]:
     """Panel view of a question, plus the option index APPROVE would pick."""
     options = question["options"]
+    marked = has_recommendation(options)
     index = recommended_index(options)
     label = strip_recommended(options[index]["label"])
     description = options[index].get("description")
     view: Dict[str, Any] = {
         "kind": "question",
         "options_total": len(options),
-        "marked": has_recommendation(options),
+        "marked": marked,
     }
     if reveal:
         view["prompt"] = _clean_text(question.get("question"), PROMPT_MAX)
         view["title"] = _clean_text(label, TITLE_MAX)
         view["subtitle"] = _clean_text(description, SUBTITLE_MAX)
-        # An answer you could not read in full is not an answer you gave.
-        view["can_approve"] = bool(view["title"]) and \
+        # Two conditions, both about honesty. The label must be readable in
+        # full — an answer you could not read is not an answer you gave. And
+        # Claude must have MARKED the option as recommended: an unmarked
+        # first option is only a convention, and a convention is not a
+        # recommendation the panel may claim and commit on one tap. Unmarked
+        # questions are alert-only (the design doc's "never invent a
+        # recommendation"), so the terminal — which shows every option —
+        # takes those.
+        view["can_approve"] = marked and bool(view["title"]) and \
             not _is_truncated(label, TITLE_MAX)
     else:
         view["can_approve"] = False

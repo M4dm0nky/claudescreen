@@ -27,6 +27,7 @@ enum {
   VIEW_TRACKER_CLAUDE = 4,
   VIEW_TRACKER_CODEX = 5,
   VIEW_GITHUB = 6,
+  VIEW_VALUE = 7,
 };
 
 /* Ett lyckat /api/tokens-svar. Snappar tickern, stämplar färskhet och

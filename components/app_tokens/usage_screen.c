@@ -22,6 +22,8 @@
 extern const lv_font_t plex_num_164;
 extern const lv_font_t plex_num_118;
 extern const lv_font_t plex_num_84;
+extern const lv_font_t plex_money_118;
+extern const lv_font_t plex_money_35;
 extern const lv_font_t plex_num_38;
 extern const lv_font_t plex_headline_48;
 extern const lv_font_t plex_stat_35;
@@ -141,6 +143,18 @@ typedef struct {
   bool has_data;
 } github_page;
 
+typedef struct {
+  lv_obj_t *tile;
+  lv_obj_t *verdict;
+  lv_obj_t *hero;
+  lv_obj_t *attribution;
+  lv_obj_t *track;
+  lv_obj_t *fill[2];      /* one segment per counted provider */
+  lv_obj_t *marker;
+  lv_obj_t *stat_api, *stat_paid;
+  lv_obj_t *cap_api, *cap_break, *cap_paid;
+} value_page;
+
 static struct {
   lv_obj_t *tileview;
   lv_obj_t *tiles[TK_USAGE_SCREEN_VIEWS];
@@ -150,6 +164,8 @@ static struct {
 #if TK_GITHUB_SCREEN_ENABLED
   github_page github;
 #endif
+  value_page value;
+  tk_tokens last_tokens;
   tk_agent_snapshot agent_snapshot;
   int64_t agent_applied_at_us;
   int64_t last_now_us;
@@ -289,17 +305,26 @@ static void create_analytics_header(lv_obj_t *tile, const char *title,
   create_hairline(tile, HEADER_LINE_Y);
 }
 
+/* Centred from the dot geometry rather than a hard-coded origin: the row
+ * grows every time a view is added, and a fixed origin walks it off centre. */
+#define PAGER_DOT 6
+#define PAGER_DOT_ACTIVE 18
+#define PAGER_GAP 5
+#define PAGER_W ((TK_USAGE_SCREEN_VIEWS - 1) * (PAGER_DOT + PAGER_GAP) + \
+                 PAGER_DOT_ACTIVE)
+#define PAGER_X ((VP_SCREEN_W - PAGER_W) / 2)
+
 static void create_pager(lv_obj_t *tile, int active) {
-  int x = TK_USAGE_SCREEN_VIEWS == 6 ? 209 : 198;
+  int x = PAGER_X;
   for (int i = 0; i < TK_USAGE_SCREEN_VIEWS; i++) {
-    int width = i == active ? 18 : 6;
+    int width = i == active ? PAGER_DOT_ACTIVE : PAGER_DOT;
     lv_obj_t *dot = bare(tile);
     lv_obj_set_pos(dot, x, PAGER_Y);
-    lv_obj_set_size(dot, width, 6);
+    lv_obj_set_size(dot, width, PAGER_DOT);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(dot, i == active ? COL_DOT_ON : COL_DOT, 0);
-    x += width + 5;
+    x += width + PAGER_GAP;
   }
 }
 
@@ -515,6 +540,169 @@ static void create_burn_rate_page(void) {
   create_forecast_row(tile, &ui.forecast_rows[1], 270,
                       USAGE_PROVIDER_CODEX);
   create_pager(tile, VIEW_BURN_RATE);
+}
+
+/* Value page.
+ *
+ * One question: did the month cost less on a subscription than it would have
+ * on the API? The verdict says it in words, the hero gives the ratio, and the
+ * bar puts it against a break-even marker at the halfway point.
+ *
+ * It borrows the quota pages' own furniture deliberately -- bar on y=304 at
+ * 24 px with the shared pill radius, the same 3x32 marker, stats on the
+ * family's rows -- because that is what makes it read as this product rather
+ * than as a page from somewhere else. Only the hero font differs, and only
+ * because the 164 px numerals carry no "$" or "x" and adding either would
+ * shift all four approved quota rasters. */
+#define VALUE_HERO_X 18
+#define VALUE_HERO_Y 143   /* ink top lands on 151, the quota hero's own */
+#define VALUE_MONEY_HERO_Y 151
+#define VALUE_WORD_HERO_Y 150
+#define VALUE_VERDICT_Y 72
+#define VALUE_ATTRIB_Y 272
+/* Break-even is half scale, and half the content width is the screen centre. */
+#define VALUE_MARKER_X (VP_SAFE_X + VP_CONTENT_W / 2 - 1)
+/* plex_money_35's line_height is 3 px taller than the quota stat font's, so
+ * y=349 puts its digit ink on the family's 352 row. Do not "fix" to 352. */
+#define VALUE_STAT_Y 349
+
+static void create_value_page(void) {
+  value_page *page = &ui.value;
+  memset(page, 0, sizeof *page);
+  page->tile = new_tile(VIEW_VALUE);
+  create_analytics_header(page->tile, "VALUE", "MONTH TO DATE",
+                          "AT LIST API PRICES");
+
+  page->verdict = label(page->tile, &plex_ui_21, COL_LABEL,
+                        VP_SAFE_X, VALUE_VERDICT_Y, VP_CONTENT_W, 26);
+  lv_obj_set_style_text_letter_space(page->verdict, 2, 0);
+
+  page->hero = label_auto(page->tile, &plex_money_118, COL_WHITE,
+                          VALUE_HERO_X, VALUE_HERO_Y);
+  lv_obj_set_style_text_letter_space(page->hero, -3, 0);
+  lv_label_set_text(page->hero, "–");
+
+  page->attribution = label(page->tile, &plex_ui_16, COL_MUTED,
+                            VP_SAFE_X, VALUE_ATTRIB_Y, VP_CONTENT_W, 22);
+  lv_obj_set_style_text_letter_space(page->attribution, 2, 0);
+
+  page->track = bare(page->tile);
+  lv_obj_set_pos(page->track, VP_SAFE_X, VP_BAR_Y);
+  lv_obj_set_size(page->track, VP_CONTENT_W, VP_BAR_H);
+  lv_obj_set_style_bg_opa(page->track, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(page->track, COL_TRACK, 0);
+  lv_obj_set_style_radius(page->track, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_clip_corner(page->track, true, 0);
+
+  for (int i = 0; i < 2; i++) {
+    page->fill[i] = bare(page->track);
+    lv_obj_set_pos(page->fill[i], 0, 0);
+    lv_obj_set_size(page->fill[i], 0, VP_BAR_H);
+    lv_obj_set_style_bg_opa(page->fill[i], LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(page->fill[i], COL_CLAUDE, 0);
+  }
+
+  /* The family's own break-even mark, 3x32 proud of the bar -- not the 124 px
+   * one this page used to invent. */
+  page->marker = bare(page->tile);
+  lv_obj_set_pos(page->marker, VALUE_MARKER_X, VP_BAR_Y - 4);
+  lv_obj_set_size(page->marker, 3, VP_BAR_H + 8);
+  lv_obj_set_style_bg_opa(page->marker, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(page->marker, COL_WHITE, 0);
+
+  page->stat_api = label(page->tile, &plex_money_35, COL_WHITE,
+                         VP_SAFE_X, VALUE_STAT_Y, 210, 38);
+  page->stat_paid = label(page->tile, &plex_money_35, COL_WHITE,
+                          240, VALUE_STAT_Y, 218, 38);
+  lv_obj_set_style_text_align(page->stat_paid, LV_TEXT_ALIGN_RIGHT, 0);
+
+  page->cap_api = label(page->tile, &plex_ui_14, COL_MUTED,
+                        VP_SAFE_X, STAT_LABEL_Y, 140, 20);
+  page->cap_break = label(page->tile, &plex_ui_14, COL_MUTED,
+                          170, STAT_LABEL_Y, 140, 20);
+  page->cap_paid = label(page->tile, &plex_ui_14, COL_MUTED,
+                         318, STAT_LABEL_Y, 140, 20);
+  lv_obj_set_style_text_align(page->cap_break, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_align(page->cap_paid, LV_TEXT_ALIGN_RIGHT, 0);
+  for (lv_obj_t **c = (lv_obj_t *[]){page->cap_api, page->cap_break,
+                                     page->cap_paid, NULL}; *c; c++)
+    lv_obj_set_style_text_letter_space(*c, 2, 0);
+  lv_label_set_text(page->cap_api, "VIA API");
+  lv_label_set_text(page->cap_break, "BREAK EVEN");
+  lv_label_set_text(page->cap_paid, "YOU PAID");
+  create_pager(page->tile, VIEW_VALUE);
+}
+
+/* The value page owns its hero font. The shared numeral fonts must never
+ * carry "$": the glyph is taller than every digit, so adding it grows
+ * line_height (164 px: 119 -> 153) and pushes every approved quota page down
+ * 12 px. */
+static void apply_value_hero(value_page *page,
+                             const usage_value_page_view *view) {
+  const bool word = view->hero_is_word;
+  const bool money = view->state == USAGE_VALUE_NO_PLAN_COST;
+  lv_obj_set_style_text_font(page->hero,
+                             word ? &plex_headline_48 : &plex_money_118, 0);
+  lv_obj_set_style_text_letter_space(page->hero, word ? -1 : -3, 0);
+  lv_obj_set_pos(page->hero, word ? VP_SAFE_X : VALUE_HERO_X,
+                 word ? VALUE_WORD_HERO_Y
+                      : money ? VALUE_MONEY_HERO_Y : VALUE_HERO_Y);
+  lv_label_set_text(page->hero, view->hero_text);
+}
+
+static void apply_value(const tk_tokens *tokens) {
+  value_page *page = &ui.value;
+  if (!page->tile) return;
+  usage_value_page_view view;
+  usage_presenter_build_value(tokens, &view);
+
+  lv_label_set_text(page->verdict, view.verdict);
+  lv_label_set_text(page->attribution, view.attribution);
+  apply_value_hero(page, &view);
+
+  int width = (int)(view.bar_fraction * VP_CONTENT_W + 0.5);
+  if (width > VP_CONTENT_W) width = VP_CONTENT_W;
+  if (view.show_bar && width < 6) width = 6;
+
+  /* Segments in provider order, each sized by its share of the counted
+   * value. Colour here is legitimate: a segment IS that provider's money. */
+  int x = 0;
+  for (int i = 0; i < 2; i++) {
+    const bool live = view.show_bar && i < view.row_count &&
+                      view.rows[i].counted && view.rows[i].share > 0;
+    if (!live) {
+      lv_obj_set_size(page->fill[i], 0, VP_BAR_H);
+      continue;
+    }
+    int seg = (int)(view.rows[i].share * width + 0.5);
+    if (x + seg > width) seg = width - x;
+    lv_obj_set_style_bg_color(
+        page->fill[i],
+        view.rows[i].provider == USAGE_PROVIDER_CLAUDE ? COL_CLAUDE
+                                                       : COL_CODEX, 0);
+    lv_obj_set_pos(page->fill[i], x, 0);
+    lv_obj_set_size(page->fill[i], seg, VP_BAR_H);
+    x += seg;
+  }
+
+  lv_obj_t *const bar_parts[] = {page->track, page->marker, page->cap_break};
+  for (size_t i = 0; i < sizeof bar_parts / sizeof bar_parts[0]; i++) {
+    if (view.show_bar) lv_obj_remove_flag(bar_parts[i], LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(bar_parts[i], LV_OBJ_FLAG_HIDDEN);
+  }
+  if (view.show_bar) lv_obj_move_foreground(page->marker);
+
+  const bool stats = view.api_cost[0] && view.paid[0];
+  lv_obj_t *const footer[] = {page->stat_api, page->stat_paid,
+                              page->cap_api, page->cap_paid};
+  for (size_t i = 0; i < sizeof footer / sizeof footer[0]; i++) {
+    if (stats) lv_obj_remove_flag(footer[i], LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(footer[i], LV_OBJ_FLAG_HIDDEN);
+  }
+  if (stats) {
+    lv_label_set_text(page->stat_api, view.api_cost);
+    lv_label_set_text(page->stat_paid, view.paid);
+  }
 }
 
 static uint64_t agent_packet_age_ms(int64_t now_us) {
@@ -818,6 +1006,7 @@ void usage_screen_create(lv_obj_t *root) {
 #if TK_GITHUB_SCREEN_ENABLED
   create_github_page();
 #endif
+  create_value_page();
 #if TK_GITHUB_NOTIFICATIONS_ENABLED
   /* Created before the agent monitor: NEEDS YOU/ERROR/DONE always retain
    * transient priority over a project star. */
@@ -828,11 +1017,13 @@ void usage_screen_create(lv_obj_t *root) {
 
 void usage_screen_apply_tokens(const tk_tokens *tokens) {
   if (!tokens) return;
+  ui.last_tokens = *tokens;
   for (int i = 0; i < 3; i++) apply_quota(&ui.quotas[i], tokens);
   usage_forecast_page_view forecasts = {0};
   usage_presenter_build_forecasts(tokens, &forecasts);
   for (int i = 0; i < 2; i++)
     apply_forecast_row(&ui.forecast_rows[i], &forecasts.rows[i]);
+  apply_value(tokens);
 }
 
 void usage_screen_apply_max_tracker(const tk_max_tracker *t) {

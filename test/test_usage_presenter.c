@@ -196,6 +196,139 @@ int main(void) {
   check("missing weekly quotas suppress forecasts",
         !forecast_page.rows[0].visible && !forecast_page.rows[1].visible);
 
+  /* --- value multiple ---------------------------------------------------
+   * Each provider gets its own row, its own bar and its own break-even,
+   * because each subscription pays for itself or does not on its own. Every
+   * state below is asserted on what it REFUSES as much as what it shows. */
+  usage_value_page_view value_page;
+
+  tk_tokens value_ok = {0};
+  value_ok.value.state = TK_VALUE_OK;
+  value_ok.value.has_value_usd = 1;
+  value_ok.value.value_usd = 312.0;
+  value_ok.value.has_plan_usd = 1;
+  value_ok.value.plan_usd = 220.0;
+  value_ok.value.has_multiple = 1;
+  value_ok.value.multiple = 1.42;
+  value_ok.value.cost_configured = 1;
+  value_ok.value.has_claude_usd = 1;
+  value_ok.value.claude_usd = 280.0;
+  value_ok.value.has_claude_plan_usd = 1;
+  value_ok.value.claude_plan_usd = 200.0;
+  value_ok.value.has_codex_usd = 1;
+  value_ok.value.codex_usd = 32.0;
+  value_ok.value.has_codex_plan_usd = 1;
+  value_ok.value.codex_plan_usd = 20.0;
+
+  usage_presenter_build_value(&value_ok, &value_page);
+  check("the hero is the ratio",
+        value_page.state == USAGE_VALUE_OK &&
+        strcmp(value_page.hero_text, "1.42\u00d7") == 0 &&
+        !value_page.hero_is_word);
+  /* Without a bar marker nothing says 1x is the threshold, so the page must
+     also say which way round the two costs came out, in words. */
+  check("the verdict answers the page's actual question",
+        strcmp(value_page.verdict, "YOUR PLAN IS CHEAPER") == 0);
+  check("the split is one quiet line, not two headline figures",
+        strcmp(value_page.attribution,
+               "CLAUDE $280  ·  CODEX $32") == 0);
+  check("the footer pair is the comparison itself",
+        strcmp(value_page.api_cost, "$312") == 0 &&
+        strcmp(value_page.paid, "$220") == 0);
+  check("break-even is the halfway mark on a fixed scale",
+        value_page.show_bar &&
+        value_page.break_even_fraction > 0.499 &&
+        value_page.break_even_fraction < 0.501 &&
+        value_page.bar_fraction > 0.70 && value_page.bar_fraction < 0.72);
+  check("both providers count when both costs are declared",
+        value_page.row_count == 2 &&
+        value_page.rows[0].counted && value_page.rows[1].counted);
+  check("segments are each provider's share of the counted value",
+        value_page.rows[0].share > 0.89 && value_page.rows[0].share < 0.91 &&
+        value_page.rows[1].share > 0.09 && value_page.rows[1].share < 0.11);
+
+  /* The panel bug, as a test: Codex usage with no declared Codex plan must
+     NOT be credited against Claude's subscription. That is what turned a
+     $100 plan into 110x on the glass. */
+  tk_tokens value_undeclared = value_ok;
+  value_undeclared.value.has_codex_plan_usd = 0;
+  usage_presenter_build_value(&value_undeclared, &value_page);
+  check("an undeclared provider is shown but never counted",
+        value_page.row_count == 2 &&
+        value_page.rows[0].counted && !value_page.rows[1].counted);
+  check("an uncounted provider colours no segment",
+        value_page.rows[1].share == 0.0);
+
+  tk_tokens value_behind = value_ok;
+  value_behind.value.multiple = 0.84;
+  usage_presenter_build_value(&value_behind, &value_page);
+  check("below break-even the verdict flips",
+        strcmp(value_page.verdict, "THE API WOULD BE CHEAPER") == 0 &&
+        value_page.bar_fraction < value_page.break_even_fraction);
+
+  /* 0.97x must never round to "1.0" -- that reads as broken even. */
+  tk_tokens value_near = value_ok;
+  value_near.value.multiple = 0.97;
+  usage_presenter_build_value(&value_near, &value_page);
+  check("just under break-even keeps two decimals",
+        strcmp(value_page.hero_text, "0.97\u00d7") == 0);
+
+  tk_tokens value_big = value_ok;
+  value_big.value.multiple = 12.4;
+  value_big.value.claude_usd = 2480.0;
+  usage_presenter_build_value(&value_big, &value_page);
+  check("large multiples drop to one decimal",
+        strcmp(value_page.hero_text, "12.4\u00d7") == 0);
+  check("a runaway ratio clamps the bar but not the hero",
+        value_page.bar_fraction > 0.999);
+  check("thousands are comma-grouped behind the dollar sign",
+        strstr(value_page.attribution, "$2,480") != NULL);
+
+  tk_tokens value_solo = value_ok;
+  value_solo.value.has_codex_usd = 0;
+  value_solo.value.codex_usd = 0;
+  usage_presenter_build_value(&value_solo, &value_page);
+  check("one provider means one row taking the whole fill",
+        value_page.row_count == 1 &&
+        value_page.rows[0].share > 0.99);
+
+  tk_tokens value_no_plan = {0};
+  value_no_plan.value.state = TK_VALUE_NO_PLAN_COST;
+  value_no_plan.value.has_value_usd = 1;
+  value_no_plan.value.value_usd = 312.0;
+  usage_presenter_build_value(&value_no_plan, &value_page);
+  check("no denominator is the one state where money is the hero",
+        value_page.state == USAGE_VALUE_NO_PLAN_COST &&
+        strcmp(value_page.hero_text, "$312") == 0 &&
+        !value_page.hero_is_word && !value_page.show_bar &&
+        strcmp(value_page.verdict, "SET YOUR PLAN COST") == 0);
+
+  tk_tokens value_partial = {0};
+  value_partial.value.state = TK_VALUE_PARTIAL;
+  usage_presenter_build_value(&value_partial, &value_page);
+  check("partial says unpriced and draws nothing",
+        value_page.state == USAGE_VALUE_PARTIAL &&
+        strcmp(value_page.hero_text, "UNPRICED") == 0 &&
+        value_page.hero_is_word && !value_page.show_bar);
+
+  /* Never an en dash as the hero: at hero size a dash is a bare white
+     rectangle and reads as a rendering fault rather than as "unknown". */
+  tk_tokens value_absent = {0};
+  usage_presenter_build_value(&value_absent, &value_page);
+  check("absent value block shows a word, never a giant dash",
+        value_page.state == USAGE_VALUE_UNAVAILABLE &&
+        strcmp(value_page.hero_text, "NO DATA") == 0 &&
+        value_page.hero_is_word && value_page.row_count == 0 &&
+        !value_page.show_bar);
+
+  usage_presenter_build_value(NULL, &value_page);
+  check("null tokens are safe and show nothing",
+        value_page.state == USAGE_VALUE_UNAVAILABLE &&
+        value_page.row_count == 0 && !value_page.show_bar);
+
+  check("no state ever claims the money was earned",
+        strstr(value_page.verdict, "EARNED") == NULL);
+
   if (failures == 0) {
     printf("OK: all usage presenter tests pass\n");
     return 0;

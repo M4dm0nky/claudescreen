@@ -55,6 +55,29 @@ MT_STAT_COL_X = [MT_GRID_X + (i * MT_GRID_W) // 4 for i in range(4)]
 MT_STAT_COL_W = MT_GRID_W // 4  # 104
 PAGER_ROW_Y = 458  # PAGER_Y (456) + 2: inside the 6px-tall dot row
 
+
+def _screen_views():
+    """The tile count the SIMULATOR renders. The header now defines
+    TK_USAGE_SCREEN_VIEWS as an expression (six base tiles +
+    TK_GITHUB_SCREEN_ENABLED + the always-present value tile) rather than a
+    bare integer, and the simulator opts GitHub in via sim/CMakeLists.txt.
+    Read that toggle and evaluate the header's own expression so this stays
+    in lockstep with both files instead of hard-coding 8."""
+    header = (ROOT / "components/app_tokens/usage_screen.h").read_text(
+        encoding="utf-8")
+    expr = re.search(
+        r"^#define TK_USAGE_SCREEN_VIEWS \((.+)\)$", header, re.MULTILINE
+    ).group(1)
+    cmake = (ROOT / "sim/CMakeLists.txt").read_text(encoding="utf-8")
+    github_enabled = int(
+        re.search(r"TK_GITHUB_SCREEN_ENABLED=(\d+)", cmake).group(1)
+    )
+    return eval(expr, {"__builtins__": {}},
+                {"TK_GITHUB_SCREEN_ENABLED": github_enabled})
+
+
+SCREEN_VIEWS = _screen_views()
+
 MAX_RED = (255, 45, 31)  # 0xFF2D1F — exact-max special case, both providers
 CODEX_85_FAMILY = (111, 120, 255)  # 0x6F78FF — the codex 85%-stop itself
 
@@ -167,6 +190,15 @@ EXPECTED = {
     "torget-vibepulse-tracker-codex-full.bmp",
     "torget-vibepulse-tracker-empty.bmp",
     "torget-vibepulse-tracker-stale.bmp",
+    "torget-vibepulse-value-ahead.bmp",
+    "torget-vibepulse-value-early.bmp",
+    "torget-vibepulse-value-wide.bmp",
+    "torget-vibepulse-value-no-plan-cost.bmp",
+    "torget-vibepulse-value-partial.bmp",
+    "torget-vibepulse-value-no-data.bmp",
+    "torget-vibepulse-value-both.bmp",
+    "torget-vibepulse-value-uneven.bmp",
+    "torget-vibepulse-value-solo.bmp",
     "torget-ota-ring-open.bmp",
     "torget-ota-ring-receiving.bmp",
     "torget-ota-ring-verifying.bmp",
@@ -239,7 +271,13 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
 
         hero = list(popup.crop((130, 80, 350, 300)).get_flattened_data())
         self.assertGreater(sum(pixel == gold for pixel in hero), 9000)
-        self.assertEqual(popup.getpixel((240, 190)), gold)
+        # Probe solid center-gold just above the star's exact convergence
+        # seam. Pixel (240, 190) is where the five filled triangles meet, so
+        # LVGL's edge anti-aliasing blends it to ~75% gold (181, 138, 55) --
+        # this is what the shipped reference docs/img/github/sim-star-popup.png
+        # itself carries at that one pixel, while every neighbour is pure
+        # gold. Assert a representative solid pixel, not the AA seam.
+        self.assertEqual(popup.getpixel((240, 180)), gold)
 
         header = list(popup.crop((16, 16, 464, 50)).get_flattened_data())
         actor = list(popup.crop((20, 327, 460, 357)).get_flattened_data())
@@ -833,27 +871,41 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
                 self.assertNotEqual(image.getpixel((rect[2] + 1, mid_y)),
                                     MAX_RED)
 
-    def test_tracker_pager_shows_seven_dots_in_github_simulator(self):
-        # The simulator opts into GitHub, so create_pager draws seven dots,
-        # the active one 18px wide and the rest 6px, all on one pixel row
-        # with nothing else sharing it — so counting horizontal runs of
-        # non-black pixels on that row is an exact dot count and pattern.
+    def test_pager_shows_one_dot_per_view(self):
+        # The simulator opts into GitHub, so the layout is the full eight
+        # tiles (six base + github + value) and create_pager draws one dot
+        # per view, the active one 18px wide and the rest 6px, all on one
+        # pixel row with nothing else sharing it — so counting horizontal
+        # runs of non-black pixels on that row is an exact dot count and
+        # pattern. The expected count is read from the header rather than
+        # written here, so adding a view updates this test's expectation but
+        # never lets the row silently go uncounted.
         cases = (
             ("torget-vibepulse-tracker-claude-coldstart.bmp", 4),  # VIEW_TRACKER_CLAUDE
             ("torget-vibepulse-tracker-codex-full.bmp", 5),        # VIEW_TRACKER_CODEX
             ("torget-vibepulse-tracker-empty.bmp", 5),             # view unchanged
             ("torget-vibepulse-tracker-stale.bmp", 5),             # view unchanged
+            ("torget-vibepulse-value-both.bmp", 7),               # VIEW_VALUE (last tile)
         )
         for name, active_index in cases:
             with self.subTest(name=name):
                 image = self.image(name)
                 runs = dot_runs(image, PAGER_ROW_Y)
-                self.assertEqual(len(runs), 7)
+                self.assertEqual(len(runs), SCREEN_VIEWS)
                 widths = [end - start + 1 for start, end in runs]
                 self.assertEqual(widths[active_index], 18)
                 for i, width in enumerate(widths):
                     if i != active_index:
                         self.assertEqual(width, 6)
+
+    def test_pager_row_is_centred(self):
+        # A hard-coded origin walked the row off centre every time a view was
+        # added; create_pager now derives it. Assert the drawn row really is
+        # centred, not just that the arithmetic in the header looks right.
+        runs = dot_runs(self.image("torget-vibepulse-value-both.bmp"),
+                        PAGER_ROW_Y)
+        left, right = runs[0][0], runs[-1][1]
+        self.assertLessEqual(abs((left + right + 1) - 480), 2)
 
 
 if __name__ == "__main__":

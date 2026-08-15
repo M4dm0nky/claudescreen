@@ -32,8 +32,11 @@ class GitHubWiringTests(unittest.TestCase):
         header = read("components/app_tokens/usage_screen.h")
         app = read("components/app_tokens/app_tokens.h")
         ui = read("components/app_tokens/usage_screen.c")
-        self.assertIn("(6 + TK_GITHUB_SCREEN_ENABLED)", header)
+        # Six base tiles + the optional GitHub tile + the always-present Value
+        # tile: GitHub stays at index 6, Value is the new last tile at 7.
+        self.assertIn("(6 + TK_GITHUB_SCREEN_ENABLED + 1)", header)
         self.assertIn("VIEW_GITHUB = 6", app)
+        self.assertIn("VIEW_VALUE = 7", app)
         self.assertIn("set_star_hero", ui)
         self.assertIn('"FORKS"', ui)
         self.assertNotIn("ISSUES", ui)

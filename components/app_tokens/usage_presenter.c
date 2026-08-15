@@ -266,6 +266,135 @@ static void build_forecast_row(usage_forecast_row_view *out,
   }
 }
 
+/* Whole dollars with a leading '$' and comma grouping -- "$2,480". Both the
+ * 164 px hero font and the 35 px stat font carry '$' and ',' for this. */
+static void format_usd(double usd, char *out, size_t capacity) {
+  long long whole = (long long)(usd + 0.5);
+  if (whole < 0) whole = 0;
+  if (whole > 9999999LL) whole = 9999999LL;
+  if (whole < 1000) {
+    snprintf(out, capacity, "$%lld", whole);
+  } else if (whole < 1000000) {
+    snprintf(out, capacity, "$%lld,%03lld", whole / 1000, whole % 1000);
+  } else {
+    snprintf(out, capacity, "$%lld,%03lld,%03lld", whole / 1000000,
+             (whole / 1000) % 1000, whole % 1000);
+  }
+}
+
+/* Two decimals below 10x, one above, with a real multiplication sign. Never
+ * one decimal below 10: 0.97x would round to "1.0" and read as broken even
+ * when it is not. */
+static void format_multiple(double multiple, char *out, size_t capacity) {
+  if (multiple < 0) multiple = 0;
+  if (multiple >= 999.9) {
+    snprintf(out, capacity, "999.9×");
+  } else if (multiple >= 10.0) {
+    snprintf(out, capacity, "%.1f×", multiple);
+  } else {
+    snprintf(out, capacity, "%.2f×", multiple);
+  }
+}
+
+/* A provider's contribution. counted == 1 only when its OWN plan cost is
+ * known: crediting one provider's value against another's subscription is
+ * exactly how a $100 plan came to read 110x on the panel. */
+static int build_value_row(usage_value_row *row, usage_provider provider,
+                           const char *name, int has_value, double value_usd,
+                           int has_plan, double plan_usd) {
+  if (!has_value || value_usd <= 0) return 0;
+  memset(row, 0, sizeof *row);
+  row->provider = provider;
+  row->counted = has_plan && plan_usd > 0;
+  snprintf(row->name, sizeof row->name, "%s", name);
+  format_usd(value_usd, row->money, sizeof row->money);
+  return 1;
+}
+
+void usage_presenter_build_value(const tk_tokens *tokens,
+                                 usage_value_page_view *out) {
+  if (!out) return;
+  memset(out, 0, sizeof *out);
+  out->state = USAGE_VALUE_UNAVAILABLE;
+  snprintf(out->hero_text, sizeof out->hero_text, "NO DATA");
+  snprintf(out->verdict, sizeof out->verdict, "NO PRICED USAGE THIS MONTH");
+  out->hero_is_word = 1;
+  if (!tokens) return;
+
+  const tk_value *value = &tokens->value;
+
+  switch (value->state) {
+    case TK_VALUE_PARTIAL:
+      out->state = USAGE_VALUE_PARTIAL;
+      snprintf(out->hero_text, sizeof out->hero_text, "UNPRICED");
+      snprintf(out->verdict, sizeof out->verdict,
+               "SOME MODELS ARE NOT PRICED");
+      return;
+    case TK_VALUE_NO_PLAN_COST:
+      /* No denominator anywhere: the money is the only honest hero. */
+      out->state = USAGE_VALUE_NO_PLAN_COST;
+      snprintf(out->verdict, sizeof out->verdict, "SET YOUR PLAN COST");
+      if (value->has_value_usd) {
+        format_usd(value->value_usd, out->hero_text, sizeof out->hero_text);
+        out->hero_is_word = 0;
+      }
+      break;
+    case TK_VALUE_OK:
+      out->state = USAGE_VALUE_OK;
+      out->hero_is_word = 0;
+      format_multiple(value->multiple, out->hero_text,
+                      sizeof out->hero_text);
+      format_usd(value->value_usd, out->api_cost, sizeof out->api_cost);
+      format_usd(value->plan_usd, out->paid, sizeof out->paid);
+      /* The page's whole question, answered in words. */
+      snprintf(out->verdict, sizeof out->verdict, "%s",
+               value->multiple >= 1.0 ? "YOUR PLAN IS CHEAPER"
+                                      : "THE API WOULD BE CHEAPER");
+      out->show_bar = 1;
+      out->break_even_fraction = 1.0 / USAGE_VALUE_BAR_SCALE;
+      {
+        double fraction = value->multiple / USAGE_VALUE_BAR_SCALE;
+        out->bar_fraction = fraction < 0 ? 0 : fraction > 1 ? 1 : fraction;
+      }
+      break;
+    case TK_VALUE_UNAVAILABLE:
+    default:
+      return;
+  }
+
+  out->row_count = 0;
+  out->row_count += build_value_row(
+      &out->rows[out->row_count], USAGE_PROVIDER_CLAUDE, "CLAUDE",
+      value->has_claude_usd, value->claude_usd,
+      value->has_claude_plan_usd, value->claude_plan_usd);
+  out->row_count += build_value_row(
+      &out->rows[out->row_count], USAGE_PROVIDER_CODEX, "CODEX",
+      value->has_codex_usd, value->codex_usd,
+      value->has_codex_plan_usd, value->codex_plan_usd);
+
+  /* Segment the drawn fill by the COUNTED providers only -- a provider left
+   * out of the ratio must not colour a bar that represents it. */
+  double counted_total = 0;
+  if (value->has_claude_usd && value->has_claude_plan_usd)
+    counted_total += value->claude_usd;
+  if (value->has_codex_usd && value->has_codex_plan_usd)
+    counted_total += value->codex_usd;
+  for (int i = 0; i < out->row_count; i++) {
+    if (!out->rows[i].counted || counted_total <= 0) continue;
+    double own = out->rows[i].provider == USAGE_PROVIDER_CLAUDE
+                     ? value->claude_usd : value->codex_usd;
+    out->rows[i].share = own / counted_total;
+  }
+
+  for (int i = 0; i < out->row_count; i++) {
+    char piece[40];
+    snprintf(piece, sizeof piece, "%s%s %s", i ? "  ·  " : "",
+             out->rows[i].name, out->rows[i].money);
+    strncat(out->attribution, piece,
+            sizeof out->attribution - strlen(out->attribution) - 1);
+  }
+}
+
 void usage_presenter_build_forecasts(const tk_tokens *tokens,
                                      usage_forecast_page_view *out) {
   if (!tokens || !out) return;

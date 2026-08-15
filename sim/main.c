@@ -72,6 +72,12 @@ static const char *const AGENT_FIXTURES[] = {
   "agent-status-codex-done.json",
   "agent-status-codex-error.json",
   "agent-status-unknown.json",
+  /* The interactive "Needs You" takeover: a parked question, an approval, and
+   * the privacy/not-approvable case. S cycles into these so all three states
+   * are reachable on the glass. */
+  "agent-status-needs-you-question.json",
+  "agent-status-needs-you-approval.json",
+  "agent-status-needs-you-private.json",
 };
 static int agent_fixture_idx;
 static int capture_failures;
@@ -949,6 +955,35 @@ static void run_vibepulse_completion_qa(void) {
   dump_frame("vibepulse-two-done-queued");
 }
 
+/* Needs You review deliverable: the interactive takeover in each state the
+ * policy can produce, plus the no-pending page it yields to. Kept out of the
+ * pixel-landmark set on purpose — the design is under review, so these are for
+ * a human to look at, not for an assertion to pin geometry that is not approved
+ * yet. Taps in the sim resolve locally via tk_needs_you_mark_answered because
+ * no verdict callback is wired here (that is the app layer's later job). */
+static int run_vibepulse_needs_you_qa(void) {
+  capture_failures = 0;
+  torget_app_show(SIM_APP_VIBEPULSE);
+  feed_tokens();
+  tokens_show_view(VIEW_CLAUDE_FABLE);
+
+  apply_agent_file("agent-status-needs-you-question.json");
+  dump_frame("vibepulse-needs-you-question");
+
+  apply_agent_file("agent-status-needs-you-approval.json");
+  dump_frame("vibepulse-needs-you-approval");
+
+  apply_agent_file("agent-status-needs-you-private.json");
+  dump_frame("vibepulse-needs-you-private");
+
+  /* No pending interaction: the takeover is gone and the normal page shows. */
+  apply_agent_file("agent-status-claude-working.json");
+  tokens_show_view(VIEW_CLAUDE_FABLE);
+  dump_frame("vibepulse-needs-you-none");
+
+  return capture_failures == 0 ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
   /* Radbuffrat även vid pipe: fixtureloggen ska överleva en kill. */
   setvbuf(stdout, NULL, _IOLBF, 0);
@@ -981,6 +1016,10 @@ int main(int argc, char **argv) {
 
   if (argc == 2 && strcmp(argv[1], "--vibepulse-static-qa") == 0) {
     return run_vibepulse_static_qa();
+  }
+
+  if (argc == 2 && strcmp(argv[1], "--vibepulse-needs-you-qa") == 0) {
+    return run_vibepulse_needs_you_qa();
   }
 
   /* VibePulse får sin fixtur direkt: launchern ska visa en levande app,

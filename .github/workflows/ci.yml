@@ -30,6 +30,7 @@ jobs:
       - name: Run tokenserver unit tests
         run: |
           python -m unittest \
+            tools.tokenserver.test_github_monitor \
             tools.tokenserver.test_tokenserver \
             tools.tokenserver.test_agent_status \
             tools.tokenserver.test_usage_history \
@@ -42,10 +43,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # CI has no real WiFi or LAN service: empty example values compile,
-      # and undefined VibePulse URLs simply disable the fetch tasks.
-      - name: Create CI secrets.h from the example
-        run: cp secrets.h.example secrets.h
+      # CI has no real WiFi or LAN service. Build the opt-in path anyway so
+      # GitHub UI/network code cannot rot behind its default-off switches.
+      - name: Create CI secrets.h with optional GitHub module enabled
+        run: |
+          cp secrets.h.example secrets.h
+          sed -i 's/TK_GITHUB_SCREEN_ENABLED 0/TK_GITHUB_SCREEN_ENABLED 1/' secrets.h
+          sed -i 's/TK_GITHUB_NOTIFICATIONS_ENABLED 0/TK_GITHUB_NOTIFICATIONS_ENABLED 1/' secrets.h
+          sed -i 's/TK_GITHUB_SOUND_ENABLED 0/TK_GITHUB_SOUND_ENABLED 1/' secrets.h
       - name: Build with ESP-IDF 5.5
         uses: espressif/esp-idf-ci-action@v1
         with:

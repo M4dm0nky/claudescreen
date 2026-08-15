@@ -3,7 +3,9 @@
 > **English quickstart:** `python3 tokenserver.py`. Pure Python 3 stdlib,
 > nothing to install. It reads your local Claude Code/Codex logs and serves
 > `/api/tokens` + `/api/agent-status` + `/api/max-tracker` on port 8737 for
-> the screen. Add `--claude-plan {pro,max5x,max20x}` and/or `--codex-plan
+> the screen. Add `--github-repo owner/repository` for the optional public
+> GitHub Stars/Forks feed at `/api/github`; it needs no token. Add
+> `--claude-plan {pro,max5x,max20x}` and/or `--codex-plan
 > {plus,pro}` to show a plan badge on the Max Tracker pages; both flags are
 > optional and purely cosmetic (a display label, never used in any
 > percentage math). Autostart on login: `cp se.torget.tokenserver.plist
@@ -48,6 +50,28 @@ rotendpointens diagnostik, aldrig ett kvotvärde.
 python3 tokenserver.py
 curl http://localhost:8737/api/tokens
 ```
+
+## Valfri GitHub-sida och stjärnhändelser
+
+Ett publikt repo kan övervakas utan token:
+
+```
+python3 tokenserver.py --github-repo owner/repository
+curl http://localhost:8737/api/github
+```
+
+Miljövariabeln `VIBEPULSE_GITHUB_REPO=owner/repository` är likvärdig och
+passar launchd. Första lyckade pollen sätter bara utgångsvärdet; gamla
+stjärnor spelas inte upp som nya. Därefter pollas repo-metadata varannan
+minut. Vid en ökning hämtas senaste publika stargazer för namnet i popupen;
+om den läsningen misslyckas publiceras ändå det auktoritativa nya antalet
+med anonym aktör.
+
+GitHub-monitorn har egen tråd, timeout och minst tio minuters fel-backoff.
+Dess senaste goda värden markeras `stale`; fel går aldrig via token-, agent-
+eller Max Tracker-flödet. Utan `--github-repo` svarar endpointen explicit
+`{"v": 1, "enabled": false}`. Skärmens sida och popup slås sedan på
+oberoende i `secrets.h`; se `secrets.h.example`.
 
 ## Agentstatus
 

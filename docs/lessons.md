@@ -21,6 +21,34 @@ point at the backlog item.
 
 ---
 
+## 2026-08-15 · kickstart restarts the process, not the plist
+
+**What happened:** the tokenserver kept dying with `unrecognized arguments:
+--plan claude=100`, restart after restart, taking the whole panel down.
+**Root cause:** the running launchd process was pre-GitHub code that predated a
+CLI change; editing the plist and running `launchctl kickstart -k` restarted it
+with launchd's *cached* ProgramArguments, never re-reading the edited file.
+**The rule:** `kickstart -k` is for code changes (same args, updated
+`tokenserver.py`); argument/plist edits need `bootout` + `bootstrap`.
+**Guards:** none yet — the plist story lives in
+[github-pulse.md](github-pulse.md); CLAUDE.md's OTA note still only mentions
+kickstart. **Watch for:** any plist edit that "doesn't take" after a restart.
+
+## 2026-08-15 · An optional feature was enabled in the wrong layer
+
+**What happened:** the GitHub screen rendered in QA but never on the glass, then
+came up with no data. **Root cause:** two separate opt-ins were missing —
+`TK_GITHUB_SCREEN_ENABLED` (the view compiled out) and `TK_GITHUB_URL` (the poll
+task compiled out). Both belong in the per-install `secrets.h` (see
+`secrets.h.example`), but the screen flag was fixed by hardcoding it into
+`components/app_tokens/CMakeLists.txt` (`b5c5a7a`) instead. **The rule:** enable
+per-install feature flags where the design put them — local `secrets.h`, not the
+shared firmware CMake; a build define collides with a template-based secrets.h
+and silently wins the wrong way. **Guards:** `secrets.h.example` already carries
+the full block; cleanup tracked in
+[github-pulse.md](github-pulse.md#known-follow-ups). **Watch for:** any
+`target_compile_definitions` that duplicates a `#ifndef`-guarded config default.
+
 ## 2026-08-13 · The expired token that outranked a fresh login
 
 **What happened:** the screen sat on `usage_http_401` for hours after a

@@ -13,7 +13,9 @@ attention_fonts = (
     (root / "platform/fonts/plex_attention_52.c", "plex_attention_52"),
 )
 
-assert "#define TK_USAGE_SCREEN_VIEWS 6" in header
+assert (
+    "#define TK_USAGE_SCREEN_VIEWS (6 + TK_GITHUB_SCREEN_ENABLED + 1)" in header
+)
 for enum_literal in (
     "VIEW_CLAUDE_FABLE = 0",
     "VIEW_CLAUDE_ALL = 1",
@@ -21,6 +23,8 @@ for enum_literal in (
     "VIEW_BURN_RATE = 3",
     "VIEW_TRACKER_CLAUDE = 4",
     "VIEW_TRACKER_CODEX = 5",
+    "VIEW_GITHUB = 6",
+    "VIEW_VALUE = 7",
 ):
     assert enum_literal in app_header
 assert "VIEW_VOLUME" not in app_header
@@ -70,6 +74,11 @@ create = create[:create.index("void usage_screen_apply_tokens")]
 assert create.count("create_quota_page(") == 3
 assert create.count("create_burn_rate_page(") == 1
 assert create.count("create_tracker_page(") == 2
+assert "create_github_page();" in create
+assert create.count("create_value_page(") == 1
+assert create.index("tk_project_star_popup_create(root);") < create.index(
+    "tk_agent_monitor_create(root);"
+)
 assert "tk_agent_monitor_create(root);" in create
 
 quota = source[source.index("static void create_quota_page"):]
@@ -154,11 +163,74 @@ assert "lv_label_set_text(page->percent, quota->pct_text);" in apply_quota
 assert 'quota->has_pct ? quota->pct_text : ""' not in apply_quota
 
 burn = source[source.index("static void create_burn_rate_page"):]
-burn = burn[:burn.index("static uint64_t agent_packet_age_ms")]
+burn = burn[:burn.index("static void create_value_page")]
 for copy in ("BURN RATE", "WEEKLY", "FORECAST"):
     assert f'"{copy}"' in burn
 assert "251" in burn, "Burn Rate rows need the approved separator"
 assert "COL_CARD" not in burn
+
+# Value page. It borrows the quota pages' furniture on purpose -- bar on the
+# y=304 token at 24 px with the shared pill radius, the same 3x32 marker, the
+# stats on the family's rows -- because that is what makes it read as this
+# product. Only the hero font differs, and only because the 164 px numerals
+# carry no "$" or "x".
+value = source[source.index("static void create_value_page"):]
+value = value[:value.index("static uint64_t agent_packet_age_ms")]
+for copy in ("VALUE", "MONTH TO DATE", "AT LIST API PRICES", "VIA API",
+             "YOU PAID", "BREAK EVEN"):
+    assert f'"{copy}"' in value, f"missing value page copy: {copy}"
+assert "lv_obj_set_pos(page->track, VP_SAFE_X, VP_BAR_Y);" in value, \
+    "the bar must sit on the family's own y token"
+assert "lv_obj_set_size(page->track, VP_CONTENT_W, VP_BAR_H);" in value
+assert "LV_RADIUS_CIRCLE" in value, \
+    "the pill radius is what makes a bar read as this product's bar"
+assert "lv_obj_set_size(page->marker, 3, VP_BAR_H + 8);" in value, \
+    "reuse the family's 3x32 break-even mark, not a bespoke one"
+assert "plex_money_118" in value and "VALUE_HERO_Y" in value
+# Provider accents may only colour a segment, which IS that provider's money.
+assert value.count("COL_CLAUDE") == 2 and value.count("COL_CODEX") == 1, \
+    "provider accents belong on bar segments and nowhere else"
+assert "COL_MONEY" not in source, \
+    "the money accent is retired: every hero in the family is white"
+
+value_page_struct = source[source.index("typedef struct {\n  lv_obj_t *tile;\n  lv_obj_t *verdict;"):]
+value_page_struct = value_page_struct[:value_page_struct.index("} value_page;")]
+for member in ("tile", "verdict", "hero", "attribution", "track", "marker",
+               "stat_api", "stat_paid", "cap_api", "cap_break", "cap_paid"):
+    assert f"*{member};" in value_page_struct or f"*{member}," in value_page_struct, \
+        f"value_page must own {member}"
+
+apply_hero = source[source.index("static void apply_value_hero"):]
+apply_hero = apply_hero[:apply_hero.index("static void apply_value(")]
+assert "COL_CLAUDE" not in apply_hero and "COL_CODEX" not in apply_hero, \
+    "a combined figure must never wear a provider accent"
+
+apply_value = source[source.index("static void apply_value(const tk_tokens"):]
+apply_value = apply_value[:apply_value.index("static uint64_t agent_packet_age_ms")]
+assert "usage_presenter_build_value(tokens, &view);" in apply_value, \
+    "the page must render the presenter's view, never tk_value directly"
+assert "view.rows[i].counted" in apply_value, \
+    "a provider left out of the ratio must not colour a segment"
+assert "lv_obj_move_foreground(page->marker);" in apply_value
+
+# The value page has its OWN money fonts. A "$" is taller than every digit,
+# so putting it in a shared numeral font grows line_height and shifts every
+# already-reviewed page that uses it. Pin both the new recipes and the
+# absence of "$" from the shared ones.
+for recipe, glyph in (("conv Bold     118 \"0x30-0x39,0x24", "plex_money_118"),
+                      ("conv Bold      35 \"0x20,0x24", "plex_money_35")):
+    line = next((line for line in font_script.splitlines()
+                 if line.startswith(recipe)), "")
+    assert line.endswith(glyph), f"missing money font recipe: {glyph}"
+for shared in ("conv Bold     164", "conv Bold     146", "conv Bold      50"):
+    line = next(line for line in font_script.splitlines()
+                if line.startswith(shared))
+    assert "0x24" not in line, \
+        f"{shared} must not carry '$': it would shift approved pages"
+for path in ("plex_money_118", "plex_money_35"):
+    generated = root / f"platform/fonts/{path}.c"
+    assert generated.is_file(), f"missing generated money font: {path}"
+    assert f"const lv_font_t {path}" in generated.read_text()
 
 for removed_volume in (
     "rendered_volume_value", "rendered_volume_sessions",
@@ -286,4 +358,4 @@ for anchor in (31, 246, 321, 365, 430):
 assert "int usage_screen_current_view(void);" in header
 assert "usage_screen_current_view()" in sim
 
-print("OK: VibePulse six-page full-screen layout wiring")
+print("OK: VibePulse eight-page full-screen layout wiring (github + value)")

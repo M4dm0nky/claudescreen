@@ -89,6 +89,58 @@ typedef struct {
   usage_forecast_row_view rows[2];
 } usage_forecast_page_view;
 
+#define USAGE_VALUE_TEXT_CAP 40
+
+/* Full-scale value of the break-even bar, in multiples. 2x puts break-even
+ * dead centre and still leaves the top half meaningful before it clamps. */
+#define USAGE_VALUE_BAR_SCALE 2.0
+
+/* Mirrors tk_value_state, but the presenter owns what the page may render:
+ * only OK earns a multiple, only OK and NO_PLAN_COST earn dollars. */
+typedef enum {
+  USAGE_VALUE_UNAVAILABLE,
+  USAGE_VALUE_PARTIAL,
+  USAGE_VALUE_NO_PLAN_COST,
+  USAGE_VALUE_OK,
+} usage_value_state;
+
+/* One subscription's contribution. Only providers whose OWN cost is declared
+ * reach the ratio; the rest are reported but never divided against someone
+ * else's subscription. */
+typedef struct {
+  usage_provider provider;
+  char name[12];
+  char money[USAGE_CARD_PCT_CAP];
+  double share;      /* of the drawn fill, 0..1 */
+  int counted;       /* in the ratio, i.e. its plan cost is known */
+} usage_value_row;
+
+typedef struct {
+  usage_value_state state;
+  /* The verdict, in words, because the page's whole question is which of the
+   * two costs came out larger. The bar's marker says it visually; this says
+   * it for anyone who does not read the bar. */
+  char verdict[40];
+  char hero_text[USAGE_CARD_PCT_CAP];
+  /* 1 when the hero is a WORD and must render in the 48 px headline font. An
+   * en dash at hero size is a bare white rectangle -- a rendering fault, not
+   * a value. */
+  int hero_is_word;
+  /* "CLAUDE $280 · CODEX $32" -- the split, one quiet line. */
+  char attribution[80];
+  /* Fill on a fixed 0..2x scale so break-even is always the halfway mark and
+   * one marker can be drawn once and labelled once. */
+  double bar_fraction;
+  double break_even_fraction;
+  int show_bar;
+  int row_count;
+  usage_value_row rows[2];
+  char api_cost[USAGE_CARD_PCT_CAP];
+  char paid[USAGE_CARD_PCT_CAP];
+} usage_value_page_view;
+
+void usage_presenter_build_value(const tk_tokens *tokens,
+                                 usage_value_page_view *out);
 void usage_presenter_build_hero(const tk_tokens *tokens,
                                 usage_provider provider,
                                 usage_hero_view *out);

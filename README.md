@@ -10,8 +10,9 @@ for you.**
 
 Claude Code and Codex usage, live agent activity, and a full-screen
 **NEEDS YOU** alert. A ~$30 ESP32-S3 panel plus a pure-stdlib Python service
-on your Mac. No cloud, no accounts, no API keys on the device. Nothing
-leaves your LAN.
+on your Mac. No cloud, no accounts, no API keys on the device. Agent data
+never leaves your LAN; the optional public-repository module makes only
+anonymous GitHub API reads from the Mac.
 
 ## The problem
 
@@ -33,8 +34,9 @@ the room, no window to switch to, no menu bar to squint at.
 
 ## What's on screen
 
-Six pages, swipe or auto-rotate. Every image below is an exact 480×480
-frame — the simulator renders the same pixels as the panel.
+Six core pages, swipe or auto-rotate, plus an optional seventh GitHub project
+page. Every image below is an exact 480×480 frame — the simulator renders
+the same pixels as the panel.
 
 <table>
 <tr>
@@ -94,6 +96,35 @@ accent colour:
 |---|---|---|
 | ![Codex weekly quota](docs/img/vibepulse-codex-week.png) | ![Codex NEEDS YOU alert](docs/img/vibepulse-codex-needs-you.png) | ![Claude Max Tracker](docs/img/vibepulse-max-tracker-claude.png) |
 
+### Optional GitHub project pulse
+
+One public `owner/repository` can add a deliberately sparse seventh page:
+the current star count is the hero and forks are the only secondary metric.
+The page and star moments are independent switches. A new star can therefore
+briefly take over the current VibePulse view even when the GitHub page is not
+in rotation. It covers the previous page with a quiet black stage, shows a
+large filled star, the repository, the stargazer when GitHub supplies one,
+the new total, and `TAP TO DISMISS`; otherwise it returns to the exact
+previous page after two minutes.
+
+The Mac service polls GitHub's public API and republishes a small, validated
+LAN payload. The ESP32 never talks to GitHub, and a GitHub timeout or rate
+limit cannot stall the Claude/Codex endpoints. Configure it with:
+
+```
+python3 tools/tokenserver/tokenserver.py --github-repo owner/repository
+```
+
+Then opt into `TK_GITHUB_SCREEN_ENABLED` and/or
+`TK_GITHUB_NOTIFICATIONS_ENABLED` in your gitignored `secrets.h`. Both are
+off by default. No GitHub token is required for a public repository.
+
+`TK_GITHUB_SOUND_ENABLED` is a separate default-off gate for the 258 ms
+A5-to-C#6 chime. The sequence and failure-isolated playback contract are in
+place, but the current target intentionally registers no codec backend until
+the physical speaker and display-DMA budget have passed device testing. A
+missing or failed sound backend never delays the popup or any network path.
+
 ### It never makes numbers up
 
 <img src="docs/img/vibepulse-no-data.png" alt="No-data state showing dashes instead of zeros" width="320" align="right">
@@ -106,6 +137,26 @@ than silently drifting.
 Run Claude only, or Codex only, and the other half simply shows dashes.
 
 <br clear="all">
+
+### Are you getting your money's worth?
+
+The usage pages answer *how much have I spent?*. The
+[**value multiple**](docs/value-multiple.md) answers the question you
+actually have every month: it prices the tokens your agents already logged
+at list API rates and divides by what you pay.
+
+```
+python3 tools/tokenserver/tokenserver.py --claude-plan max5x --plan-cost-usd 100
+```
+
+It counts cache tokens, which is the whole point — a real record here reads
+2 input and 4 output against 23 655 cache-read, so pricing only input and
+output understates it by 577x.
+
+Rates are not hand-maintained: they are generated from a public price
+catalogue by `tools/tokenserver/update_prices.py` and committed, so the
+server stays offline and refreshing is one command. An unknown model degrades
+the figure to a dash rather than being silently free.
 
 ## How it works
 
@@ -244,16 +295,21 @@ banner just places three of them side by side), and the physical panel was
 reviewed against them ([review](docs/superpowers/reviews/2026-08-13-max-tracker-physical-static.md)).
 
 Keys: `[` / `]` change VibePulse page, `S` cycles agent status, `M` cycles
-Max Tracker fixtures, `T` re-feeds tokens, `L` opens the launcher.
+Max Tracker fixtures, `T` re-feeds tokens, `G` simulates a new GitHub star,
+`L` opens the launcher.
 
 ## Privacy
 
-- Everything stays on your LAN; the screen only ever receives percentages,
-  counts and coarse status — a project name, a model, an effort level.
+- Agent activity and usage stay on your LAN; the screen only ever receives
+  percentages, counts and coarse status — a project name, a model, an effort
+  level.
 - No prompts, no code, no commands, no file contents are stored or served.
   The service keeps only content-free quota points (at most one per 15
   minutes, kept 8 days) for the trends.
 - Your OAuth token never leaves the Mac.
+- If the optional GitHub module is enabled, the Mac anonymously reads only
+  public repository and stargazer metadata from GitHub. The ESP32 still
+  talks only to the Mac over your LAN.
 - A lost or stolen screen leaks your WiFi credentials and the LAN hostname
   of your Mac — both of which you rotate yourself, not in any cloud.
 

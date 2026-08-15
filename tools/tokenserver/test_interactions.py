@@ -445,6 +445,75 @@ class DeviceBudgetTests(unittest.TestCase):
                         f"{len(json.dumps(snapshot).encode())} bytes")
 
 
+class AbandonedHookTests(unittest.TestCase):
+    """The reviewer's finding: a hook whose client hung up must not sit
+    parked until timeout, shadowing real prompts and eating queue slots."""
+
+    def setUp(self):
+        self.store = InteractionStore(secret=SECRET, reveal_detail=True)
+
+    def test_dead_client_frees_its_slot_immediately(self):
+        entry = self.store.park("approval", approval_event(), 600)
+        started = time.monotonic()
+        body = self.store.await_verdict(entry, is_alive=lambda: False)
+        self.assertIsNone(body)  # abandoned = no decision, same as timeout
+        self.assertLess(time.monotonic() - started,
+                        interactions.ALIVE_POLL_S + 2)
+        self.assertIsNone(self.store.pending_public())
+
+    def test_ghost_does_not_shadow_a_live_prompt(self):
+        ghost = self.store.park("approval", approval_event(), 600)
+        live = self.store.park("question", question_event(), 600)
+        # oldest-first: while the ghost is parked, it is the one on screen
+        self.assertEqual(self.store.pending_public()["request_id"],
+                         ghost.request_id)
+        self.store.await_verdict(ghost, is_alive=lambda: False)
+        # the moment it is reaped, the live one surfaces
+        self.assertEqual(self.store.pending_public()["request_id"],
+                         live.request_id)
+        self.store.deny_all()
+
+    def test_zombies_no_longer_fill_the_queue(self):
+        for _ in range(interactions.MAX_PENDING):
+            zombie = self.store.park("approval", approval_event(), 600)
+            self.store.await_verdict(zombie, is_alive=lambda: False)
+        # every slot was reclaimed, so a real hook still parks
+        self.assertIsNotNone(
+            self.store.park("approval", approval_event(), 600))
+        self.store.deny_all()
+
+    def test_alive_client_still_gets_its_answer(self):
+        entry = self.store.park("approval", approval_event(), 600)
+        result = {}
+
+        def hook():
+            result["body"] = self.store.await_verdict(
+                entry, is_alive=lambda: True)
+
+        thread = threading.Thread(target=hook, daemon=True)
+        thread.start()
+        time.sleep(0.05)
+        stamp = int(time.time())
+        ok, _ = self.store.resolve(
+            entry.request_id, "approve", stamp,
+            sign_answer(SECRET, entry.request_id, "approve", stamp))
+        self.assertTrue(ok)
+        thread.join(timeout=5)
+        self.assertEqual(
+            result["body"]["hookSpecificOutput"]["decision"]["behavior"],
+            "allow")
+
+    def test_client_dying_mid_wait_is_noticed_within_the_poll_bound(self):
+        entry = self.store.park("approval", approval_event(), 600)
+        died_at = time.monotonic() + 0.2
+        started = time.monotonic()
+        body = self.store.await_verdict(
+            entry, is_alive=lambda: time.monotonic() < died_at)
+        self.assertIsNone(body)
+        self.assertLess(time.monotonic() - started,
+                        0.2 + interactions.ALIVE_POLL_S + 2)
+
+
 class RealClockTests(unittest.TestCase):
     def test_default_clocks_expire_a_short_hold(self):
         store = InteractionStore(secret=SECRET, reveal_detail=True)
@@ -638,6 +707,32 @@ class HttpEndToEndTests(unittest.TestCase):
         self.assertIsNotNone(self.pending())
         self.store.deny_all()
         thread.join(timeout=10)
+
+    def test_abandoned_connection_is_reaped_well_before_timeout(self):
+        """The reviewer's observation, at the wire: POST a hook, hang up,
+        and the ghost must leave /api/agent-status within the poll bound —
+        not at the 30 s timeout."""
+        import socket as socket_module
+        from tools.tokenserver import interactions as interactions_module
+
+        raw = json.dumps(approval_event()).encode()
+        client = socket_module.create_connection(("127.0.0.1", self.port),
+                                                 timeout=5)
+        client.sendall(
+            b"POST /api/hook/permission HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Length: " + str(len(raw)).encode() + b"\r\n"
+            b"\r\n" + raw)
+        self.wait_for_pending()
+        client.close()  # the session died: Ctrl-C, closed terminal
+
+        deadline = time.monotonic() + interactions_module.ALIVE_POLL_S + 5
+        while time.monotonic() < deadline:
+            if self.pending() is None:
+                return
+            time.sleep(0.1)
+        self.fail("abandoned hook still parked after the poll bound")
 
     def test_agent_status_is_unchanged_when_nothing_is_pending(self):
         payload = json.loads(self.request("GET", "/api/agent-status")[1])

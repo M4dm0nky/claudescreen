@@ -56,6 +56,10 @@ MAX_PENDING = 8
 # replay to the window in which the tap could plausibly have happened.
 FRESHNESS_S = 90.0
 
+# How often a held hook glances at its own connection while waiting. A dead
+# client is noticed within this bound instead of at the timeout.
+ALIVE_POLL_S = 2.0
+
 # The device discards the WHOLE /api/agent-status body when it exceeds its
 # 4096-byte buffer (TK_AGENT_HTTP_BODY_CAP), which would take the agent list
 # down with it. The pending item is therefore hard-bounded, and the caller
@@ -411,10 +415,33 @@ class InteractionStore:
         self._log("parked", entry, None)
         return entry
 
-    def await_verdict(self, entry: _Pending) -> Optional[Dict[str, Any]]:
-        """Block until answered or expired, then return the hook body."""
-        remaining = max(0.0, entry.expires_at - self._now())
-        entry.done.wait(timeout=remaining)
+    def await_verdict(self, entry: _Pending,
+                      is_alive: Optional[Callable[[], bool]] = None
+                      ) -> Optional[Dict[str, Any]]:
+        """Block until answered, abandoned or expired; return the hook body.
+
+        ``is_alive`` lets the caller say whether the session that asked is
+        still there. Without it a hook whose client has gone — Ctrl-C, a
+        closed terminal, a killed session — would sit parked until its
+        timeout, and because the panel shows the oldest interaction first,
+        that ghost would shadow real ones for up to two minutes and eat a
+        slot in a queue that only holds a few.
+        """
+        if is_alive is None:
+            remaining = max(0.0, entry.expires_at - self._now())
+            entry.done.wait(timeout=remaining)
+        else:
+            while True:
+                remaining = entry.expires_at - self._now()
+                if remaining <= 0:
+                    break
+                if entry.done.wait(timeout=min(ALIVE_POLL_S, remaining)):
+                    break
+                if not is_alive():
+                    with self._lock:
+                        self._pending.pop(entry.request_id, None)
+                    self._log("abandoned", entry, None)
+                    return None
         with self._lock:
             self._pending.pop(entry.request_id, None)
         verdict = entry.verdict or "leave_it"

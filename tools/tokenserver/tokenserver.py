@@ -41,6 +41,7 @@ import os
 import re
 import select
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -1971,6 +1972,24 @@ class Handler(BaseHTTPRequestHandler):
             return payload
         return candidate
 
+    def _hook_client_gone(self):
+        """Has the held hook's client hung up?
+
+        The request body is fully read before parking, so the socket becoming
+        readable can only mean EOF (the client closed) or a pipelined request
+        (which Claude Code does not send on hook connections). A dead client
+        must free its slot at once: the panel shows the oldest interaction
+        first, so a ghost would shadow real prompts for the rest of its
+        timeout and, with enough of them, fill the queue entirely.
+        """
+        try:
+            readable, _, _ = select.select([self.connection], [], [], 0)
+            if not readable:
+                return False
+            return self.connection.recv(1, socket.MSG_PEEK) == b""
+        except (OSError, ValueError):
+            return True
+
     def _handle_hook(self, kind):
         """Park a hook and hold its connection until a human decides."""
         event = self._read_json_body()
@@ -1985,7 +2004,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_no_decision()
             return
         try:
-            body = self.interaction_store.await_verdict(entry)
+            body = self.interaction_store.await_verdict(
+                entry, is_alive=lambda: not self._hook_client_gone())
         except Exception:
             log.exception("interaktionen kraschade — lämnar beslutet till "
                           "terminalen")
@@ -2272,14 +2292,34 @@ def main():
             raise SystemExit(1)
         log.info("%s finns nu — fortsätter starten.", Handler.projects_dir)
 
-    t0 = time.monotonic()
-    snap = get_snapshot(Handler.projects_dir)
-    log.info("förstaskanning %.1f s: %s tokens idag, %d sessioner, "
-             "%s denna månad",
-             time.monotonic() - t0,
-             f"{snap['dayTokens']:,}".replace(",", " "),
-             snap["daySessions"],
-             f"{snap['monthTokens']:,}".replace(",", " "))
+    # Förstaskanningen är en uppvärmning plus en loggrad — /api/tokens gör om
+    # get_snapshot per request ändå, och HTTP-trådarna kör den redan
+    # parallellt, så samma anrop tål en bakgrundstråd. Den låg tidigare FÖRE
+    # bind, vilket med stora loggkataloger höll porten stängd i minuter efter
+    # varje `launchctl kickstart`. Det var alltid trist för skärmen; med
+    # Needs You blev det på riktigt fel — en hook som får connection refused
+    # faller (helt säkert, men helt i onödan) tillbaka till terminalen fast
+    # tjänsten är sekunder från att kunna hålla den. Nu binder servern direkt
+    # och värmer i bakgrunden: agent-status och hookarna är incrementella och
+    # svarar meningsfullt på en gång, /api/tokens svarar när skanningen är
+    # klar (skärmen visar streck/stale tills dess, precis som vid nätfel).
+    def _first_scan_warmup():
+        t0 = time.monotonic()
+        try:
+            snap = get_snapshot(Handler.projects_dir)
+        except Exception:
+            log.exception("förstaskanningen kraschade — /api/tokens värmer "
+                          "vid första anropet i stället")
+            return
+        log.info("förstaskanning %.1f s: %s tokens idag, %d sessioner, "
+                 "%s denna månad",
+                 time.monotonic() - t0,
+                 f"{snap['dayTokens']:,}".replace(",", " "),
+                 snap["daySessions"],
+                 f"{snap['monthTokens']:,}".replace(",", " "))
+
+    threading.Thread(target=_first_scan_warmup, name="first-scan-warmup",
+                     daemon=True).start()
 
     status_service = AgentStatusService(
         projects_dir=Handler.projects_dir,

@@ -443,6 +443,18 @@ Three details that are easy to get wrong and are therefore pinned by tests:
 * **Every unknown returns "no decision"** (HTTP 200, empty body): a payload we
   cannot render, too many already parked, a crash in the handler, a timeout.
   The terminal then behaves exactly as it does today.
+* **A dead client frees its slot at once.** A held hook watches its own
+  connection (2 s poll bound) and is reaped the moment the session that asked
+  hangs up — Ctrl-C, a closed terminal, a killed process. Found in external
+  review: without this, a ghost prompt shadowed real ones for the rest of its
+  timeout (oldest-first display) and enough of them filled the queue.
+* **The port binds immediately on restart.** The first full log scan — minutes
+  against a large history — now warms in the background instead of running
+  before bind. Same review: `launchctl kickstart` used to mean a multi-minute
+  window of connection-refused hooks, which fail safe but fail needlessly.
+  Hooks and `/api/agent-status` are incremental and answer meaningfully at
+  once; `/api/tokens` answers when the scan lands, and the panel shows its
+  usual dashes until then.
 
 **Try it without hardware.** `tools/fake-panel.py` polls at the device's own
 1 Hz cadence, draws the interaction at panel proportions, and answers with the

@@ -5,6 +5,7 @@ idf_component_register(
   SRCS "app.c" "tokens_parse.c" "usage_presenter.c" "usage_screen.c"
        "agent_status_parse.c" "agent_usage.c"
        "agent_monitor_policy.c" "usage_live_policy.c" "agent_completion_policy.c"
+       "needs_you_policy.c"
        "agent_monitor.c" "agent_assets.c"
        "github_status_parse.c" "project_star_popup_policy.c"
        "project_star_assets.c" "project_star_chime.c" "project_star_popup.c"

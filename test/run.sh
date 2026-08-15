@@ -69,6 +69,12 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
 /tmp/torget-agent-status-test
 
 cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/app_tokens/needs_you_policy.c \
+  test_needs_you_policy.c \
+  -o /tmp/torget-needs-you-test
+/tmp/torget-needs-you-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
   ../components/app_tokens/github_status_parse.c \
   test_github_status.c /tmp/torget-cjson.o \
   -lm \

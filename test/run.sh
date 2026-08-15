@@ -174,6 +174,7 @@ cd ..
 "$PYTHON_BIN" test/test_vibepulse_visual_landmarks.py
 "$PYTHON_BIN" test/test_shared_amoled_skill.py
 "$PYTHON_BIN" test/test_token_body_capacity.py
+"$PYTHON_BIN" test/test_agent_status_body_capacity.py
 "$PYTHON_BIN" -m unittest tools.test_hardware_registry -v
 "$PYTHON_BIN" -m unittest \
   tools.tokenserver.test_github_monitor \
@@ -185,4 +186,5 @@ cd ..
   tools.tokenserver.test_value_meter \
   tools.tokenserver.test_update_prices \
   tools.tokenserver.test_codex_usage \
+  tools.tokenserver.test_interactions \
   tools.tokenserver.test_smoke -v

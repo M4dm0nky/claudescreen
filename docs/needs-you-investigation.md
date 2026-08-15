@@ -10,10 +10,16 @@ implementation, no authorization, no flash implied, no capability promoted in
 > paid AI account, without secrets on the ESP32, and without weakening Claude
 > Code's security model?
 
-**Answer: YES.** One load-bearing detail needs a ten-minute empirical test
-(["Test Zero"](#test-zero) below) before any UI work. Everything else is
-documented in the current Claude Code docs, or was already verified against the
-shipped binary in [`companion-features-brainstorm.md`](companion-features-brainstorm.md).
+**Answer: YES**, and the one load-bearing unknown has since been settled by
+experiment — see [Test Zero](#test-zero). Everything else is documented in the
+current Claude Code docs, or was already verified against the shipped binary in
+[`companion-features-brainstorm.md`](companion-features-brainstorm.md).
+
+> **Status, 2026-08-15.** Test Zero **passed**: an interactive session accepts
+> a hook-supplied answer. The bridge (stage 1) is built —
+> `tools/tokenserver/interactions.py` plus the endpoints below — and the whole
+> loop is provable on the Mac alone with `tools/fake-panel.py`. No firmware
+> has been written and nothing has been flashed.
 
 This document supersedes nothing. It is the deeper follow-up to the "Can the
 screen answer back?" section of the brainstorm, which reached the same
@@ -209,24 +215,29 @@ alert only and does not offer an answer; **it never invents a recommendation.**
 
 Answering via `updatedInput` is **explicitly documented for the Agent SDK**
 (`canUseTool` returns `allow` + an `answers` map). For the interactive CLI it is
-documented neither way. This is the one unknown in the whole design, and v1
-depends on it.
+documented neither way. This was the one unknown in the whole design, and v1
+depended on it.
 
 The test: a throwaway `PreToolUse` command hook matching `AskUserQuestion` that
 logs the payload and answers with the **last** option — deliberately not the
-recommendation, which Claude lists first, so the outcome cannot be confused
+recommendation, which Claude lists first, so the outcome could not be confused
 with "Claude simply followed its own preference".
 
-| Observed | Meaning | Consequence |
-|---|---|---|
-| No picker; session continues on the **last** option | Hooks can answer interactively | Build v1 as scoped |
-| Picker appears and waits as normal | `updatedInput` does not answer interactively | v1 pivots to `PermissionRequest` approvals (already verified); questions become alert-only |
-| No picker, continues on the **first** option | Picker skipped, our answer ignored | Treat as a fail for v1; capture the log |
+**Result: passed.** No picker rendered, and the session continued on the option
+the hook supplied. An interactive Claude Code session therefore accepts an
+answer from outside the terminal, which is what makes the panel an input device
+rather than a notifier.
 
-Run it regardless of outcome: the log captures the real payload from the
-installed version, which confirms whether the `(Recommended)` suffix appears,
-whether `tool_use_id` is present, and the label lengths that must render at
-480 x 480.
+Two consequences worth stating plainly:
+
+* v1 is the question flow, as scoped. The `PermissionRequest` fallback stays in
+  the design as the approvals feature, not as a consolation prize.
+* This behaviour is **not documented for the CLI**, so it is not a promise
+  Anthropic has made. Treat it as verified-by-experiment on the installed
+  version, keep the fallback path alive in code (every unanswerable payload
+  already returns "no decision"), and re-run this test after Claude Code
+  upgrades. A regression here degrades the panel to alert-only — it does not
+  break a session.
 
 ---
 
@@ -404,6 +415,43 @@ poll already exists on both ends and gives ≤1.5 s alert latency. The latency
 that actually matters — the answer — is the POST, which is immediate. A second
 transport with reconnect logic and new firmware surface is not worth sub-second
 gains on a 120 s window.
+
+### What is built (stage 1)
+
+`tools/tokenserver/interactions.py` holds the store and the pure logic;
+`tokenserver.py` exposes it. Off unless `--interactions` is passed.
+
+| Route | Who calls it | Behaviour |
+|---|---|---|
+| `POST /api/hook/question` | Claude Code, loopback only | parks a question, holds the connection, returns the answer |
+| `POST /api/hook/permission` | Claude Code, loopback only | same, for approvals |
+| `POST /api/interaction/<id>` | the device, over the LAN | one signed answer: `approve` / `deny` / `leave_it` |
+| `POST /api/panic` | the device | signed panic stop: denies everything parked |
+| `GET /api/agent-status` | the device | unchanged, plus an optional `pending` object |
+
+Three details that are easy to get wrong and are therefore pinned by tests:
+
+* **`pending` is a new optional ROOT key and `v` stays 2.** The shipped
+  firmware checks the root's *required* keys and pins the version, but does not
+  reject unknown root keys — so a panel running today's build keeps working.
+* **Size is the real hazard, not schema.** Past `TK_AGENT_HTTP_BODY_CAP`
+  (4096 bytes) the device discards the entire body, agent list included.
+  `test/test_agent_status_body_capacity.py` reads that `#define` straight from
+  the firmware header and asserts a worst-case snapshot *plus* a worst-case
+  pending item stays under 75 % of it — and that an oversized pending item is
+  dropped rather than allowed to take the agent list with it.
+* **Every unknown returns "no decision"** (HTTP 200, empty body): a payload we
+  cannot render, too many already parked, a crash in the handler, a timeout.
+  The terminal then behaves exactly as it does today.
+
+**Try it without hardware.** `tools/fake-panel.py` polls at the device's own
+1 Hz cadence, draws the interaction at panel proportions, and answers with the
+same signed POST:
+
+```sh
+python3 tools/tokenserver/tokenserver.py --interactions --interaction-detail
+python3 tools/fake-panel.py        # [a]pprove [d]eny [l]eave [p]anic
+```
 
 ---
 

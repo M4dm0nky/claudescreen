@@ -36,11 +36,16 @@ are required, and the build gates on their absence:
 Confirm all five before touching anything. Ask the user for anything you
 cannot determine yourself.
 
-1. **macOS?** The tokenserver reads macOS log paths and the keychain. On
-   Linux/Windows the firmware still builds and the simulator still runs, but
-   the data service will not work — see issues
-   [#2](https://github.com/niclasvestlund-YT/vibepulse/issues/2) /
-   [#3](https://github.com/niclasvestlund-YT/vibepulse/issues/3).
+1. **macOS or Windows?** Both serve data. On Windows the Claude token comes
+   from `%USERPROFILE%\.claude\.credentials.json` instead of the keychain,
+   and state and logs live under `%LOCALAPPDATA%\VibePulse\` — but there is
+   **no autostart**, so the service must be started by hand or wired into
+   Task Scheduler, and `smoke.py`'s advice still names `launchctl`
+   ([#3](https://github.com/niclasvestlund-YT/vibepulse/issues/3)). On Linux
+   the firmware still builds and the simulator still runs, but the service
+   finds no Claude token at all — there is no keychain and the credential
+   file is read only on Windows
+   ([#2](https://github.com/niclasvestlund-YT/vibepulse/issues/2)).
 2. **Do they have the board?** Waveshare ESP32-S3-Touch-AMOLED-2.16. No
    board → skip to [Simulator only](#simulator-only-no-board).
 3. **Is their WiFi 2.4 GHz?** The ESP32-S3 cannot see 5 GHz at all. This is
@@ -147,7 +152,7 @@ are not arriving:
 | `not_run` | Probe has not fired yet | It runs every 120 s — wait |
 | `no_claude_oauth_token` | No Claude Desktop / Claude Code token found | Have them sign in to Claude Code on this Mac |
 | `token_expired_…` | Token found but expired | Re-authenticate in Claude Code |
-| `usage_http_401` / `usage_http_403` | Every token source rejected (the probe tries Claude Desktop's process token, then the keychain, and falls back automatically) | Re-authenticate in Claude Code |
+| `usage_http_401` / `usage_http_403` | Every token source rejected (on macOS the probe tries Claude Desktop's process token, then the keychain, and falls back automatically; on Windows there is only `%USERPROFILE%\.claude\.credentials.json`) | Re-authenticate in Claude Code |
 | `usage_http_200 + no_mapped_limits` | Authenticated, but nothing in the usage response mapped (a `; fallback_…` suffix records the header-probe outcome) | Plan may not expose limits; Codex half still works |
 | `usage_request_failed: …` | Network/DNS failure from the Mac | Check the Mac's own connectivity |
 | `usage_http_429 + backoff_until_HH:MM` | Rate-limited by the API; the probe rests until the shown time | Wait — it retries by itself |

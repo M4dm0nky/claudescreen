@@ -252,6 +252,181 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
         self.assertEqual(
             candidates, [("standalone-token", 1_900_000_000_000)])
 
+    def test_windows_reads_the_credentials_file_claude_login_writes(self):
+        """Windows har ingen nyckelring — `claude login` skriver samma
+        claudeAiOauth-post till %USERPROFILE%\\.claude\\.credentials.json."""
+        credentials = json.dumps({
+            "claudeAiOauth": {
+                "accessToken": "windows-file-token",
+                "expiresAt": 1_900_000_000_000,
+                "refreshToken": "not-ours-to-touch",
+            },
+        })
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / ".claude" / ".credentials.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(credentials, encoding="utf-8")
+
+            with mock.patch.object(tokenserver, "_IS_WINDOWS", True), \
+                    mock.patch.object(tokenserver.Path, "home",
+                                      return_value=Path(temp_dir)), \
+                    mock.patch.object(tokenserver.subprocess, "run",
+                                      side_effect=AssertionError(
+                                          "no subprocess on Windows")):
+                candidates = tokenserver._read_oauth_candidates()
+
+        # Filen är enda källan: ingen pgrep, inget `security`, ingen
+        # utgången processtoken att sortera bort.
+        self.assertEqual(
+            candidates, [("windows-file-token", 1_900_000_000_000)])
+
+    def test_windows_without_a_credentials_file_has_no_candidates(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with mock.patch.object(tokenserver, "_IS_WINDOWS", True), \
+                    mock.patch.object(tokenserver.Path, "home",
+                                      return_value=Path(temp_dir)):
+                self.assertEqual(tokenserver._read_oauth_candidates(), [])
+
+    def test_windows_credentials_file_that_is_garbage_is_not_a_candidate(self):
+        """Halvskriven fil under `claude login` ska ge tystnad, inte krasch."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / ".claude" / ".credentials.json"
+            path.parent.mkdir(parents=True)
+            path.write_text('{"claudeAiOauth": {"accessTok',
+                            encoding="utf-8")
+
+            with mock.patch.object(tokenserver, "_IS_WINDOWS", True), \
+                    mock.patch.object(tokenserver.Path, "home",
+                                      return_value=Path(temp_dir)):
+                self.assertEqual(tokenserver._read_oauth_candidates(), [])
+
+    def test_macos_ignores_a_credentials_file(self):
+        """Macen läser nyckelringen. En kvarglömd .credentials.json på samma
+        maskin får inte smyga in en tredje kandidat."""
+        keychain = json.dumps({
+            "claudeAiOauth": {
+                "accessToken": "keychain-token",
+                "expiresAt": 1_900_000_000_000,
+            },
+        })
+
+        def run(command, **_kwargs):
+            if command[0] == "pgrep":
+                return mock.Mock(stdout="")
+            if command[0] == "security":
+                return mock.Mock(stdout=keychain)
+            raise AssertionError(command)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / ".claude" / ".credentials.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({
+                "claudeAiOauth": {"accessToken": "stale-file-token"},
+            }), encoding="utf-8")
+
+            with mock.patch.object(tokenserver, "_IS_WINDOWS", False), \
+                    mock.patch.object(tokenserver.Path, "home",
+                                      return_value=Path(temp_dir)), \
+                    mock.patch.object(tokenserver.subprocess, "run",
+                                      side_effect=run):
+                candidates = tokenserver._read_oauth_candidates()
+
+        self.assertEqual(
+            candidates, [("keychain-token", 1_900_000_000_000)])
+
+    def test_windows_probe_reaches_the_api_with_the_file_token(self):
+        """Hela Windows-kedjan i ett svep: fil → kandidat → lås → API-svar.
+        Enhetstesten ovan kan alla passera medan kedjan ändå är bruten."""
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(req.get_header("Authorization"))
+            return _FakeUsageResponse({"limits": [
+                {"kind": "session", "percent": 12,
+                 "resets_at": "2100-01-01T00:00:00+00:00"},
+                {"kind": "weekly_all", "percent": 47,
+                 "resets_at": "2100-01-02T00:00:00+00:00"},
+            ]})
+
+        class FakeMsvcrt:
+            LK_NBLCK = 1
+
+            @staticmethod
+            def locking(fd, mode, nbytes):
+                pass
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            credentials = home / ".claude" / ".credentials.json"
+            credentials.parent.mkdir(parents=True)
+            credentials.write_text(json.dumps({
+                "claudeAiOauth": {
+                    "accessToken": "windows-file-token",
+                    "expiresAt": 1_900_000_000_000,
+                },
+            }), encoding="utf-8")
+
+            with mock.patch.object(tokenserver, "_IS_WINDOWS", True), \
+                    mock.patch.object(tokenserver, "fcntl", None), \
+                    mock.patch.object(tokenserver, "msvcrt", FakeMsvcrt), \
+                    mock.patch.object(tokenserver, "_PROBE_LOCK_PATH",
+                                      home / "claude-probe.lock"), \
+                    mock.patch.object(tokenserver, "_probe_cooldown_until",
+                                      0.0), \
+                    mock.patch.object(tokenserver, "_dead_tokens", {}), \
+                    mock.patch.object(tokenserver.Path, "home",
+                                      return_value=home), \
+                    mock.patch.object(tokenserver.subprocess, "run",
+                                      side_effect=AssertionError(
+                                          "no subprocess on Windows")), \
+                    mock.patch.object(tokenserver.urllib.request, "urlopen",
+                                      side_effect=fake_urlopen):
+                found = tokenserver._probe_limits()
+
+        self.assertEqual(tokenserver._probe_status, "usage_http_200 + ok")
+        self.assertEqual(calls, ["Bearer windows-file-token"])
+        self.assertEqual(found["sessionPct"], 12.0)
+        self.assertEqual(found["weekPct"], 47.0)
+
+    def test_state_dir_is_local_app_data_on_windows(self):
+        with mock.patch.object(tokenserver, "_IS_WINDOWS", True), \
+                mock.patch.dict(tokenserver.os.environ,
+                                {"LOCALAPPDATA": r"C:\Users\erik\AppData\Local"}):
+            self.assertEqual(
+                tokenserver._state_dir(),
+                Path(r"C:\Users\erik\AppData\Local") / "VibePulse")
+
+    def test_state_dir_falls_back_when_localappdata_is_unset(self):
+        """En tjänst som startas utan användarmiljö (Task Scheduler under
+        SYSTEM) saknar LOCALAPPDATA — sökvägen ska ändå bli den rätta."""
+        env = dict(tokenserver.os.environ)
+        env.pop("LOCALAPPDATA", None)
+        with mock.patch.object(tokenserver, "_IS_WINDOWS", True), \
+                mock.patch.dict(tokenserver.os.environ, env, clear=True), \
+                mock.patch.object(tokenserver.Path, "home",
+                                  return_value=Path("/home/tester")):
+            self.assertEqual(
+                tokenserver._state_dir(),
+                Path("/home/tester/AppData/Local/VibePulse"))
+
+    def test_state_dir_is_unchanged_on_macos(self):
+        with mock.patch.object(tokenserver, "_IS_WINDOWS", False), \
+                mock.patch.object(tokenserver.Path, "home",
+                                  return_value=Path("/Users/niclas")):
+            self.assertEqual(
+                tokenserver._state_dir(),
+                Path("/Users/niclas/Library/Application Support/VibePulse"))
+            self.assertEqual(
+                tokenserver._log_dir(), Path("/Users/niclas/Library/Logs"))
+
+    def test_credentials_file_path_sits_under_home(self):
+        with mock.patch.object(tokenserver.Path, "home",
+                               return_value=Path("/home/tester")):
+            self.assertEqual(
+                tokenserver._credentials_file_path(),
+                Path("/home/tester/.claude/.credentials.json"))
+
     def test_probe_falls_back_to_keychain_when_process_token_rejected(self):
         calls = []
 
@@ -335,6 +510,47 @@ class ClaudeLimitHeaderTests(unittest.TestCase):
         self.assertIsNone(found)
         self.assertEqual(tokenserver._probe_status,
                          "probe_held_by_other_instance")
+
+    def test_probe_lock_uses_msvcrt_when_there_is_no_fcntl(self):
+        """Windows saknar fcntl. Enprobe-grinden får inte tyst försvinna där
+        — den tas med msvcrt.locking i stället, samma icke-blockerande
+        semantik."""
+        calls = []
+
+        class FakeMsvcrt:
+            LK_NBLCK = 1
+
+            @staticmethod
+            def locking(fd, mode, nbytes):
+                calls.append((mode, nbytes))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "claude-probe.lock"
+            with mock.patch.object(tokenserver, "_PROBE_LOCK_PATH", path), \
+                    mock.patch.object(tokenserver, "fcntl", None), \
+                    mock.patch.object(tokenserver, "msvcrt", FakeMsvcrt):
+                handle = tokenserver._hold_probe_lock()
+
+            self.assertIsNotNone(handle)
+            handle.close()
+            self.assertEqual(calls, [(FakeMsvcrt.LK_NBLCK, 1)])
+            # Låset måste ha en byte att sätta tänderna i.
+            self.assertEqual(path.read_text(encoding="utf-8"), "1")
+
+    def test_probe_lock_yields_when_msvcrt_reports_a_held_range(self):
+        class FakeMsvcrt:
+            LK_NBLCK = 1
+
+            @staticmethod
+            def locking(fd, mode, nbytes):
+                raise OSError(13, "Permission denied")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "claude-probe.lock"
+            with mock.patch.object(tokenserver, "_PROBE_LOCK_PATH", path), \
+                    mock.patch.object(tokenserver, "fcntl", None), \
+                    mock.patch.object(tokenserver, "msvcrt", FakeMsvcrt):
+                self.assertIsNone(tokenserver._hold_probe_lock())
 
     def test_probe_retries_a_refreshed_token_value(self):
         """Dödmarkeringen sitter på VÄRDET: när källan levererar en ny
@@ -723,6 +939,90 @@ class CodexLimitLogTests(unittest.TestCase):
         self.assertEqual(pct, 57.0)
         self.assertEqual(reset_min, 60)
         self.assertEqual(window_min, 10080)
+
+    def _fake_app_server(self, temp_dir, body):
+        """Ett körbart som talar app-server-protokollet på stdin/stdout.
+
+        Läsvägen mockades bort i varje befintligt test — bara parsern var
+        täckt — så select-bytet hade kunnat gå sönder tyst. Det här kör den
+        på riktigt: process, pipe, tråd, kö.
+        """
+        script = Path(temp_dir) / "codex"
+        script.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, sys\n"
+            "for line in sys.stdin:\n"
+            "    try:\n"
+            "        msg = json.loads(line)\n"
+            "    except ValueError:\n"
+            "        continue\n"
+            "    got = msg.get('id')\n"
+            "    if got == 1:\n"
+            "        print(json.dumps({'id': 1, 'result': {}}), flush=True)\n"
+            "    elif got == 2:\n"
+            f"        print(json.dumps({body!r}), flush=True)\n",
+            encoding="utf-8")
+        script.chmod(0o755)
+        return str(script)
+
+    def test_app_server_read_talks_to_a_real_process(self):
+        response = {"id": 2, "result": {"rateLimits": {
+            "limitId": "codex",
+            "limitName": None,
+            "primary": {"usedPercent": 62, "windowDurationMins": 10080,
+                        "resetsAt": 1_900_000_000},
+        }}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executable = self._fake_app_server(temp_dir, response)
+            with mock.patch.object(tokenserver, "_codex_app_server_command",
+                                   return_value=executable):
+                found = tokenserver._read_codex_app_server_limits(
+                    timeout_s=20)
+
+        self.assertEqual(found["codexWeekPct"], 62.0)
+        self.assertEqual(found["codexWeekResetAt"], 1_900_000_000)
+
+    def test_app_server_read_gives_up_when_the_process_says_nothing(self):
+        """Deadlinen måste hålla utan select: en app-server som svarar
+        aldrig får inte hänga probecykeln."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "codex"
+            script.write_text(
+                "#!/usr/bin/env python3\n"
+                "import time\n"
+                "time.sleep(30)\n", encoding="utf-8")
+            script.chmod(0o755)
+
+            with mock.patch.object(tokenserver, "_codex_app_server_command",
+                                   return_value=str(script)):
+                started = time.monotonic()
+                found = tokenserver._read_codex_app_server_limits(
+                    timeout_s=1)
+                elapsed = time.monotonic() - started
+
+        self.assertEqual(found, {})
+        self.assertLess(elapsed, 10)
+
+    def test_app_server_read_returns_when_the_process_dies_at_once(self):
+        """EOF-vakten: strömmen stängs direkt, och läsaren ska returnera på
+        en gång i stället för att vänta ut hela sin deadline."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            script = Path(temp_dir) / "codex"
+            script.write_text(
+                "#!/usr/bin/env python3\n"
+                "raise SystemExit(1)\n", encoding="utf-8")
+            script.chmod(0o755)
+
+            with mock.patch.object(tokenserver, "_codex_app_server_command",
+                                   return_value=str(script)):
+                started = time.monotonic()
+                found = tokenserver._read_codex_app_server_limits(
+                    timeout_s=20)
+                elapsed = time.monotonic() - started
+
+        self.assertEqual(found, {})
+        self.assertLess(elapsed, 10)
 
     def test_app_server_rate_limit_maps_remaining_38_to_used_62(self):
         response = {

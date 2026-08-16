@@ -32,12 +32,12 @@ Autostart: se README.md härintill (launchd-plist medföljer).
 """
 
 import argparse
-import fcntl
 import hashlib
 import json
 import logging
 import math
 import os
+import queue
 import re
 import select
 import shutil
@@ -51,6 +51,18 @@ import weakref
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+# Probelåset tas med olika systemanrop på olika plattformar; ingen av
+# modulerna finns på båda. Importen får inte fälla hela tjänsten — utan lås
+# är beteendet som före låset fanns, inte "startar inte alls".
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
+try:
+    import msvcrt
+except ImportError:  # macOS/Linux
+    msvcrt = None
 
 if __package__:
     from .agent_status import AgentStatusService
@@ -78,6 +90,34 @@ LIMITS_EVERY_S = 240  # rate-limit-proben: 15 anrop/h — kontots bucket delas
                       # med Claude Code självt, och kvoten rör sig långsamt;
                       # panelens 30 s-pollar får ändå cachat svar direkt
 
+# Vilka token-källor och systemanrop som finns beror på plattformen, inte på
+# konfiguration. Testerna patchar konstanten för att köra Windows-grenarna
+# på en Mac.
+_IS_WINDOWS = sys.platform == "win32"
+
+
+def _state_dir():
+    """Tjänstens tillståndskatalog — låset, cachen, historiken, spåraren.
+
+    ``~/Library/Application Support`` är macOS-konventionen; Windows
+    motsvarighet är ``%LOCALAPPDATA%``. Sökvägarna FUNGERAR bokstavligt på
+    Windows (``Path.home()`` löser ut), men skulle lägga ett ``Library``-träd
+    i användarprofilen som ingenting annat på maskinen känner igen.
+    """
+    if _IS_WINDOWS:
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        base = (Path(local_app_data) if local_app_data
+                else Path.home() / "AppData" / "Local")
+        return base / "VibePulse"
+    return Path.home() / "Library" / "Application Support" / "VibePulse"
+
+
+def _log_dir():
+    """Loggkatalogen. macOS har ~/Library/Logs; Windows har ingen egen
+    logg-konvention för användartjänster, så loggen bor i tillståndsträdet."""
+    return Path.home() / "Library" / "Logs" if not _IS_WINDOWS else (
+        _state_dir() / "Logs")
+
 # Diagnostiken går via logging till stderr med tidsstämplar (basicConfig i
 # main; launchd samlar bägge strömmarna i loggfilen, se plisten). Regeln är
 # ÖVERGÅNGAR, inte tillstånd: en statusändring loggas en gång och sedan är
@@ -88,7 +128,7 @@ log = logging.getLogger("tokenserver")
 # överlever omstart och syns i Konsol-appen — /tmp gjorde ingetdera. launchd
 # har ingen egen rotation, så servern tar den vid start: se
 # _maybe_rotate_own_log.
-DEFAULT_LOG_PATH = Path.home() / "Library" / "Logs" / "torget-tokenserver.log"
+DEFAULT_LOG_PATH = _log_dir() / "torget-tokenserver.log"
 _LOG_CAP_BYTES = 5 * 1024 * 1024
 _LOG_TAIL_KEEP_BYTES = 256 * 1024
 
@@ -248,8 +288,7 @@ def _get_usage_history(path=None):
     with _history_lock:
         if _default_usage_history is None:
             _default_usage_history = UsageHistory(
-                Path.home() / "Library" / "Application Support" /
-                "VibePulse" / "usage-history.json")
+                _state_dir() / "usage-history.json")
         return _default_usage_history
 
 
@@ -260,8 +299,7 @@ def _get_quota_cache(path=None):
     with _quota_cache_lock:
         if _default_quota_cache is None:
             _default_quota_cache = QuotaCache(
-                Path.home() / "Library" / "Application Support" /
-                "VibePulse" / "quota-cache.json")
+                _state_dir() / "quota-cache.json")
         return _default_quota_cache
 
 
@@ -542,17 +580,54 @@ def _read_keychain_oauth():
         return None, None
 
 
+def _credentials_file_path():
+    """Windows' credential store: ``%USERPROFILE%\\.claude\\.credentials.json``.
+
+    Claude Code has no keychain integration on Windows, so ``claude login``
+    writes the same ``{"claudeAiOauth": {...}}`` shape the macOS keychain
+    holds to a plain file instead. ``Path.home()`` resolves to
+    ``%USERPROFILE%`` there, so one expression covers both.
+    """
+    return Path.home() / ".claude" / ".credentials.json"
+
+
+def _read_credentials_file_oauth():
+    """The Windows credential file as ``(token, expires_at_ms)``.
+
+    Same record ``/login`` writes, same field names as the keychain — only
+    the store differs. A missing or malformed file is not an error worth
+    logging: it just means this host has no credential file, which is the
+    normal case everywhere except Windows.
+    """
+    try:
+        raw = _credentials_file_path().read_text(encoding="utf-8")
+        oauth = json.loads(raw).get("claudeAiOauth") or {}
+        return oauth.get("accessToken"), oauth.get("expiresAt")
+    except Exception:
+        return None, None
+
+
 def _read_oauth_candidates():
     """Distinct token candidates as ``[(token, expires_at_ms), ...]``.
 
-    Claude Desktop's injected process token is listed first (Desktop
-    refreshes OAuth itself while the keychain record can lag), but ``ps eww``
-    shows the environment as of process launch: a Desktop child that outlives
-    its token keeps serving the frozen, expired value even after a fresh
-    ``/login`` has updated the keychain. Neither source is reliably the
-    freshest, so the probe must try them in order rather than trust the
-    first.
+    Which sources exist is a property of the platform. On Windows there is
+    no keychain and no bundled Claude Desktop process to read an injected
+    token from, so the credential file ``/login`` writes is the only source
+    — asking ``pgrep``/``security`` there would only spawn doomed processes
+    every probe cycle.
+
+    On macOS both sources are live. Claude Desktop's injected process token
+    is listed first (Desktop refreshes OAuth itself while the keychain
+    record can lag), but ``ps eww`` shows the environment as of process
+    launch: a Desktop child that outlives its token keeps serving the
+    frozen, expired value even after a fresh ``/login`` has updated the
+    keychain. Neither source is reliably the freshest, so the probe must try
+    them in order rather than trust the first.
     """
+    if _IS_WINDOWS:
+        file_token, expires_at = _read_credentials_file_oauth()
+        return [(file_token, expires_at)] if file_token else []
+
     candidates = []
     process_token = _read_process_oauth_token()
     if process_token:
@@ -727,15 +802,13 @@ def _usage_request(token):
 # api.anthropic.com. Båda 429-incidenterna 2026-08-13/14 var i grunden
 # överflödig upstream-trafik — den här grinden gör varianten "en instans
 # till" strukturellt ofarlig i stället för att lita på att ingen startar en.
-_PROBE_LOCK_PATH = (Path.home() / "Library" / "Application Support" /
-                    "VibePulse" / "claude-probe.lock")
+_PROBE_LOCK_PATH = _state_dir() / "claude-probe.lock"
 
 # Straffrutan ÖVERLEVER omstarter: cooldownen var ren minnesstat, så varje
 # serveromstart glömde pågående backoff och petade direkt på den heta
 # bucketen igen (sett två gånger 2026-08-14, båda självförvållade). Filen
 # bor bredvid probelåset och läses lat vid första probecykeln.
-_PROBE_STATE_PATH = (Path.home() / "Library" / "Application Support" /
-                     "VibePulse" / "claude-probe-state.json")
+_PROBE_STATE_PATH = _state_dir() / "claude-probe-state.json"
 _probe_state_loaded = False
 
 
@@ -816,11 +889,24 @@ def _ota_available_version():
 
 
 def _hold_probe_lock():
-    """Icke-blockerande flock; returnerar filobjektet (= låset) eller None."""
+    """Icke-blockerande exklusivt lås; returnerar filobjektet eller None.
+
+    ``flock`` på macOS/Linux, ``msvcrt.locking`` på Windows — samma grind,
+    olika systemanrop. Båda släpps när filen stängs.
+    """
     try:
         _PROBE_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
         handle = open(_PROBE_LOCK_PATH, "w")
-        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if fcntl is not None:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        elif msvcrt is not None:
+            # LK_NBLCK låser ett byte utan att blockera och höjer OSError om
+            # en annan instans redan äger det. Filen måste ha en byte att
+            # låsa, annars lyckas anropet utan att grinden betyder något.
+            handle.write("1")
+            handle.flush()
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
         return handle
     except OSError:
         try:
@@ -1197,6 +1283,38 @@ def _codex_app_server_command():
     return None
 
 
+def _pump_lines(stream):
+    """Rader från ``stream`` i en kö, lästa av en daemon-tråd.
+
+    ``select`` dög inte: på Windows tar ``select()`` bara sockets, aldrig
+    pipes, så app-server-läsningen kastade där i stället för att hämta
+    Codex-kvoten. En tråd som blockerar i ``readline`` ger samma
+    icke-blockerande läsning på alla plattformar.
+
+    Tråden är daemon och äger inget: dör app-servern — eller dödar vi den i
+    ``finally`` — returnerar ``readline`` tomt och tråden tar slut av sig
+    själv. ``None`` i kön är EOF-vakten, så läsaren slipper vänta ut hela
+    sin deadline när strömmen redan är stängd.
+    """
+    lines = queue.Queue()
+
+    def pump():
+        try:
+            while True:
+                line = stream.readline()
+                if not line:
+                    break
+                lines.put(line)
+        except (OSError, ValueError):
+            pass  # stängd ström under nedstängning är väntat, inte ett fel
+        finally:
+            lines.put(None)
+
+    threading.Thread(target=pump, daemon=True,
+                     name="codex-app-server-reader").start()
+    return lines
+
+
 def _read_codex_app_server_limits(timeout_s=5):
     """Read Codex's current quota snapshot through its local app protocol."""
     executable = _codex_app_server_command()
@@ -1221,18 +1339,20 @@ def _read_codex_app_server_limits(timeout_s=5):
                 "capabilities": {},
             },
         })
+        lines = _pump_lines(process.stdout)
         requested = False
         deadline = time.monotonic() + timeout_s
-        while time.monotonic() < deadline:
-            ready, _, _ = select.select(
-                [process.stdout], [], [],
-                min(0.25, max(0, deadline - time.monotonic())))
-            if not ready:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                line = lines.get(timeout=min(0.25, remaining))
+            except queue.Empty:
                 if process.poll() is not None:
                     break
                 continue
-            line = process.stdout.readline()
-            if not line:
+            if line is None:  # EOF-vakten: strömmen är slut
                 break
             try:
                 message = json.loads(line)
@@ -1249,13 +1369,25 @@ def _read_codex_app_server_limits(timeout_s=5):
     except (OSError, ValueError, BrokenPipeError):
         return {}
     finally:
-        if process is not None and process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=1)
+        if process is not None:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=1)
+            # Rören stängs uttryckligen, i den här ordningen: processen är
+            # redan död, så läsartråden har lämnat readline och kan inte
+            # väckas mitt i en stängd ström. Utan det här hängde tre
+            # deskriptorer per cykel på GC:n — en gång var 30:e sekund,
+            # dygnet runt, i en tjänst som aldrig startar om.
+            for pipe in (process.stdin, process.stdout, process.stderr):
+                if pipe is not None:
+                    try:
+                        pipe.close()
+                    except OSError:
+                        pass
     return {}
 
 
@@ -2330,8 +2462,7 @@ def main():
     Handler.agent_status = status_service
 
     max_tracker_store = MaxTrackerStore(
-        Path.home() / "Library" / "Application Support" / "VibePulse" /
-        "max-tracker.json",
+        _state_dir() / "max-tracker.json",
         CODEX_SESSIONS, Handler.projects_dir)
     Handler.max_tracker_store = max_tracker_store
     Handler.plans = {"claude": args.claude_plan, "codex": args.codex_plan}

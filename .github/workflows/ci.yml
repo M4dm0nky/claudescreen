@@ -29,6 +29,9 @@ jobs:
           python-version: "3.12"
       - name: Run tokenserver unit tests
         run: |
+          # Same eleven modules as test/run.sh, same order. The lists
+          # drifting apart is how a green CI hid a runtime NameError in
+          # PR #11 (test_interactions was missing) — keep them in sync.
           python -m unittest \
             tools.tokenserver.test_github_monitor \
             tools.tokenserver.test_tokenserver \
@@ -36,6 +39,10 @@ jobs:
             tools.tokenserver.test_usage_history \
             tools.tokenserver.test_quota_cache \
             tools.tokenserver.test_max_tracker \
+            tools.tokenserver.test_value_meter \
+            tools.tokenserver.test_update_prices \
+            tools.tokenserver.test_codex_usage \
+            tools.tokenserver.test_interactions \
             tools.tokenserver.test_smoke -v
 
   firmware:

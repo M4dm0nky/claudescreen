@@ -5,6 +5,15 @@ on the [releases page](https://github.com/niclasvestlund-YT/vibepulse/releases).
 
 ## Unreleased
 
+### Fixed
+
+- CI's tokenserver job runs the same eleven test modules as `test/run.sh`.
+  The lists had drifted four suites apart — `test_value_meter`,
+  `test_update_prices`, `test_codex_usage` and `test_interactions` ran only
+  in the local gate — which is exactly how a green CI hid a runtime
+  `NameError` in the rebased Windows branch (PR #11): the missing
+  `test_interactions` catches it immediately.
+
 ### Added
 
 - The completion alert finally pulses. The accent outline and icon ring

@@ -156,6 +156,69 @@ def build_codex(canvas_size: int = CANVAS) -> bytes:
     return bytes(palette + packed)
 
 
+# The Needs You mascot: the shipped Claude pet, cell-accurate to the 16x16
+# grid in tools/mockups/needsyou_mascot.py, rasterized at integer pixel scales
+# with nearest-neighbor edges. Emitted PRE-COLORED (no runtime recolor, per the
+# AMOLED skill invariant): an I4 image whose one non-transparent palette entry
+# is the Claude accent. Private dims it with object opacity, never a recolor.
+MASCOT_CLAUDE_BGRA = bytes((0x57, 0x77, 0xD9, 255))  # #D97757
+
+
+def build_mascot(pose: str, cell: int) -> tuple[bytes, int, int]:
+    width, height = 16 * cell, 13 * cell
+    on = bytearray(width * height)
+
+    def rect(cx: float, cy: float, cw: float, ch: float, value: int) -> None:
+        x0, y0 = round(cx * cell), round(cy * cell)
+        x1, y1 = round((cx + cw) * cell), round((cy + ch) * cell)
+        for y in range(max(0, y0), min(height, y1)):
+            base = y * width
+            for x in range(max(0, x0), min(width, x1)):
+                on[base + x] = value
+
+    # Body, full-width arm band, four legs — the shipped silhouette.
+    rect(2, 3, 12, 8, 1)
+    rect(0, 7, 16, 2, 1)
+    for leg_x in (3, 5, 10, 12):
+        rect(leg_x, 11, 1, 2, 1)
+    if pose == "asking":
+        rect(14, 4, 2, 3, 1)  # one raised arm, the head-tilt look without a tilt
+
+    # Eyes are punched back to transparent, per pose.
+    if pose == "neutral":
+        rect(4, 5, 1, 2, 0)
+        rect(11, 5, 1, 2, 0)
+    elif pose == "asking":
+        rect(4, 5, 1, 2, 0)
+        rect(10.5, 4.5, 2, 2.5, 0)
+    elif pose == "alert":
+        rect(3.5, 4.5, 2, 2.5, 0)
+        rect(10.5, 4.5, 2, 2.5, 0)
+    elif pose == "happy":
+        for eye_x in (3.2, 10.2):  # delighted ^ ^ chevrons, not sleepy slits
+            rect(eye_x, 6.0, 0.9, 0.9, 0)
+            rect(eye_x + 0.85, 5.2, 0.9, 0.9, 0)
+            rect(eye_x + 1.7, 6.0, 0.9, 0.9, 0)
+    else:
+        raise ValueError(f"unknown mascot pose {pose!r}")
+
+    palette = bytearray(16 * 4)
+    palette[4:8] = MASCOT_CLAUDE_BGRA  # index 1; index 0 stays transparent
+    packed = bytearray()
+    for offset in range(0, len(on), 2):
+        packed.append((on[offset] << 4) | on[offset + 1])
+    return bytes(palette + packed), width, height
+
+
+MASCOTS = (
+    ("tk_img_mascot_asking_4", "asking", 4),
+    ("tk_img_mascot_neutral_4", "neutral", 4),
+    ("tk_img_mascot_alert_8", "alert", 8),
+    ("tk_img_mascot_neutral_7", "neutral", 7),
+    ("tk_img_mascot_happy_8", "happy", 8),
+)
+
+
 def c_array(name: str, data: bytes) -> str:
     rows = []
     for offset in range(0, len(data), 16):
@@ -165,14 +228,15 @@ def c_array(name: str, data: bytes) -> str:
 
 
 def descriptor(name: str, data_name: str, color_format: str, stride: int,
-               size: int, canvas: int = CANVAS) -> str:
+               size: int, canvas: int = CANVAS,
+               height: int | None = None) -> str:
     return f"""const lv_image_dsc_t {name} = {{
   .header = {{
     .magic = LV_IMAGE_HEADER_MAGIC,
     .cf = {color_format},
     .flags = 0,
     .w = {canvas},
-    .h = {canvas},
+    .h = {canvas if height is None else height},
     .stride = {stride},
   }},
   .data_size = {size},
@@ -186,7 +250,11 @@ def render_generated_sources() -> tuple[str, str]:
     codex = build_codex(112)
     claude_32 = build_claude(32)
     codex_32 = build_codex(32)
-    header = """#ifndef AGENT_ASSETS_H
+    mascots = [(name, *build_mascot(pose, cell))
+               for name, pose, cell in MASCOTS]
+    mascot_externs = "".join(
+        f"extern const lv_image_dsc_t {name};\n" for name, _, _, _ in mascots)
+    header = f"""#ifndef AGENT_ASSETS_H
 #define AGENT_ASSETS_H
 
 #include "lvgl.h"
@@ -196,6 +264,9 @@ extern const lv_image_dsc_t tk_img_codex;
 extern const lv_image_dsc_t tk_img_claude_32;
 extern const lv_image_dsc_t tk_img_codex_32;
 
+/* Needs You takeover: the Claude pet, one pose per emotive beat, pre-colored
+ * at integer pixel scales. */
+{mascot_externs}
 #endif
 """
     source = "#include \"agent_assets.h\"\n\n"
@@ -203,6 +274,8 @@ extern const lv_image_dsc_t tk_img_codex_32;
     source += c_array("tk_img_codex_data", codex)
     source += c_array("tk_img_claude_32_data", claude_32)
     source += c_array("tk_img_codex_32_data", codex_32)
+    for name, data, _, _ in mascots:
+        source += c_array(f"{name}_data", data)
     source += "\n"
     source += descriptor("tk_img_claude", "tk_img_claude_data",
                          "LV_COLOR_FORMAT_A8", CANVAS, len(claude))
@@ -212,6 +285,9 @@ extern const lv_image_dsc_t tk_img_codex_32;
                          "LV_COLOR_FORMAT_A8", 32, len(claude_32), 32)
     source += descriptor("tk_img_codex_32", "tk_img_codex_32_data",
                          "LV_COLOR_FORMAT_I4", 16, len(codex_32), 32)
+    for name, data, width, height in mascots:
+        source += descriptor(name, f"{name}_data", "LV_COLOR_FORMAT_I4",
+                             width // 2, len(data), width, height)
     return header, source
 
 

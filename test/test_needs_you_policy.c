@@ -45,6 +45,22 @@ int main(void) {
   check("nedräkningen avrundas uppåt", view.seconds_left == 118);
   check("sorten följer med till vyn", view.kind == TK_PENDING_QUESTION);
 
+  /* The countdown ring is expires against the original hold, in per-mille,
+   * computed by the policy so the widget never has to guess a duration. */
+  pending = question();
+  pending.expires_in_ms = 60000;
+  pending.hold_ms = 120000;
+  view = tk_needs_you_view_of(&state, &pending);
+  check("ringen är halv vid halva hålltiden", view.ring_permille == 500);
+  pending.expires_in_ms = 130000;  /* a stale clock never overfills the ring */
+  view = tk_needs_you_view_of(&state, &pending);
+  check("ringen klampas till full, aldrig över", view.ring_permille == 1000);
+  pending.hold_ms = 0;             /* older service: no known duration */
+  pending.expires_in_ms = 42000;
+  view = tk_needs_you_view_of(&state, &pending);
+  check("utan känd hålltid läser ringen full", view.ring_permille == 1000);
+  pending = question();
+
   /* can_approve is the service's call; the panel never overrides it upward. */
   pending.can_approve = false;
   view = tk_needs_you_view_of(&state, &pending);

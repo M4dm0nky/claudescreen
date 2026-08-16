@@ -14,12 +14,15 @@ extern const lv_font_t plex_attention_18;
 extern const lv_font_t plex_attention_25;
 extern const lv_font_t plex_attention_52;
 extern const lv_font_t plex_ui_14;
-/* The only rasters that carry lowercase + punctuation are the plex_ui_* family
- * (0x20-0x7E); arbitrary Claude text — a question, a command — can only be
- * drawn with these, so 21 px is the largest a title/command can be. Both are
- * already linked (usage_screen, boot, ota, star popup), so this adds no flash. */
 extern const lv_font_t plex_ui_16;
-extern const lv_font_t plex_ui_21;
+/* Needs You v2 takeover fonts. The command payload is the one element the
+ * design keeps in real mono; the question/title need a shelf-readable full-
+ * ASCII face (plex_body_27). headline_48 carries the one-word heroes, text_21
+ * the attract project line. See docs/needs-you-investigation.md. */
+extern const lv_font_t plex_body_27;
+extern const lv_font_t plex_mono_40;
+extern const lv_font_t plex_headline_48;
+extern const lv_font_t plex_text_21;
 
 #define COL_BLACK   lv_color_hex(VP_COLOR_BACKGROUND)
 #define COL_WHITE   lv_color_hex(VP_COLOR_TEXT)
@@ -27,10 +30,11 @@ extern const lv_font_t plex_ui_21;
 #define COL_CODEX   lv_color_hex(VP_COLOR_CODEX)
 #define COL_MUTED   lv_color_hex(VP_COLOR_MUTED)
 #define COL_TRACK   lv_color_hex(VP_COLOR_TRACK)
-/* A faint card lift so the recommendation groups without breaking the true
- * black ground; a surface tone, never a data colour. */
-#define NY_CARD_BG   lv_color_hex(0x14161C)
-#define NY_CARD_LINE lv_color_hex(0x2A2F38)
+#define COL_HAIR    lv_color_hex(VP_COLOR_HAIRLINE)
+/* Two v2-only tones from the approved design: a dimmer label grey, and the one
+ * restrained red the design law allows — for DENY, and DENY only. */
+#define COL_DIM     lv_color_hex(0x5C687B)
+#define COL_RED     lv_color_hex(0xE5484D)
 
 typedef struct {
   lv_obj_t *root;
@@ -45,30 +49,69 @@ typedef struct {
   lv_obj_t *dismiss;
 } completion_view;
 
-/* The interactive "Needs You" takeover. One object tree, built hidden, updated
- * from needs_you_policy on every poll. */
+/* The interactive "Needs You" takeover (approved v2 direction). A two-stage
+ * summon: ATTRACT is the across-the-room alert with a depleting countdown ring;
+ * a tap opens the DECISION screen (question / approval / private); an APPROVE
+ * shows a static PAYOFF beat. One object tree, built hidden, groups shown per
+ * stage. The policy stays authoritative — this only paints what it allows. */
+typedef enum { NY_ATTRACT, NY_DECISION, NY_PAYOFF } ny_stage;
+
 typedef struct {
   lv_obj_t *root;
-  lv_obj_t *outline;
-  lv_obj_t *eyebrow;
-  lv_obj_t *project;
-  lv_obj_t *prompt;
-  lv_obj_t *card;
-  lv_obj_t *card_eyebrow;
-  lv_obj_t *card_title;
-  lv_obj_t *card_subtitle;
-  lv_obj_t *private_title;
-  lv_obj_t *private_hint;
+  lv_obj_t *frame;        /* the accent border, shared by every stage */
+
+  /* ATTRACT */
+  lv_obj_t *a_group;
+  lv_obj_t *a_ring;
+  lv_obj_t *a_mascot;
+  lv_obj_t *a_word;       /* NEEDS YOU */
+  lv_obj_t *a_project;
+  lv_obj_t *a_tap;        /* TAP TO ANSWER */
+
+  /* Shared decision header: ring + mascot + eyebrow */
+  lv_obj_t *h_group;
+  lv_obj_t *h_ring;
+  lv_obj_t *h_mascot;
+  lv_obj_t *h_eyebrow;    /* CLAUDE NEEDS YOU · PROJECT */
+
+  /* QUESTION body */
+  lv_obj_t *q_group;
+  lv_obj_t *q_prompt;
+  lv_obj_t *q_card;
+  lv_obj_t *q_rec;        /* CLAUDE RECOMMENDS */
+  lv_obj_t *q_title;
+  lv_obj_t *q_sub;
+  lv_obj_t *q_footer;     /* N MORE OPTION(S) IN TERMINAL */
+
+  /* APPROVAL body */
+  lv_obj_t *p_group;
+  lv_obj_t *p_desc;
+  lv_obj_t *p_chip;
+  lv_obj_t *p_chip_lbl;
+  lv_obj_t *p_cmd;        /* the command, in mono */
+
+  /* Shared buttons */
   lv_obj_t *approve;
   lv_obj_t *deny;
   lv_obj_t *leave;
-  lv_obj_t *more_options;
-  lv_obj_t *desk_hint;
-  lv_obj_t *countdown;
+
+  /* PRIVATE */
+  lv_obj_t *pv_group;
+  lv_obj_t *pv_ring;
+  lv_obj_t *pv_mascot;
+  lv_obj_t *pv_title;
+  lv_obj_t *pv_sub;
+  lv_obj_t *pv_tap;
+
+  /* PAYOFF */
+  lv_obj_t *po_group;
+  lv_obj_t *po_mascot;
+  lv_obj_t *po_word;      /* ON IT. */
+  lv_obj_t *po_echo;      /* the verbatim approved item */
+  lv_obj_t *po_spark[5];
 } needs_you_view;
 
-/* Enough of the decision to know when a repaint is actually needed; the
- * countdown only moves on a poll, so ticks in between are free. */
+/* Enough of the decision + stage to know when a repaint is actually needed. */
 typedef struct {
   bool valid;
   bool visible;
@@ -77,8 +120,9 @@ typedef struct {
   bool marked;
   bool has_title;
   uint8_t kind;
+  uint8_t stage;
   uint8_t options_total;
-  uint32_t seconds_left;
+  uint16_t ring_permille;
   char request_id[TK_PENDING_ID_CAP];
 } needs_you_key;
 
@@ -88,6 +132,10 @@ static struct {
   tk_needs_you_state needs_you_state;
   needs_you_key needs_you_rendered;
   bool needs_you_visible; /* read by render_completion to yield the screen */
+  ny_stage stage;
+  char stage_id[TK_PENDING_ID_CAP]; /* the interaction the stage belongs to */
+  char echo[TK_PENDING_TITLE_CAP];  /* the approved item, for the payoff beat */
+  int64_t payoff_until_us;
   tk_agent_monitor_needs_you_cb tk_needs_you_cb;
   tk_agent_snapshot snapshot;
   tk_completion_queue queue;
@@ -331,65 +379,120 @@ static void create_completion(lv_obj_t *app_root) {
 
 /* ---------------------------------------------------------------- Needs You */
 
-static void render_needs_you(void);
+extern const lv_font_t plex_mono_24;
 
-static void needs_you_verdict_event(lv_event_t *event) {
-  if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
-  tk_needs_you_verdict verdict =
-      (tk_needs_you_verdict)(intptr_t)lv_event_get_user_data(event);
-  const tk_pending_interaction *pending = &mon.snapshot.pending;
-  tk_needs_you_view decision =
-      tk_needs_you_view_of(&mon.needs_you_state, pending);
-  /* The frame's own gate. A stray touch, a stale frame or a mis-wired callback
-   * dies here rather than sending an APPROVE the policy never offered. */
-  if (!tk_needs_you_allows(pending, &decision, verdict)) return;
-  if (mon.tk_needs_you_cb) mon.tk_needs_you_cb(verdict, pending->request_id);
-  /* Drop the takeover at the tap instead of a poll later, so a second tap can
-   * not land on the same prompt. */
-  tk_needs_you_mark_answered(&mon.needs_you_state, pending);
-  render_needs_you();
-}
+static void render_needs_you(void);
 
 static void ny_show(lv_obj_t *object, bool shown) {
   if (shown) lv_obj_remove_flag(object, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN);
 }
 
-/* Tool names are ASCII letters; the label font is uppercase-only, so fold the
- * one dynamic string that shares it with "CLAUDE RECOMMENDS". */
-static void ny_ascii_upper(const char *source, char *destination, size_t cap) {
+/* The one dynamic mono string is the tool chip; the mockup shows it lowercase. */
+static void ny_ascii_lower(const char *source, char *destination, size_t cap) {
   size_t i = 0;
   if (!destination || cap == 0) return;
   for (; source && source[i] && i + 1 < cap; i++) {
     char c = source[i];
-    destination[i] = (c >= 'a' && c <= 'z') ? (char)(c - 32) : c;
+    destination[i] = (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
   }
   destination[i] = '\0';
 }
 
-static lv_obj_t *ny_label(lv_obj_t *parent, const lv_font_t *font,
-                          lv_color_t color, int x, int y, int w,
-                          int32_t letter_space) {
+/* One signed verdict leaving the glass. Every decision is re-checked against
+ * the policy here; the render layer never decides. An APPROVE opens the static
+ * payoff beat, echoing the verbatim item it just committed. */
+static void needs_you_resolve(tk_needs_you_verdict verdict) {
+  const tk_pending_interaction *p = &mon.snapshot.pending;
+  tk_needs_you_view decision = tk_needs_you_view_of(&mon.needs_you_state, p);
+  if (!tk_needs_you_allows(p, &decision, verdict)) return;
+  if (mon.tk_needs_you_cb) mon.tk_needs_you_cb(verdict, p->request_id);
+  if (verdict == TK_NEEDS_YOU_VERDICT_APPROVE) {
+    size_t n = 0;
+    for (; p->title[n] && n + 1 < sizeof mon.echo; n++) mon.echo[n] = p->title[n];
+    mon.echo[n] = '\0';
+    mon.stage = NY_PAYOFF;
+    mon.payoff_until_us = mon.rendered_at_us + 2500LL * 1000LL;
+  }
+  /* Drop it at the tap, not a poll later, so a second tap can not double-answer. */
+  tk_needs_you_mark_answered(&mon.needs_you_state, p);
+  render_needs_you();
+}
+
+static void needs_you_verdict_event(lv_event_t *event) {
+  if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
+  needs_you_resolve(
+      (tk_needs_you_verdict)(intptr_t)lv_event_get_user_data(event));
+}
+
+/* A tap on the ground: it opens the decision from attract, and on the private
+ * screen — where there is nothing readable to decide — it hands the prompt to
+ * the terminal. The button screens ignore it; only their buttons resolve. */
+static void needs_you_root_event(lv_event_t *event) {
+  if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
+  if (mon.stage == NY_ATTRACT) {
+    mon.stage = NY_DECISION;
+    render_needs_you();
+    return;
+  }
+  if (mon.stage == NY_DECISION && !mon.snapshot.pending.has_title) {
+    needs_you_resolve(TK_NEEDS_YOU_VERDICT_LEAVE_IT);
+  }
+}
+
+static lv_obj_t *ny_text(lv_obj_t *parent, const lv_font_t *font,
+                         lv_color_t color, int x, int y, int w,
+                         int32_t letter_space, lv_text_align_t align) {
   lv_obj_t *object = label(parent, font, color);
   lv_obj_set_pos(object, x, y);
   lv_obj_set_size(object, w, LV_SIZE_CONTENT);
-  lv_obj_set_style_text_align(object, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_align(object, align, 0);
   if (letter_space) lv_obj_set_style_text_letter_space(object, letter_space, 0);
   return object;
 }
 
-static lv_obj_t *ny_button(lv_obj_t *parent, int x, int y, int w, int h,
+/* A depleting countdown ring: a HAIR track with a Claude arc that drains
+ * clockwise from twelve o'clock. Set the drawn fraction with ny_ring_set. */
+static lv_obj_t *ny_ring(lv_obj_t *parent, int cx, int cy, int r, int stroke) {
+  lv_obj_t *arc = lv_arc_create(parent);
+  lv_obj_remove_style_all(arc);
+  int diameter = 2 * r + stroke;
+  lv_obj_set_size(arc, diameter, diameter);
+  lv_obj_set_pos(arc, cx - diameter / 2, cy - diameter / 2);
+  lv_arc_set_rotation(arc, 270);
+  lv_arc_set_bg_angles(arc, 0, 360);
+  lv_obj_set_style_arc_color(arc, COL_HAIR, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(arc, stroke, LV_PART_MAIN);
+  lv_obj_set_style_arc_color(arc, COL_CLAUDE, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_width(arc, stroke, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR);
+  lv_obj_remove_flag(arc, LV_OBJ_FLAG_CLICKABLE);
+  return arc;
+}
+
+static void ny_ring_set(lv_obj_t *arc, uint16_t permille) {
+  uint32_t degrees = ((uint32_t)permille * 360u) / 1000u;
+  if (degrees > 360u) degrees = 360u;
+  lv_arc_set_angles(arc, 0, degrees);
+}
+
+/* A touch target: filled slab or outlined pill, ASCII-uppercase label centred,
+ * wired to one verdict. Position and size are set by the caller per screen. */
+static lv_obj_t *ny_button(lv_obj_t *parent, const char *text,
                            const lv_font_t *font, lv_color_t text_color,
-                           lv_color_t border_color, const char *text,
+                           lv_color_t accent, bool filled,
                            tk_needs_you_verdict verdict) {
   lv_obj_t *btn = bare(parent);
-  lv_obj_set_pos(btn, x, y);
-  lv_obj_set_size(btn, w, h);
-  lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_color(btn, border_color, 0);
-  lv_obj_set_style_border_opa(btn, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_width(btn, 2, 0);
-  lv_obj_set_style_radius(btn, 14, 0);
+  lv_obj_set_style_radius(btn, 18, 0);
+  if (filled) {
+    lv_obj_set_style_bg_color(btn, accent, 0);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+  } else {
+    lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_color(btn, accent, 0);
+    lv_obj_set_style_border_opa(btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(btn, 2, 0);
+  }
   lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(btn, needs_you_verdict_event, LV_EVENT_CLICKED,
                       (void *)(intptr_t)verdict);
@@ -399,164 +502,327 @@ static lv_obj_t *ny_button(lv_obj_t *parent, int x, int y, int w, int h,
   return btn;
 }
 
+static lv_obj_t *ny_group(lv_obj_t *parent) {
+  lv_obj_t *group = bare(parent);
+  lv_obj_set_pos(group, 0, 0);
+  lv_obj_set_size(group, VP_SCREEN_W, VP_SCREEN_H);
+  return group;
+}
+
 static void create_needs_you(lv_obj_t *app_root) {
   needs_you_view *v = &mon.needs_you;
+  const lv_text_align_t C = LV_TEXT_ALIGN_CENTER, L = LV_TEXT_ALIGN_LEFT;
+
   v->root = bare(app_root);
   lv_obj_set_pos(v->root, 0, 0);
   lv_obj_set_size(v->root, VP_SCREEN_W, VP_SCREEN_H);
   lv_obj_set_style_bg_opa(v->root, LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(v->root, COL_BLACK, 0);
-  /* Deliberately not clickable: only the explicit controls resolve a decision,
-   * so a stray tap on the ground does nothing. This is not a dismiss-anywhere
-   * alert — the terminal is the fallback, never a blank tap. */
+  /* Clickable so ATTRACT opens on a tap and the private screen hands off on a
+   * tap; the button screens ignore the ground and only their buttons resolve. */
+  lv_obj_add_flag(v->root, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(v->root, needs_you_root_event, LV_EVENT_CLICKED, NULL);
 
-  v->outline = bare(v->root);
-  lv_obj_set_pos(v->outline, 8, 8);
-  lv_obj_set_size(v->outline, 464, 464);
-  lv_obj_set_style_bg_opa(v->outline, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_color(v->outline, COL_CLAUDE, 0);
-  lv_obj_set_style_border_opa(v->outline, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_width(v->outline, 6, 0);
-  lv_obj_set_style_radius(v->outline, 36, 0);
+  v->frame = bare(v->root);
+  lv_obj_set_pos(v->frame, 14, 14);
+  lv_obj_set_size(v->frame, 452, 452);
+  lv_obj_set_style_bg_opa(v->frame, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_color(v->frame, COL_CLAUDE, 0);
+  lv_obj_set_style_border_opa(v->frame, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(v->frame, 2, 0);
+  lv_obj_set_style_radius(v->frame, 40, 0);
 
-  v->eyebrow = ny_label(v->root, &plex_attention_18, COL_CLAUDE, 24, 28, 432, 3);
-  v->project = ny_label(v->root, &plex_attention_25, COL_WHITE, 24, 52, 432, 2);
-  v->prompt = ny_label(v->root, &plex_ui_16, COL_MUTED, 28, 90, 424, 0);
-  lv_label_set_long_mode(v->prompt, LV_LABEL_LONG_WRAP);
+  /* -- ATTRACT: the across-the-room alert, ring carrying the countdown ------ */
+  v->a_group = ny_group(v->root);
+  v->a_ring = ny_ring(v->a_group, 240, 150, 78, 9);
+  v->a_mascot = lv_image_create(v->a_group);
+  lv_image_set_src(v->a_mascot, &tk_img_mascot_alert_8);
+  lv_obj_set_pos(v->a_mascot, 176, 96);
+  lv_obj_remove_flag(v->a_mascot, LV_OBJ_FLAG_CLICKABLE);
+  v->a_word = ny_text(v->a_group, &plex_headline_48, COL_WHITE, 0, 278, 480, 0, C);
+  lv_label_set_text(v->a_word, "NEEDS YOU");
+  v->a_project = ny_text(v->a_group, &plex_text_21, COL_CLAUDE, 0, 332, 480, 3, C);
+  v->a_tap = ny_text(v->a_group, &plex_ui_16, COL_DIM, 0, 424, 480, 2, C);
+  lv_label_set_text(v->a_tap, "TAP TO ANSWER");
 
-  v->card = bare(v->root);
-  lv_obj_set_pos(v->card, 24, 132);
-  lv_obj_set_size(v->card, 432, 120);
-  lv_obj_set_style_bg_color(v->card, NY_CARD_BG, 0);
-  lv_obj_set_style_bg_opa(v->card, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_color(v->card, NY_CARD_LINE, 0);
-  lv_obj_set_style_border_opa(v->card, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_width(v->card, 1, 0);
-  lv_obj_set_style_radius(v->card, 20, 0);
+  /* -- Shared decision header: ring + mascot + eyebrow --------------------- */
+  v->h_group = ny_group(v->root);
+  v->h_ring = ny_ring(v->h_group, 80, 80, 44, 8);
+  v->h_mascot = lv_image_create(v->h_group);
+  lv_image_set_src(v->h_mascot, &tk_img_mascot_asking_4);
+  lv_obj_set_pos(v->h_mascot, 48, 49);
+  lv_obj_remove_flag(v->h_mascot, LV_OBJ_FLAG_CLICKABLE);
+  /* 14 px keeps CLAUDE NEEDS YOU · PROJECT on one line beside the ring; the
+   * design's 15 px has no full-ASCII raster and 16 px wrapped. */
+  v->h_eyebrow = ny_text(v->h_group, &plex_ui_14, COL_CLAUDE, 148, 46, 312, 1, L);
 
-  v->card_eyebrow =
-      ny_label(v->card, &plex_attention_18, COL_CLAUDE, 10, 14, 412, 2);
-  v->card_title = ny_label(v->card, &plex_ui_21, COL_WHITE, 10, 40, 412, 0);
-  lv_label_set_long_mode(v->card_title, LV_LABEL_LONG_WRAP);
-  v->card_subtitle = ny_label(v->card, &plex_ui_16, COL_MUTED, 10, 88, 412, 0);
+  /* -- QUESTION body ------------------------------------------------------- */
+  v->q_group = ny_group(v->root);
+  v->q_prompt = ny_text(v->q_group, &plex_body_27, COL_WHITE, 148, 70, 300, 0, L);
+  lv_label_set_long_mode(v->q_prompt, LV_LABEL_LONG_WRAP);
+  v->q_card = bare(v->q_group);
+  lv_obj_set_pos(v->q_card, 24, 140);
+  lv_obj_set_size(v->q_card, 432, 92);
+  lv_obj_set_style_bg_opa(v->q_card, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_color(v->q_card, COL_HAIR, 0);
+  lv_obj_set_style_border_opa(v->q_card, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(v->q_card, 2, 0);
+  lv_obj_set_style_radius(v->q_card, 14, 0);
+  v->q_rec = ny_text(v->q_card, &plex_ui_14, COL_CLAUDE, 20, 14, 392, 1, L);
+  lv_label_set_text(v->q_rec, "CLAUDE RECOMMENDS");
+  v->q_title = ny_text(v->q_card, &plex_body_27, COL_WHITE, 20, 34, 392, 0, L);
+  v->q_sub = ny_text(v->q_card, &plex_ui_16, COL_MUTED, 20, 70, 392, 0, L);
+  v->q_footer = ny_text(v->q_group, &plex_ui_14, COL_DIM, 0, 440, 480, 1, C);
 
-  v->private_title =
-      ny_label(v->root, &plex_attention_25, COL_WHITE, 28, 150, 424, 1);
-  v->private_hint = ny_label(v->root, &plex_ui_16, COL_MUTED, 28, 192, 424, 0);
+  /* -- APPROVAL body: the command is the hero, in mono --------------------- */
+  v->p_group = ny_group(v->root);
+  v->p_desc = ny_text(v->p_group, &plex_body_27, COL_WHITE, 148, 70, 300, 0, L);
+  v->p_chip = bare(v->p_group);
+  lv_obj_set_pos(v->p_chip, 24, 146);
+  lv_obj_set_size(v->p_chip, 58, 26);
+  lv_obj_set_style_bg_opa(v->p_chip, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_color(v->p_chip, COL_HAIR, 0);
+  lv_obj_set_style_border_opa(v->p_chip, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(v->p_chip, 2, 0);
+  lv_obj_set_style_radius(v->p_chip, 7, 0);
+  v->p_chip_lbl = label(v->p_chip, &plex_ui_14, COL_MUTED);
+  lv_obj_center(v->p_chip_lbl);
+  v->p_cmd = ny_text(v->p_group, &plex_mono_40, COL_WHITE, 24, 182, 432, 0, L);
 
-  v->approve = ny_button(v->root, 24, 262, 432, 58, &plex_attention_25,
-                         COL_CLAUDE, COL_CLAUDE, "APPROVE",
-                         TK_NEEDS_YOU_VERDICT_APPROVE);
-  v->deny = ny_button(v->root, 24, 330, 204, 50, &plex_attention_18, COL_WHITE,
-                      COL_TRACK, "DENY", TK_NEEDS_YOU_VERDICT_DENY);
-  v->leave = ny_button(v->root, 24, 330, 432, 50, &plex_attention_18, COL_MUTED,
-                       COL_TRACK, "LEAVE IT", TK_NEEDS_YOU_VERDICT_LEAVE_IT);
+  /* -- Shared buttons: APPROVE always filled, DENY the one restrained red -- */
+  v->approve = ny_button(v->root, "APPROVE", &plex_attention_25, COL_BLACK,
+                         COL_CLAUDE, true, TK_NEEDS_YOU_VERDICT_APPROVE);
+  v->deny = ny_button(v->root, "DENY", &plex_attention_25, COL_RED, COL_RED,
+                      false, TK_NEEDS_YOU_VERDICT_DENY);
+  v->leave = ny_button(v->root, "LEAVE IT", &plex_attention_25, COL_MUTED,
+                       COL_DIM, false, TK_NEEDS_YOU_VERDICT_LEAVE_IT);
 
-  v->more_options = ny_label(v->root, &plex_ui_14, COL_MUTED, 24, 388, 432, 1);
-  lv_label_set_text(v->more_options, "MORE OPTIONS IN TERMINAL");
-  v->desk_hint = ny_label(v->root, &plex_attention_18, COL_MUTED, 24, 388, 432, 2);
-  lv_label_set_text(v->desk_hint, "APPROVE AT YOUR DESK");
-  v->countdown = ny_label(v->root, &plex_ui_14, COL_MUTED, 24, 424, 432, 1);
+  /* -- PRIVATE: no buttons; the mascot holds the secret at 60% ------------- */
+  v->pv_group = ny_group(v->root);
+  v->pv_ring = ny_ring(v->pv_group, 240, 152, 72, 9);
+  v->pv_mascot = lv_image_create(v->pv_group);
+  lv_image_set_src(v->pv_mascot, &tk_img_mascot_neutral_7);
+  lv_obj_set_pos(v->pv_mascot, 184, 96);
+  lv_obj_set_style_image_opa(v->pv_mascot, 153, 0); /* 60%: private reads dim */
+  lv_obj_remove_flag(v->pv_mascot, LV_OBJ_FLAG_CLICKABLE);
+  v->pv_title = ny_text(v->pv_group, &plex_body_27, COL_WHITE, 0, 274, 480, 1, C);
+  lv_label_set_text(v->pv_title, "SOMETHING IS WAITING");
+  v->pv_sub = ny_text(v->pv_group, &plex_ui_16, COL_MUTED, 0, 324, 480, 0, C);
+  lv_label_set_text(v->pv_sub, "Details stay on the Mac");
+  v->pv_tap = ny_text(v->pv_group, &plex_ui_16, COL_DIM, 0, 420, 480, 2, C);
+  lv_label_set_text(v->pv_tap, "TAP TO ANSWER AT YOUR DESK");
+
+  /* -- PAYOFF: a static beat, no motion until the motion gate -------------- */
+  v->po_group = ny_group(v->root);
+  v->po_mascot = lv_image_create(v->po_group);
+  lv_image_set_src(v->po_mascot, &tk_img_mascot_happy_8);
+  lv_obj_set_pos(v->po_mascot, 176, 120);
+  lv_obj_remove_flag(v->po_mascot, LV_OBJ_FLAG_CLICKABLE);
+  const int spark[5][3] = {{150, 110, 10}, {322, 96, 12}, {346, 180, 8},
+                           {128, 196, 8}, {306, 236, 10}};
+  for (int i = 0; i < 5; i++) {
+    lv_obj_t *s = bare(v->po_group);
+    lv_obj_set_pos(s, spark[i][0], spark[i][1]);
+    lv_obj_set_size(s, spark[i][2], spark[i][2]);
+    lv_obj_set_style_bg_color(s, COL_CLAUDE, 0);
+    lv_obj_set_style_bg_opa(s, LV_OPA_COVER, 0);
+    v->po_spark[i] = s;
+  }
+  /* "ON IT" without the mockup's full stop: headline_48 is uppercase+digits
+   * only, and extending that shared font would risk the burn-rate rasters. */
+  v->po_word = ny_text(v->po_group, &plex_headline_48, COL_WHITE, 0, 300, 480, 0, C);
+  lv_label_set_text(v->po_word, "ON IT");
+  v->po_echo = ny_text(v->po_group, &plex_ui_16, COL_MUTED, 0, 358, 480, 0, C);
 
   lv_obj_add_flag(v->root, LV_OBJ_FLAG_HIDDEN);
 }
 
-/* Paint what the policy allows. Reads tk_needs_you_view_of / _allows; decides
- * nothing itself. Cheap to call every tick: it repaints only when the decision
- * that matters actually changes. */
+static void ny_hide_all_groups(needs_you_view *v) {
+  ny_show(v->a_group, false);
+  ny_show(v->h_group, false);
+  ny_show(v->q_group, false);
+  ny_show(v->p_group, false);
+  ny_show(v->pv_group, false);
+  ny_show(v->po_group, false);
+  ny_show(v->approve, false);
+  ny_show(v->deny, false);
+  ny_show(v->leave, false);
+}
+
+/* Paint the stage the policy and the human's tap put us in. Reads
+ * tk_needs_you_view_of; decides nothing. Repaints only when what is on the
+ * glass actually changes, so ticks between polls are free. */
 static void render_needs_you(void) {
   needs_you_view *v = &mon.needs_you;
   const tk_pending_interaction *p = &mon.snapshot.pending;
+  int64_t now_us = mon.rendered_at_us;
+
+  /* PAYOFF is a device-side beat that outlives the answered interaction; it
+   * owns the glass for its short static window, then falls back to the page. */
+  if (mon.stage == NY_PAYOFF && now_us < mon.payoff_until_us) {
+    mon.needs_you_visible = true;
+    needs_you_key key;
+    memset(&key, 0, sizeof key);
+    key.valid = true;
+    key.stage = (uint8_t)NY_PAYOFF;
+    if (!mon.needs_you_rendered.valid ||
+        memcmp(&mon.needs_you_rendered, &key, sizeof key) != 0) {
+      memcpy(&mon.needs_you_rendered, &key, sizeof key);
+      ny_hide_all_groups(v);
+      lv_label_set_text(v->po_echo, mon.echo);
+      ny_show(v->po_echo, mon.echo[0] != '\0');
+      ny_show(v->po_group, true);
+    }
+    ny_show(v->root, true);
+    lv_obj_move_foreground(v->root);
+    return;
+  }
+  if (mon.stage == NY_PAYOFF) { /* the static window elapsed */
+    mon.stage = NY_ATTRACT;
+    mon.stage_id[0] = '\0';
+  }
+
   tk_needs_you_view decision = tk_needs_you_view_of(&mon.needs_you_state, p);
   mon.needs_you_visible = decision.visible;
 
-  needs_you_key key;
-  memset(&key, 0, sizeof key); /* padding too, so memcmp below is exact */
-  key.valid = true;
-  key.visible = decision.visible;
-  key.offer_approve = decision.offer_approve;
-  key.offer_deny = decision.offer_deny;
-  key.marked = p->marked;
-  key.has_title = p->has_title;
-  key.kind = (uint8_t)decision.kind;
-  key.options_total = p->options_total;
-  key.seconds_left = decision.seconds_left;
-  if (decision.visible)
-    memcpy(key.request_id, p->request_id, sizeof key.request_id);
-  if (mon.needs_you_rendered.valid &&
-      memcmp(&mon.needs_you_rendered, &key, sizeof key) == 0)
-    return;
-  memcpy(&mon.needs_you_rendered, &key, sizeof key);
-
   if (!decision.visible) {
     ny_show(v->root, false);
+    mon.stage = NY_ATTRACT;
+    mon.stage_id[0] = '\0';
+    memset(&mon.needs_you_rendered, 0, sizeof mon.needs_you_rendered);
     return;
   }
 
-  bool is_question = decision.kind == TK_PENDING_QUESTION;
-  bool offer_approve = decision.offer_approve;
-  /* A question is answered or left to the terminal; DENY is a permission verb,
-   * so it only rides the approval flow. */
-  bool offer_deny = decision.offer_deny && !is_question;
-  bool show_card = p->has_title;
+  /* A fresh interaction always begins at the attract stage. */
+  if (strncmp(mon.stage_id, p->request_id, TK_PENDING_ID_CAP) != 0) {
+    mon.stage = NY_ATTRACT;
+    memcpy(mon.stage_id, p->request_id, TK_PENDING_ID_CAP);
+    mon.stage_id[TK_PENDING_ID_CAP - 1] = '\0';
+  }
 
-  lv_label_set_text(v->eyebrow,
-                    is_question ? "CLAUDE NEEDS YOU" : "APPROVAL REQUIRED");
+  bool is_question = decision.kind == TK_PENDING_QUESTION;
+  bool is_private = !p->has_title;   /* nothing readable to decide on the glass */
+  bool offer_approve = decision.offer_approve;
+  /* DENY is the one restrained-red control: the approval flow only, and only
+   * where the service allowed approving — never a blind deny (design law). */
+  bool offer_deny = !is_question && offer_approve;
+
+  needs_you_key key;
+  memset(&key, 0, sizeof key);
+  key.valid = true;
+  key.visible = true;
+  key.offer_approve = offer_approve;
+  key.offer_deny = offer_deny;
+  key.marked = p->marked;
+  key.has_title = p->has_title;
+  key.kind = (uint8_t)decision.kind;
+  key.stage = (uint8_t)mon.stage;
+  key.options_total = p->options_total;
+  key.ring_permille = decision.ring_permille;
+  memcpy(key.request_id, p->request_id, sizeof key.request_id);
+  if (mon.needs_you_rendered.valid &&
+      memcmp(&mon.needs_you_rendered, &key, sizeof key) == 0) {
+    ny_show(v->root, true);
+    return;
+  }
+  memcpy(&mon.needs_you_rendered, &key, sizeof key);
+
+  ny_hide_all_groups(v);
 
   char project[TK_AGENT_PROJECT_CAP];
   tk_agent_monitor_project_label(p->has_project ? p->project : "", project,
                                  sizeof project);
-  lv_label_set_text(v->project, project);
-  ny_show(v->project, project[0] != '\0');
 
-  ny_show(v->prompt, is_question && p->has_prompt);
-  if (is_question && p->has_prompt) lv_label_set_text(v->prompt, p->prompt);
+  /* -- ATTRACT ------------------------------------------------------------- */
+  if (mon.stage == NY_ATTRACT) {
+    ny_ring_set(v->a_ring, decision.ring_permille);
+    lv_label_set_text(v->a_project, project);
+    ny_show(v->a_project, project[0] != '\0');
+    ny_show(v->a_group, true);
+    ny_show(v->root, true);
+    lv_obj_move_foreground(v->root);
+    return;
+  }
 
-  ny_show(v->card, show_card);
-  ny_show(v->private_title, !show_card);
-  ny_show(v->private_hint, !show_card);
-  if (show_card) {
-    if (is_question) {
-      ny_show(v->card_eyebrow, p->marked);
-      if (p->marked) lv_label_set_text(v->card_eyebrow, "CLAUDE RECOMMENDS");
-    } else {
-      ny_show(v->card_eyebrow, p->has_tool);
-      if (p->has_tool) {
-        char tool[TK_PENDING_TOOL_CAP];
-        ny_ascii_upper(p->tool, tool, sizeof tool);
-        lv_label_set_text(v->card_eyebrow, tool);
-      }
+  /* -- PRIVATE: no buttons; a background tap hands off to the terminal ----- */
+  if (is_private) {
+    ny_ring_set(v->pv_ring, decision.ring_permille);
+    ny_show(v->pv_group, true);
+    ny_show(v->root, true);
+    lv_obj_move_foreground(v->root);
+    return;
+  }
+
+  /* -- Shared decision header --------------------------------------------- */
+  ny_ring_set(v->h_ring, decision.ring_permille);
+  lv_image_set_src(v->h_mascot, is_question ? &tk_img_mascot_asking_4
+                                            : &tk_img_mascot_neutral_4);
+  char eyebrow[80];
+  if (project[0])
+    snprintf(eyebrow, sizeof eyebrow, "CLAUDE NEEDS YOU \xC2\xB7 %s", project);
+  else
+    snprintf(eyebrow, sizeof eyebrow, "CLAUDE NEEDS YOU");
+  lv_label_set_text(v->h_eyebrow, eyebrow);
+  ny_show(v->h_group, true);
+
+  if (is_question) {
+    lv_label_set_text(v->q_prompt, p->has_prompt ? p->prompt : "");
+    ny_show(v->q_prompt, p->has_prompt);
+    /* The recommendation card exists only when Claude marked an option; an
+     * unmarked question arrives here alert-only (can_approve already false). */
+    lv_label_set_text(v->q_title, p->title);
+    lv_label_set_text(v->q_sub, p->has_subtitle ? p->subtitle : "");
+    ny_show(v->q_card, p->marked);
+    ny_show(v->q_rec, p->marked);
+    ny_show(v->q_title, p->marked);
+    ny_show(v->q_sub, p->marked && p->has_subtitle);
+    int more = (int)p->options_total - 1;
+    if (more >= 1) {
+      char footer[48];
+      snprintf(footer, sizeof footer,
+               more == 1 ? "%d MORE OPTION IN TERMINAL"
+                         : "%d MORE OPTIONS IN TERMINAL", more);
+      lv_label_set_text(v->q_footer, footer);
     }
-    lv_label_set_text(v->card_title, p->has_title ? p->title : "");
-    ny_show(v->card_subtitle, p->has_subtitle);
-    if (p->has_subtitle) lv_label_set_text(v->card_subtitle, p->subtitle);
+    ny_show(v->q_footer, more >= 1);
+    ny_show(v->q_group, true);
   } else {
-    lv_label_set_text(v->private_title, "SOMETHING IS WAITING");
-    lv_label_set_text(v->private_hint, "DETAILS STAY ON THE MAC");
+    lv_label_set_text(v->p_desc, p->has_subtitle ? p->subtitle : "");
+    ny_show(v->p_desc, p->has_subtitle);
+    char tool[TK_PENDING_TOOL_CAP];
+    ny_ascii_lower(p->has_tool ? p->tool : "", tool, sizeof tool);
+    lv_label_set_text(v->p_chip_lbl, tool);
+    ny_show(v->p_chip, p->has_tool);
+    /* Payload is the hero: mono, verbatim, one stepwise shrink so the longest
+     * approvable command still fits at 432 px before truncation would kick in. */
+    lv_label_set_text(v->p_cmd, p->title);
+    lv_point_t measured;
+    lv_text_get_size(&measured, p->title, &plex_mono_40, 0, 0, LV_COORD_MAX,
+                     LV_TEXT_FLAG_NONE);
+    lv_obj_set_style_text_font(
+        v->p_cmd, measured.x > 432 ? &plex_mono_24 : &plex_mono_40, 0);
+    ny_show(v->p_group, true);
   }
 
-  ny_show(v->approve, offer_approve);
-  ny_show(v->deny, offer_deny);
-  ny_show(v->leave, true);
-  /* LEAVE IT fills the row alone for a question, shares it with DENY when the
-   * approval flow surfaces both. */
+  /* -- Buttons: every target >= 90 px; APPROVE filled and only where allowed */
+  int approve_y = is_question ? 244 : 252;
+  if (offer_approve) {
+    lv_obj_set_pos(v->approve, 24, approve_y);
+    lv_obj_set_size(v->approve, 432, 96);
+    ny_show(v->approve, true);
+  }
   if (offer_deny) {
-    lv_obj_set_pos(v->leave, 252, 330);
-    lv_obj_set_size(v->leave, 204, 50);
+    int row_y = approve_y + 108;
+    lv_obj_set_pos(v->deny, 24, row_y);
+    lv_obj_set_size(v->deny, 208, 90);
+    ny_show(v->deny, true);
+    lv_obj_set_pos(v->leave, 248, row_y);
+    lv_obj_set_size(v->leave, 208, 90);
   } else {
-    lv_obj_set_pos(v->leave, 24, 330);
-    lv_obj_set_size(v->leave, 432, 50);
+    lv_obj_set_pos(v->leave, 24, offer_approve ? approve_y + 106 : approve_y);
+    lv_obj_set_size(v->leave, 432, 90);
   }
-
-  ny_show(v->more_options,
-          is_question && offer_approve && p->options_total > 1);
-  ny_show(v->desk_hint, !offer_approve);
-
-  char countdown[48];
-  snprintf(countdown, sizeof countdown,
-           "%us left \xC2\xB7 then the terminal asks",
-           (unsigned)decision.seconds_left);
-  lv_label_set_text(v->countdown, countdown);
+  ny_show(v->leave, true);
 
   ny_show(v->root, true);
   lv_obj_move_foreground(v->root);
@@ -564,6 +830,22 @@ static void render_needs_you(void) {
 
 void tk_agent_monitor_set_needs_you_cb(tk_agent_monitor_needs_you_cb cb) {
   mon.tk_needs_you_cb = cb;
+}
+
+/* Deterministic glass taps for the simulator and host tests. On the device the
+ * same paths run from LVGL touch events; these let a headless run drive the
+ * two-stage summon without synthesising input. */
+void tk_agent_monitor_needs_you_tap(void) {
+  if (mon.stage == NY_ATTRACT) {
+    mon.stage = NY_DECISION;
+    render_needs_you();
+  } else if (mon.stage == NY_DECISION && !mon.snapshot.pending.has_title) {
+    needs_you_resolve(TK_NEEDS_YOU_VERDICT_LEAVE_IT);
+  }
+}
+
+void tk_agent_monitor_needs_you_press(tk_needs_you_verdict verdict) {
+  needs_you_resolve(verdict);
 }
 
 void tk_agent_monitor_create(lv_obj_t *app_root) {

@@ -241,6 +241,7 @@ class StoreTests(unittest.TestCase):
         self.assertTrue(public["can_approve"])
         self.assertTrue(public["marked"])
         self.assertEqual(public["options_total"], 2)
+        self.assertEqual(public["hold_ms"], 120000)
 
         ok, _ = self.answer(entry.request_id)
         self.assertTrue(ok)
@@ -249,6 +250,19 @@ class StoreTests(unittest.TestCase):
             body["hookSpecificOutput"]["updatedInput"]["answers"],
             {"Which auth approach?": "New auth layer (Recommended)"})
         self.assertIsNone(self.store.pending_public())
+
+    def test_hold_ms_is_the_original_duration_for_the_ring(self):
+        # The countdown ring needs the original hold, not just the remaining
+        # time. hold_ms is fixed at park; expires_in_ms drains beside it.
+        entry = self.store.park("question", question_event(), 90)
+        public = self.store.pending_public()
+        self.assertEqual(public["hold_ms"], 90000)
+        self.clock.advance(30)
+        later = self.store.pending_public()
+        self.assertEqual(later["hold_ms"], 90000)
+        self.assertLess(later["expires_in_ms"], public["expires_in_ms"])
+        self.answer(entry.request_id)
+        self.store.await_verdict(entry)
 
     def test_a_second_tap_cannot_land_on_a_later_prompt(self):
         first = self.store.park("question", question_event(), 120)

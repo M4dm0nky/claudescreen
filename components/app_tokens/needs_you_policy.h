@@ -30,6 +30,11 @@ typedef struct {
   bool offer_deny;      /* denying is always safe, so this is always true
                          * while visible */
   uint32_t seconds_left;
+  /* The countdown ring, as a fraction of the interaction's original hold in
+   * per-mille (1000 = full, 0 = about to fall back to the terminal). Computed
+   * here, not in the widget, so the ring always maps to the real fallback
+   * time. When the service sends no original duration the ring reads full. */
+  uint16_t ring_permille;
   tk_pending_kind kind;
 } tk_needs_you_view;
 

@@ -542,6 +542,39 @@ static void poll_keys(lv_timer_t *t) {
   }
 }
 
+/* Needs You v2, the interactive takeover in every stage the policy can put on
+ * the glass: the attract summon, the three decision screens, the page it
+ * yields to, and the static payoff beat. The two-stage summon is driven by the
+ * deterministic tap/press paths that stand in for a glass touch. Payoff is last
+ * because it owns the glass for its static window. */
+static void capture_needs_you_v2(void) {
+  torget_app_show(SIM_APP_VIBEPULSE);
+  feed_tokens();
+  tokens_show_view(VIEW_CLAUDE_FABLE);
+
+  apply_agent_file("agent-status-needs-you-question.json");
+  dump_frame("vibepulse-needs-you-attract");
+  tk_agent_monitor_needs_you_tap();
+  dump_frame("vibepulse-needs-you-question");
+
+  apply_agent_file("agent-status-needs-you-approval.json");
+  tk_agent_monitor_needs_you_tap();
+  dump_frame("vibepulse-needs-you-approval");
+
+  apply_agent_file("agent-status-needs-you-private.json");
+  tk_agent_monitor_needs_you_tap();
+  dump_frame("vibepulse-needs-you-private");
+
+  apply_agent_file("agent-status-claude-working.json");
+  tokens_show_view(VIEW_CLAUDE_FABLE);
+  dump_frame("vibepulse-needs-you-none");
+
+  apply_agent_file("agent-status-needs-you-question.json");
+  tk_agent_monitor_needs_you_tap();
+  tk_agent_monitor_needs_you_press(TK_NEEDS_YOU_VERDICT_APPROVE);
+  dump_frame("vibepulse-needs-you-payoff");
+}
+
 static int run_vibepulse_static_qa(void) {
   capture_failures = 0;
   torget_app_show(SIM_APP_VIBEPULSE);
@@ -910,6 +943,10 @@ static int run_vibepulse_static_qa(void) {
   tokens_apply(&value_solo);
   dump_frame("vibepulse-value-solo");
 
+  /* The Needs You takeover last: its payoff beat owns the glass, so nothing
+   * captured after it would see the page underneath. */
+  capture_needs_you_v2();
+
   return capture_failures == 0 ? 0 : 1;
 }
 
@@ -963,24 +1000,7 @@ static void run_vibepulse_completion_qa(void) {
  * no verdict callback is wired here (that is the app layer's later job). */
 static int run_vibepulse_needs_you_qa(void) {
   capture_failures = 0;
-  torget_app_show(SIM_APP_VIBEPULSE);
-  feed_tokens();
-  tokens_show_view(VIEW_CLAUDE_FABLE);
-
-  apply_agent_file("agent-status-needs-you-question.json");
-  dump_frame("vibepulse-needs-you-question");
-
-  apply_agent_file("agent-status-needs-you-approval.json");
-  dump_frame("vibepulse-needs-you-approval");
-
-  apply_agent_file("agent-status-needs-you-private.json");
-  dump_frame("vibepulse-needs-you-private");
-
-  /* No pending interaction: the takeover is gone and the normal page shows. */
-  apply_agent_file("agent-status-claude-working.json");
-  tokens_show_view(VIEW_CLAUDE_FABLE);
-  dump_frame("vibepulse-needs-you-none");
-
+  capture_needs_you_v2();
   return capture_failures == 0 ? 0 : 1;
 }
 

@@ -529,6 +529,13 @@ static void parse_pending(const char *json, size_t len, const cJSON *root,
   }
   out->expires_in_ms = expires_in_ms;
 
+  /* Optional: the original hold, for the countdown ring. Absent on an older
+   * service, which just leaves the ring reading full — never a wrong time. */
+  uint32_t hold_ms = 0;
+  if (uint32_member(json, len, root, pending, "hold_ms", &hold_ms)) {
+    out->hold_ms = hold_ms;
+  }
+
   uint32_t options_total = 0;
   if (uint32_member(json, len, root, pending, "options_total",
                     &options_total) && options_total <= 0xFF) {

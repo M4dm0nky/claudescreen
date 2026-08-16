@@ -256,7 +256,8 @@ int main(void) {
 #define QUESTION_PENDING \
   "{\"request_id\":\"6750af25a1f5ab4161fc7698c3f84d60\"," \
   "\"kind\":\"question\",\"project\":\"vibepulse\"," \
-  "\"expires_in_ms\":118000,\"options_total\":2,\"marked\":true," \
+  "\"expires_in_ms\":118000,\"hold_ms\":144000," \
+  "\"options_total\":2,\"marked\":true," \
   "\"prompt\":\"Which auth approach?\",\"title\":\"New auth layer\"," \
   "\"subtitle\":\"Cleaner architecture\",\"can_approve\":true}"
 #define WITH_PENDING(PENDING) \
@@ -271,6 +272,7 @@ int main(void) {
         snapshot.pending.can_approve && snapshot.pending.marked &&
         snapshot.pending.options_total == 2 &&
         snapshot.pending.expires_in_ms == 118000 &&
+        snapshot.pending.hold_ms == 144000 &&
         strcmp(snapshot.pending.request_id,
                "6750af25a1f5ab4161fc7698c3f84d60") == 0 &&
         strcmp(snapshot.pending.title, "New auth layer") == 0 &&

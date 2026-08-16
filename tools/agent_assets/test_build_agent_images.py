@@ -18,6 +18,14 @@ def decode_i4(data, size):
     return palette, indices[:size * size]
 
 
+def decode_i4_wh(data, width, height):
+    palette = [tuple(data[i:i + 4]) for i in range(0, 16 * 4, 4)]
+    indices = []
+    for byte in data[16 * 4:]:
+        indices.extend((byte >> 4, byte & 0x0F))
+    return palette, indices[:width * height]
+
+
 class AgentAssetTests(unittest.TestCase):
     def test_checked_in_generated_sources_match_exactly(self):
         header, source = build.render_generated_sources()
@@ -93,6 +101,34 @@ class AgentAssetTests(unittest.TestCase):
                     self.assertGreater(b, g)
                     self.assertFalse(r > 205 and b > 225,
                                      f"lavender fringe color {color}")
+
+    def test_mascot_poses_are_precolored_i4_at_integer_scales(self):
+        for name, pose, cell in build.MASCOTS:
+            with self.subTest(name=name):
+                data, width, height = build.build_mascot(pose, cell)
+                self.assertEqual((width, height), (16 * cell, 13 * cell))
+                self.assertEqual(len(data), 16 * 4 + width * height // 2)
+                # Deterministic, so the byte-for-byte gate is stable.
+                self.assertEqual(data, build.build_mascot(pose, cell)[0])
+                palette, indices = decode_i4_wh(data, width, height)
+                # Pre-colored: transparent ground + exactly the Claude accent,
+                # never recolored at runtime.
+                self.assertEqual(palette[0], (0, 0, 0, 0))
+                self.assertEqual(palette[1], (0x57, 0x77, 0xD9, 255))
+                self.assertEqual(set(indices) - {0, 1}, set())
+                self.assertGreater(sum(i == 1 for i in indices), 0)
+                for corner in (0, width - 1, (height - 1) * width,
+                               height * width - 1):
+                    self.assertEqual(indices[corner], 0)
+
+    def test_mascot_poses_are_visually_distinct(self):
+        # Each emotive beat is its own raster; poses never collapse together.
+        variants = {name: build.build_mascot(pose, cell)[0]
+                    for name, pose, cell in build.MASCOTS}
+        self.assertNotEqual(variants["tk_img_mascot_asking_4"],
+                            variants["tk_img_mascot_neutral_4"])
+        self.assertNotEqual(variants["tk_img_mascot_alert_8"],
+                            variants["tk_img_mascot_happy_8"])
 
     def test_descriptor_uses_requested_canvas_size(self):
         source = build.descriptor(

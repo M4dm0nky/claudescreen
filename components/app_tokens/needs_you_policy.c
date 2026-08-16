@@ -38,6 +38,17 @@ tk_needs_you_view tk_needs_you_view_of(
   /* Round up: showing "0s left" while the thing is still answerable reads as
    * broken, and a second of optimism costs nothing here. */
   view.seconds_left = (pending->expires_in_ms + 999u) / 1000u;
+  /* The ring fraction, in per-mille, against the original hold. No original
+   * duration (older service) reads as full rather than inventing a time. */
+  uint32_t hold_ms = pending->hold_ms ? pending->hold_ms
+                                      : pending->expires_in_ms;
+  if (hold_ms == 0u) {
+    view.ring_permille = 0u;
+  } else {
+    uint32_t remaining = pending->expires_in_ms;
+    if (remaining > hold_ms) remaining = hold_ms;
+    view.ring_permille = (uint16_t)(((uint64_t)remaining * 1000u) / hold_ms);
+  }
   return view;
 }
 

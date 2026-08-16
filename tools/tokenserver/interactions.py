@@ -530,6 +530,10 @@ class InteractionStore:
                 "project": entry.project,
                 "expires_in_ms": max(
                     0, int((entry.expires_at - now) * 1000)),
+                # The original hold, so the panel's countdown ring maps to the
+                # REAL terminal-fallback time rather than guessing a duration.
+                "hold_ms": max(1, int((entry.expires_at - entry.created_at)
+                                      * 1000)),
             }
             payload.update(entry.view)
         payload = {key: value for key, value in payload.items()

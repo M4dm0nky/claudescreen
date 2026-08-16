@@ -24,4 +24,10 @@ typedef void (*tk_agent_monitor_needs_you_cb)(tk_needs_you_verdict verdict,
                                               const char *request_id);
 void tk_agent_monitor_set_needs_you_cb(tk_agent_monitor_needs_you_cb cb);
 
+/* Deterministic simulator/test paths for the two-stage summon. A tap opens the
+ * decision from attract (and, on the private screen, hands off to the terminal);
+ * a press resolves a decision button. On the device these run from LVGL touch. */
+void tk_agent_monitor_needs_you_tap(void);
+void tk_agent_monitor_needs_you_press(tk_needs_you_verdict verdict);
+
 #endif

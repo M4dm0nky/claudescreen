@@ -89,6 +89,10 @@ typedef struct {
   bool has_project;
   uint8_t options_total;
   uint32_t expires_in_ms;
+  /* The interaction's original hold duration. The countdown ring is
+   * expires_in_ms against this, so it maps to the real terminal-fallback
+   * time. 0 when an older service does not send it (ring reads as full). */
+  uint32_t hold_ms;
   char request_id[TK_PENDING_ID_CAP];
   char project[TK_AGENT_PROJECT_CAP];
   char prompt[TK_PENDING_PROMPT_CAP];

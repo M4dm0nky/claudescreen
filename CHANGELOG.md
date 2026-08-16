@@ -16,6 +16,12 @@ on the [releases page](https://github.com/niclasvestlund-YT/vibepulse/releases).
   Elfström's T-Display-S3 fork. The wider fallthrough — ~110 priced models,
   six named ones, and dated ids that truncate mid-string — is written up as
   OBS-30 rather than fixed here.
+- CI's tokenserver job runs the same eleven test modules as `test/run.sh`.
+  The lists had drifted four suites apart — `test_value_meter`,
+  `test_update_prices`, `test_codex_usage` and `test_interactions` ran only
+  in the local gate — which is exactly how a green CI hid a runtime
+  `NameError` in the rebased Windows branch (PR #11): the missing
+  `test_interactions` catches it immediately.
 
 ### Added
 

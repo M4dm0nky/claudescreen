@@ -208,6 +208,15 @@ EXPECTED = {
     "torget-boot-cold.bmp",
     "torget-boot-wifi.bmp",
     "torget-boot-time.bmp",
+
+    # Needs You v2 takeover — the approved interactive direction.
+    "torget-vibepulse-needs-you-attract.bmp",
+    "torget-vibepulse-needs-you-question.bmp",
+    "torget-vibepulse-needs-you-question-long.bmp",
+    "torget-vibepulse-needs-you-approval.bmp",
+    "torget-vibepulse-needs-you-private.bmp",
+    "torget-vibepulse-needs-you-none.bmp",
+    "torget-vibepulse-needs-you-payoff.bmp",
 }
 
 
@@ -254,6 +263,28 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
         for name in sorted(EXPECTED):
             with self.subTest(name=name):
                 self.assertEqual(self.image(name).size, (480, 480))
+
+    def test_long_question_never_overwrites_the_recommendation_card(self):
+        # A long question steps to 21px and is capped in its band above the
+        # card (y140); it must not bleed onto the card or bury the recommended
+        # answer. Two independent proofs on the widest-copy frame.
+        img = self.image("torget-vibepulse-needs-you-question-long.bmp")
+
+        # The strip just above the card border is near-black: the question is
+        # contained, not spilling down onto the card. (Overlap would light it.)
+        gap = img.crop((24, 126, 456, 138))
+        gap_lit = sum(1 for p in gap.getdata() if max(p) > 90)
+        self.assertLess(
+            gap_lit, 400,
+            f"question bleeds into the card boundary ({gap_lit} lit px)")
+
+        # The recommended answer ("Ship it now") is bright white in the card —
+        # visible, not muddied by an overlapping dimmer question.
+        title = img.crop((44, 168, 300, 200))
+        title_bright = sum(1 for p in title.getdata() if min(p) > 180)
+        self.assertGreater(
+            title_bright, 400,
+            f"recommended answer missing/buried ({title_bright} bright px)")
 
     def test_github_star_popup_uses_full_black_stage_and_large_filled_star(self):
         before = self.image("torget-vibepulse-github-popup-before.bmp")
@@ -906,6 +937,92 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
                         PAGER_ROW_Y)
         left, right = runs[0][0], runs[-1][1]
         self.assertLessEqual(abs((left + right + 1) - 480), 2)
+
+    # -- Needs You v2 takeover: pinned to the approved-direction geometry ----
+    NY_CLAUDE = (217, 119, 87)   # #D97757
+    NY_RED = (229, 72, 77)       # #E5484D
+    NY_WHITE = (255, 255, 255)
+    NY_HAIR = (32, 35, 40)       # #202328 ring track
+
+    def _ny(self, name):
+        return self.image(f"torget-vibepulse-needs-you-{name}.bmp")
+
+    def _count(self, image, box, color):
+        x0, y0, x1, y1 = box
+        return sum(image.getpixel((x, y)) == color
+                   for y in range(y0, y1) for x in range(x0, x1))
+
+    @staticmethod
+    def _longest_run(flags):
+        best = run = 0
+        for flag in flags:
+            run = run + 1 if flag else 0
+            best = max(best, run)
+        return best
+
+    def test_needs_you_frame_is_the_claude_accent_on_black(self):
+        for name in ("attract", "question", "approval", "private", "payoff"):
+            with self.subTest(name=name):
+                image = self._ny(name)
+                self.assertEqual(image.getpixel((5, 5)), (0, 0, 0))
+                # the 2 px rounded frame at inset 14; probe the left edge
+                self.assertGreater(
+                    self._count(image, (13, 210, 17, 270), self.NY_CLAUDE), 0)
+
+    def test_needs_you_approve_is_a_filled_slab_at_least_90px_tall(self):
+        # Design law: APPROVE is filled, never outlined, every target >= 90 px.
+        # Probe x=60: inside the slab fill, clear of the centred black label and
+        # the corner radius, so the fill is one contiguous run.
+        for name in ("question", "approval"):
+            with self.subTest(name=name):
+                image = self._ny(name)
+                column = [image.getpixel((60, y)) == self.NY_CLAUDE
+                          for y in range(200, 460)]
+                self.assertGreaterEqual(self._longest_run(column), 90)
+
+    def test_needs_you_deny_is_the_one_red_control_and_only_on_approval(self):
+        approval = self._ny("approval")
+        self.assertGreater(
+            self._count(approval, (24, 358, 232, 452), self.NY_RED), 0)
+        # Red is reserved for DENY: it appears on no other screen.
+        for name in ("attract", "question", "private", "payoff", "none"):
+            with self.subTest(name=name):
+                self.assertEqual(
+                    self._count(self._ny(name), (0, 0, 480, 480), self.NY_RED), 0)
+
+    def _no_filled_slab(self, image):
+        # No 90 px filled control anywhere in the button band: probe two fill
+        # columns clear of any text or spark.
+        for x in (60, 400):
+            column = [image.getpixel((x, y)) == self.NY_CLAUDE
+                      for y in range(240, 452)]
+            self.assertLess(self._longest_run(column), 90)
+
+    def test_needs_you_private_has_no_buttons(self):
+        # Nothing readable, so no decision here: no filled slab, no red.
+        self._no_filled_slab(self._ny("private"))
+
+    def test_needs_you_ring_is_a_partial_countdown_not_a_full_circle(self):
+        # The ring maps to the real fallback time: a Claude arc with a HAIR
+        # depletion gap. Attract's ring is centred at (240, 150), r78.
+        image = self._ny("attract")
+        band = (160, 70, 320, 230)
+        self.assertGreater(self._count(image, band, self.NY_CLAUDE), 40)
+        self.assertGreater(self._count(image, band, self.NY_HAIR), 5)
+
+    def test_needs_you_attract_hero_word_and_mascot_are_present(self):
+        image = self._ny("attract")
+        self.assertGreater(
+            self._count(image, (60, 278, 420, 332), self.NY_WHITE), 150)
+        self.assertGreater(
+            self._count(image, (176, 96, 304, 200), self.NY_CLAUDE), 500)
+
+    def test_needs_you_payoff_is_a_static_beat_with_no_buttons(self):
+        # Happy mascot up top, the approved item below, and no controls.
+        image = self._ny("payoff")
+        self.assertGreater(
+            self._count(image, (176, 120, 304, 224), self.NY_CLAUDE), 400)
+        self._no_filled_slab(image)
 
 
 if __name__ == "__main__":

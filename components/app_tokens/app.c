@@ -5,6 +5,7 @@
 
 #include "lvgl.h"
 
+#include "needs_you_net.h"
 #include "torget.h"
 #include "usage_screen.h"
 
@@ -103,6 +104,7 @@ static void create(lv_obj_t *root) {
   tokens_net_start();
   tokens_agent_net_start();
   tokens_github_net_start();
+  tokens_needs_you_net_start();
 #endif
 }
 

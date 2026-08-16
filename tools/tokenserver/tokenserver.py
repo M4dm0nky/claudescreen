@@ -41,6 +41,7 @@ import os
 import re
 import select
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -55,18 +56,21 @@ if __package__:
     from .agent_status import AgentStatusService
     from .codex_rollout import codex_rollout_rate_limits, observation_timestamp
     from .github_monitor import GitHubMonitor, disabled_snapshot, normalize_repo
+    from .interactions import InteractionStore
     from .max_tracker import MaxTrackerStore
     from .quota_cache import CachedQuota, QuotaCache
     from .usage_history import Forecast, UsageHistory
-    from . import codex_usage, value_meter
+    from . import codex_usage, interactions, value_meter
 else:  # direktkörning: python3 tools/tokenserver/tokenserver.py
     from agent_status import AgentStatusService
     from codex_rollout import codex_rollout_rate_limits, observation_timestamp
     from github_monitor import GitHubMonitor, disabled_snapshot, normalize_repo
+    from interactions import InteractionStore
     from max_tracker import MaxTrackerStore
     from quota_cache import CachedQuota, QuotaCache
     from usage_history import Forecast, UsageHistory
     import codex_usage
+    import interactions
     import value_meter
 
 RECOMPUTE_EVERY_S = 30
@@ -1845,6 +1849,8 @@ class Handler(BaseHTTPRequestHandler):
     max_tracker_store = None  # sätts i main
     github_monitor = None  # frivillig publik repo-monitor, sätts i main
     plans = {"claude": None, "codex": None}  # sätts i main från --*-plan
+    interaction_store = None  # "Needs You", av som standard; sätts i main
+    interaction_timeout_s = 120.0  # sätts i main från --interaction-timeout
 
     def _send(self, code, payload):
         body = json.dumps(payload).encode()
@@ -1853,6 +1859,44 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_no_decision(self):
+        """200 with an empty body: the documented "hook made no decision".
+
+        This is the single most important response in the whole feature. It is
+        what makes Claude Code render its own prompt, so every unknown — a
+        payload we cannot display, a timeout, LEAVE IT, a bug in here — lands
+        on it and the terminal simply behaves as it always did.
+        """
+        self.send_response(200)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _is_loopback(self):
+        """Hooks may only come from this machine.
+
+        Claude Code already refuses to POST a hook to a LAN address, so this
+        is defence in depth rather than the only guard — but it is what keeps
+        "the hook door" and "the device door" genuinely different doors.
+        """
+        host = self.client_address[0] if self.client_address else ""
+        return host in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+    def _read_json_body(self, limit=64 * 1024):
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            return None
+        if length <= 0 or length > limit:
+            return None
+        try:
+            raw = self.rfile.read(length)
+        except (ConnectionError, TimeoutError, OSError):
+            return None
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
 
     def _max_tracker_payload(self):
         # get_snapshot() is the single place fresh, non-stale/non-cached
@@ -1900,13 +1944,137 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
 
+    def _agent_status_payload(self):
+        """Agent status, plus the pending interaction when there is one.
+
+        `pending` is a NEW OPTIONAL ROOT KEY. The shipped firmware validates
+        the root's *required* keys and pins `v` to 2, but does not reject
+        unknown root keys — so adding it here does not break a panel running
+        today's build, and `v` deliberately stays 2.
+
+        The hard part is size, not schema: the device drops the WHOLE body
+        past its 4096-byte buffer, which would take the agent list with it.
+        So the pending item — the new, optional thing — is what gets dropped
+        if the two together would not fit.
+        """
+        payload = self.agent_status.snapshot()
+        if self.interaction_store is None:
+            return payload
+        pending = self.interaction_store.pending_public()
+        if pending is None:
+            return payload
+        candidate = dict(payload)
+        candidate["pending"] = pending
+        if not interactions.response_fits(candidate):
+            log.warning("pending-posten fick inte plats i /api/agent-status "
+                        "(%d jobb) — agentlistan går före och posten "
+                        "utelämnas", len(pending))
+            return payload
+        return candidate
+
+    def _hook_client_gone(self):
+        """Has the held hook's client hung up?
+
+        The request body is fully read before parking, so the socket becoming
+        readable can only mean EOF (the client closed) or a pipelined request
+        (which Claude Code does not send on hook connections). A dead client
+        must free its slot at once: the panel shows the oldest interaction
+        first, so a ghost would shadow real prompts for the rest of its
+        timeout and, with enough of them, fill the queue entirely.
+        """
+        try:
+            readable, _, _ = select.select([self.connection], [], [], 0)
+            if not readable:
+                return False
+            return self.connection.recv(1, socket.MSG_PEEK) == b""
+        except (OSError, ValueError):
+            return True
+
+    def _handle_hook(self, kind):
+        """Park a hook and hold its connection until a human decides."""
+        event = self._read_json_body()
+        if not isinstance(event, dict):
+            self._send_no_decision()
+            return
+        entry = self.interaction_store.park(
+            kind, event, self.interaction_timeout_s)
+        if entry is None:
+            # Not renderable, or too many already parked. The terminal is a
+            # perfectly good place to answer this one.
+            self._send_no_decision()
+            return
+        try:
+            body = self.interaction_store.await_verdict(
+                entry, is_alive=lambda: not self._hook_client_gone())
+        except Exception:
+            log.exception("interaktionen kraschade — lämnar beslutet till "
+                          "terminalen")
+            body = None
+        try:
+            if body is None:
+                self._send_no_decision()
+            else:
+                self._send(200, body)
+        except (ConnectionError, TimeoutError, OSError):
+            pass  # Claude Code gav upp (timeout, avbruten session)
+
+    def _handle_answer(self, request_id):
+        payload = self._read_json_body(limit=4096)
+        if not isinstance(payload, dict):
+            self._send(400, {"ok": False, "reason": "bad request"})
+            return
+        ok, reason = self.interaction_store.resolve(
+            request_id, payload.get("verdict"), payload.get("ts"),
+            payload.get("hmac"))
+        self._send(200 if ok else 409, {"ok": ok, "reason": reason})
+
+    def _handle_panic(self):
+        """Panic stop: deny everything parked. Signed like any other answer.
+
+        It can only ever deny, so the worst a stranger with the key can do is
+        stop your agents — which is why this is the safest thing the device
+        is allowed to do.
+        """
+        payload = self._read_json_body(limit=4096)
+        if not isinstance(payload, dict):
+            self._send(400, {"ok": False, "reason": "bad request"})
+            return
+        accepted, denied = self.interaction_store.panic(
+            payload.get("ts"), payload.get("hmac"))
+        if not accepted:
+            self._send(409, {"ok": False, "reason": "signature rejected"})
+            return
+        log.warning("panikstopp från enheten: %d väntande beslut nekade",
+                    denied)
+        self._send(200, {"ok": True, "denied": denied})
+
+    def do_POST(self):
+        if self.interaction_store is None:
+            self._send(404, {"error": "interactions are not enabled"})
+            return
+        if self.path in ("/api/hook/question", "/api/hook/permission"):
+            if not self._is_loopback():
+                log.warning("hook-POST från %s avvisad — hookar får bara "
+                            "komma från den här maskinen",
+                            self.address_string())
+                self._send(403, {"error": "hooks must be local"})
+                return
+            self._handle_hook(
+                "question" if self.path.endswith("question") else "approval")
+        elif self.path.startswith("/api/interaction/"):
+            self._handle_answer(self.path[len("/api/interaction/"):])
+        elif self.path == "/api/panic":
+            self._handle_panic()
+        else:
+            self._send(404, {"error": "not found"})
+
     def do_GET(self):
         if self.path == "/api/tokens":
             self._reply(lambda: get_snapshot(
                 self.projects_dir,
                 max_tracker_store=self.max_tracker_store))
         elif self.path == "/api/agent-status":
-            self._reply(lambda: self.agent_status.snapshot())
+            self._reply(self._agent_status_payload)
         elif self.path == "/api/max-tracker":
             self._reply(self._max_tracker_payload)
         elif self.path == "/api/github":
@@ -1989,6 +2157,25 @@ def _build_arg_parser():
         default=os.environ.get("VIBEPULSE_GITHUB_REPO") or None,
         help="Frivilligt publikt GitHub-repo som owner/repository. "
              "Kan också sättas med VIBEPULSE_GITHUB_REPO.")
+    ap.add_argument(
+        "--interactions", action="store_true",
+        help="accept Claude Code hooks on loopback and let a paired device "
+             "answer them ('Needs You'). Off by default. Needs a device key "
+             "(VIBEPULSE_DEVICE_KEY, ~/.vibepulse-device-key, or "
+             "TK_VIBEPULSE_DEVICE_KEY in secrets.h) before the device can "
+             "answer anything")
+    ap.add_argument(
+        "--interaction-detail", action="store_true",
+        help="also send the question text and the command to the panel. A "
+             "DELIBERATE widening of the privacy contract — without it the "
+             "screen learns only that something is waiting, and in which "
+             "project, and can only deny or defer to the terminal")
+    ap.add_argument(
+        "--interaction-timeout", type=float, default=120.0,
+        help="seconds to hold a hook open before handing the decision back "
+             "to the terminal (default 120). Keep it below the timeout in "
+             "the hook's own settings entry, so we answer before Claude "
+             "Code stops listening")
     return ap
 
 
@@ -2105,14 +2292,34 @@ def main():
             raise SystemExit(1)
         log.info("%s finns nu — fortsätter starten.", Handler.projects_dir)
 
-    t0 = time.monotonic()
-    snap = get_snapshot(Handler.projects_dir)
-    log.info("förstaskanning %.1f s: %s tokens idag, %d sessioner, "
-             "%s denna månad",
-             time.monotonic() - t0,
-             f"{snap['dayTokens']:,}".replace(",", " "),
-             snap["daySessions"],
-             f"{snap['monthTokens']:,}".replace(",", " "))
+    # Förstaskanningen är en uppvärmning plus en loggrad — /api/tokens gör om
+    # get_snapshot per request ändå, och HTTP-trådarna kör den redan
+    # parallellt, så samma anrop tål en bakgrundstråd. Den låg tidigare FÖRE
+    # bind, vilket med stora loggkataloger höll porten stängd i minuter efter
+    # varje `launchctl kickstart`. Det var alltid trist för skärmen; med
+    # Needs You blev det på riktigt fel — en hook som får connection refused
+    # faller (helt säkert, men helt i onödan) tillbaka till terminalen fast
+    # tjänsten är sekunder från att kunna hålla den. Nu binder servern direkt
+    # och värmer i bakgrunden: agent-status och hookarna är incrementella och
+    # svarar meningsfullt på en gång, /api/tokens svarar när skanningen är
+    # klar (skärmen visar streck/stale tills dess, precis som vid nätfel).
+    def _first_scan_warmup():
+        t0 = time.monotonic()
+        try:
+            snap = get_snapshot(Handler.projects_dir)
+        except Exception:
+            log.exception("förstaskanningen kraschade — /api/tokens värmer "
+                          "vid första anropet i stället")
+            return
+        log.info("förstaskanning %.1f s: %s tokens idag, %d sessioner, "
+                 "%s denna månad",
+                 time.monotonic() - t0,
+                 f"{snap['dayTokens']:,}".replace(",", " "),
+                 snap["daySessions"],
+                 f"{snap['monthTokens']:,}".replace(",", " "))
+
+    threading.Thread(target=_first_scan_warmup, name="first-scan-warmup",
+                     daemon=True).start()
 
     status_service = AgentStatusService(
         projects_dir=Handler.projects_dir,
@@ -2128,6 +2335,28 @@ def main():
         CODEX_SESSIONS, Handler.projects_dir)
     Handler.max_tracker_store = max_tracker_store
     Handler.plans = {"claude": args.claude_plan, "codex": args.codex_plan}
+
+    if args.interactions:
+        secret = interactions.read_device_key()
+        Handler.interaction_timeout_s = max(5.0, args.interaction_timeout)
+        Handler.interaction_store = InteractionStore(
+            secret=secret or "",
+            reveal_detail=args.interaction_detail,
+            audit=lambda action, row: log.info("interaktion %s: %s", action,
+                                               json.dumps(row,
+                                                          sort_keys=True)))
+        log.info("Needs You på: hookar tas emot på 127.0.0.1:%d "
+                 "(/api/hook/question, /api/hook/permission), håller %.0f s. "
+                 "Enhetsnyckel: %s. Innehåll till skärmen: %s",
+                 args.port, Handler.interaction_timeout_s,
+                 "finns" if secret else "SAKNAS — enheten kan inte svara",
+                 "ja (--interaction-detail)" if args.interaction_detail
+                 else "nej, bara att något väntar")
+        if not secret:
+            log.warning("ingen enhetsnyckel hittad — hookar parkeras och "
+                        "faller tillbaka till terminalen. Sätt "
+                        "TK_VIBEPULSE_DEVICE_KEY i secrets.h (samma värde "
+                        "som skärmen bygger med) för att kunna svara.")
 
     backfill_stop = threading.Event()
     backfill_thread = threading.Thread(

@@ -59,10 +59,53 @@ typedef struct {
   tk_agent_status jobs[TK_AGENT_JOBS_MAX];
 } tk_agent_provider_status;
 
+/* "Needs You": one interaction a Claude Code session is blocked on, parked by
+ * the bridge and waiting for a tap. Optional on the wire — an older service
+ * simply never sends it, and a malformed one is ignored rather than allowed to
+ * take the agent list down with it (see tk_agent_status_parse). */
+#define TK_PENDING_ID_CAP 33     /* 32 hex + NUL */
+#define TK_PENDING_PROMPT_CAP 97 /* server bound 96 + NUL */
+#define TK_PENDING_TITLE_CAP 65  /* server bound 64 + NUL */
+#define TK_PENDING_TOOL_CAP 25
+
+typedef enum {
+  TK_PENDING_QUESTION,
+  TK_PENDING_APPROVAL,
+} tk_pending_kind;
+
+typedef struct {
+  bool present;
+  tk_pending_kind kind;
+  /* can_approve is the server's verdict, never the panel's guess: it is false
+   * for anything truncated, anything outside the approvable tier, and for
+   * every payload when detail is not shared. The panel must not offer APPROVE
+   * without it. */
+  bool can_approve;
+  bool marked; /* Claude explicitly flagged the option as recommended */
+  bool has_prompt;
+  bool has_title;
+  bool has_subtitle;
+  bool has_tool;
+  bool has_project;
+  uint8_t options_total;
+  uint32_t expires_in_ms;
+  /* The interaction's original hold duration. The countdown ring is
+   * expires_in_ms against this, so it maps to the real terminal-fallback
+   * time. 0 when an older service does not send it (ring reads as full). */
+  uint32_t hold_ms;
+  char request_id[TK_PENDING_ID_CAP];
+  char project[TK_AGENT_PROJECT_CAP];
+  char prompt[TK_PENDING_PROMPT_CAP];
+  char title[TK_PENDING_TITLE_CAP];
+  char subtitle[TK_PENDING_TITLE_CAP];
+  char tool[TK_PENDING_TOOL_CAP];
+} tk_pending_interaction;
+
 typedef struct {
   uint32_t seq;
   tk_agent_provider_status claude;
   tk_agent_provider_status codex;
+  tk_pending_interaction pending;
 } tk_agent_snapshot;
 
 static inline const tk_agent_status *tk_agent_provider_primary(

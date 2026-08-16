@@ -74,4 +74,22 @@ conv SemiBold  21 "0x20-0x7E,0xA0,0xB7,0xC5,0xC4,0xD6,0xD7,0xE5,0xE4,0xF6,0x2013
 conv Bold      64 "0x50,0x53,0x54,0x56"                   plex_icon_64
 # Agent monitor completion/status words: DONE plus legacy Swedish fallbacks.
 conv Bold      64 "0x41,0x42,0x44-0x46,0x4A,0x4B,0x4C,0x4E,0x4F,0x52,0x54,0x56,0xC4" plex_status_64
+# Needs You v2 takeover. The question/description and recommendation title are
+# arbitrary Claude text, so they need the full ASCII range at a shelf-readable
+# 27 px (the largest existing full-ASCII raster is only 21). Same range as the
+# plex_ui_* family plus the Swedish letters a project name can carry.
+conv SemiBold  27 "0x20-0x7E,0xA0,0xB7,0xC5,0xC4,0xD6,0xD7,0xE5,0xE4,0xF6,0x2013" plex_body_27
+# The command payload is the one element the design keeps in real mono, hero-
+# sized. IBM Plex Mono SemiBold, 40 px, ASCII — a command is ASCII.
+MONO_BASE="https://github.com/IBM/plex/raw/master/packages/plex-mono/fonts/complete/ttf"
+[ -f "src/IBMPlexMono-SemiBold.ttf" ] || \
+  curl -fsSL "$MONO_BASE/IBMPlexMono-SemiBold.ttf" -o "src/IBMPlexMono-SemiBold.ttf"
+for s in 40 24; do
+  # 40 is the hero size; 24 is the one stepwise shrink for the longest
+  # approvable commands (e.g. "python3 -m unittest") so they still fit at 432 px.
+  font_conv --font "src/IBMPlexMono-SemiBold.ttf" --size "$s" --bpp 4 \
+    --format lvgl --no-compress --range "0x20-0x7E" -o "plex_mono_$s.c"
+  python3 -c 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); p.write_text(p.read_text().rstrip() + "\n")' "plex_mono_$s.c"
+  echo "  plex_mono_$s.c"
+done
 ls -la *.c | awk '{print $5, $9}'

@@ -39,6 +39,7 @@
 #include "boot_health.h"
 #include "boot_screen.h"
 #include "button_policy.h"
+#include "needs_you_net.h"
 #include "ota_service.h"
 #include "ota_ui.h"
 #include "rotation.h"
@@ -259,11 +260,22 @@ static void tick_cb(lv_timer_t *t) {
   static int heap_probe;
   if (++heap_probe >= 100) {
     heap_probe = 0;
+    unsigned dma_largest = (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
     ESP_LOGI(TAG, "heap: internt %u fritt (största block %u, lägsta någonsin %u), DMA största %u",
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
-             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+             dma_largest);
+    /* Tidig varning INNAN glaset fryser: panelflushen behöver ett
+     * sammanhängande DMA-block på DISPLAY_FLUSH_ROWS×480×2 byte. Faller
+     * största DMA-blocket mot det taket dör nästa flush i NO_MEM och hela
+     * ritpipen fastnar tyst (frysjakten 2026-08-16: LVGL:s interna pool
+     * svalt blocket → låst render). Larmet gör en framtida regression
+     * högljudd i stället för tyst. Marginal ×2 = andrum för TLS/WiFi-spikar. */
+    const unsigned flush_dma = (unsigned)DISPLAY_FLUSH_ROWS * 480u * 2u;
+    if (dma_largest < flush_dma * 2u)
+      ESP_LOGW(TAG, "LÅGT DMA-block: %u byte (flush behöver %u) — nära fryströskeln",
+               dma_largest, flush_dma);
   }
 
   /* Väckning: ett finger på glaset räknas som aktivitet. Pollat, inte
@@ -297,12 +309,24 @@ static void tick_cb(lv_timer_t *t) {
   tg_button_action key3_action = tg_button_update(&key3, key3_down, now);
   if (key3_down)
     s_last_touch_us = now; /* knappkontakt är aktivitet, precis som touch */
-  if (key3_action == TG_BUTTON_NEXT_APP) {
-    /* Öppet fönster: samma tryck som annars byter app blir nödutgången —
-     * tio minuter utan flyktväg gjorde en frisk enhet omöjlig att skilja
-     * från en hängd (2026-08-14). Stängningen är atomär och ofarlig här. */
-    if (!torget_ota_service_maintenance_open()) torget_app_next();
-    else torget_ota_service_close_maintenance();
+  if (torget_ota_service_maintenance_open()) {
+    /* While the update window owns the glass, KEY3 has exactly one job: close
+     * it. ANY release does — a short tap or the panic-window hold — so the
+     * nödutgången never depends on out-tapping the panic threshold (a real
+     * trap found on hardware 2026-08-16: a ~2 s press panicked instead of
+     * closing, leaving the window stuck). Ten minutes without an escape once
+     * made a healthy device look hung. The 3 s hold that would open the
+     * window is a harmless no-op here — it is already open. No panic fires
+     * while the window is up. */
+    if (key3_action == TG_BUTTON_NEXT_APP || key3_action == TG_BUTTON_PANIC)
+      torget_ota_service_close_maintenance();
+  } else if (key3_action == TG_BUTTON_NEXT_APP) {
+    torget_app_next();
+  } else if (key3_action == TG_BUTTON_PANIC) {
+    /* Mellanhåll-och-släpp med stängt fönster: neka allt Needs You parkerat.
+     * Bara ett köinlägg (atomärt), säkert från LVGL-tasken; en avstängd
+     * svarskanal (ingen enhetsnyckel) gör det till en no-op. */
+    tk_needs_you_send_panic();
   } else if (key3_action == TG_BUTTON_OPEN_MAINTENANCE) {
     torget_ota_service_open_maintenance();
   }

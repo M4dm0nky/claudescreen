@@ -21,6 +21,33 @@ point at the backlog item.
 
 ---
 
+## 2026-08-16 · LVGL's pool starved the flush's DMA and the glass froze
+
+**What happened:** the Needs You build froze the panel intermittently on
+hardware — silent, no panic: UI and polling dead, ICMP crawling, but the
+idle task alive so no watchdog fired. A diagnostic build (heap heartbeat +
+`vTaskList` on stuck lock + WDT-panic + poisoning) caught the `lvgl` task
+**Running while holding the LVGL lock** with every other task blocked
+behind it, at internal-heap `min=16 B`, `DMA-largest≈4.6 KB` — **below the
+flush's 11 520 B** (`DISPLAY_FLUSH_ROWS×480×2`). **Root cause:** LVGL's
+builtin allocator puts its `LV_MEM_SIZE` pool (96 KB) as a static array in
+*internal* BSS; that plus the takeover's objects pushed the largest
+contiguous DMA-capable block under the flush buffer → flush dies in
+NO_MEM, render wedges holding the lock, whole glass freezes. Same class as
+[One byte over budget froze the display] and the 2026-08-14 Vibbe freeze,
+new starvation source. First fix guess (`SPIRAM_TRY_ALLOCATE_WIFI_LWIP`)
+made it *worse* (min→16 B) — reverted. **The rule:** LVGL's pool belongs
+in PSRAM, not internal BSS; internal RAM is for DMA/WiFi. Measure the
+*largest DMA block* against the flush size, never total free — frag hides
+in the total. **Guards:** `LV_MEM_POOL_ALLOC`→`heap_caps_malloc(SPIRAM)`
+via `main/lv_psram_pool.h` wired to the lvgl component in root CMakeLists,
+pool enlarged to 256 KB (internal free 22→147 KB, DMA block 7.7→53 KB);
+new `LÅGT DMA-block` warning in `tick_cb`'s heap probe fires before the
+freeze threshold. **Watch for:** any large LVGL/const array landing in
+internal BSS; the flush buffer size changing without re-checking the DMA
+headroom; CMake silently dropping function-style `-D` macros (the pool
+macro must live in a header).
+
 ## 2026-08-15 · kickstart restarts the process, not the plist
 
 **What happened:** the tokenserver kept dying with `unrecognized arguments:

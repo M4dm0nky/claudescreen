@@ -250,6 +250,118 @@ int main(void) {
         TK_AGENT_PROVIDER_CLAUDE == 0 && TK_AGENT_PROVIDER_CODEX == 1 &&
         TK_AGENT_PROVIDER_COUNT == 2 && TK_AGENT_JOBS_MAX == 4);
 
+  /* "Needs You": pending är FRIVILLIG och tolkas mjukt. Ett trasigt
+   * pending-objekt får aldrig ta agentlistan med sig — det är hela
+   * skillnaden mot resten av den här parsern. */
+#define QUESTION_PENDING \
+  "{\"request_id\":\"6750af25a1f5ab4161fc7698c3f84d60\"," \
+  "\"kind\":\"question\",\"project\":\"vibepulse\"," \
+  "\"expires_in_ms\":118000,\"hold_ms\":144000," \
+  "\"options_total\":2,\"marked\":true," \
+  "\"prompt\":\"Which auth approach?\",\"title\":\"New auth layer\"," \
+  "\"subtitle\":\"Cleaner architecture\",\"can_approve\":true}"
+#define WITH_PENDING(PENDING) \
+  "{\"v\":2,\"seq\":7,\"agents\":{" ONE_CLAUDE(WORKING_JOB) "," \
+  EMPTY_CODEX "},\"pending\":" PENDING "}"
+
+  memset(&snapshot, 0, sizeof snapshot);
+  check("hel fråga läses in",
+        PARSE(WITH_PENDING(QUESTION_PENDING), &snapshot) &&
+        snapshot.pending.present &&
+        snapshot.pending.kind == TK_PENDING_QUESTION &&
+        snapshot.pending.can_approve && snapshot.pending.marked &&
+        snapshot.pending.options_total == 2 &&
+        snapshot.pending.expires_in_ms == 118000 &&
+        snapshot.pending.hold_ms == 144000 &&
+        strcmp(snapshot.pending.request_id,
+               "6750af25a1f5ab4161fc7698c3f84d60") == 0 &&
+        strcmp(snapshot.pending.title, "New auth layer") == 0 &&
+        strcmp(snapshot.pending.subtitle, "Cleaner architecture") == 0 &&
+        strcmp(snapshot.pending.prompt, "Which auth approach?") == 0 &&
+        strcmp(snapshot.pending.project, "vibepulse") == 0);
+  check("agentlistan finns kvar bredvid en pending",
+        snapshot.claude.job_count == 1 && snapshot.seq == 7);
+
+  memset(&snapshot, 0, sizeof snapshot);
+  check("payload utan pending ger present=false",
+        PARSE(PAYLOAD(WORKING_JOB), &snapshot) && !snapshot.pending.present &&
+        snapshot.claude.job_count == 1);
+
+  /* Var och en av de här raderna är en payload som INTE får släcka
+   * agentlistan. Det är kontraktet: fel i pending ⇒ ingen interaktion,
+   * aldrig ingen agentstatus. */
+  static const char *const soft_failures[] = {
+      "{\"kind\":\"question\",\"expires_in_ms\":1}",           /* utan id */
+      "{\"request_id\":\"abc\",\"expires_in_ms\":1}",          /* utan kind */
+      "{\"request_id\":\"abc\",\"kind\":\"question\"}",        /* utan tid */
+      "{\"request_id\":\"abc\",\"kind\":\"nonsense\","
+      "\"expires_in_ms\":1}",                                  /* okänd sort */
+      "{\"request_id\":\"abc\",\"kind\":\"question\","
+      "\"expires_in_ms\":\"snart\"}",                          /* fel typ */
+      "\"inte ett objekt\"",
+      "null",
+      "[]",
+      "{}",
+  };
+  for (size_t i = 0; i < sizeof soft_failures / sizeof soft_failures[0]; i++) {
+    char payload[1024];
+    snprintf(payload, sizeof payload,
+             "{\"v\":2,\"seq\":7,\"agents\":{" ONE_CLAUDE(WORKING_JOB) ","
+             EMPTY_CODEX "},\"pending\":%s}", soft_failures[i]);
+    memset(&snapshot, 0, sizeof snapshot);
+    bool parsed = tk_agent_status_parse(payload, strlen(payload), &snapshot);
+    check("trasig pending tar aldrig agentlistan med sig",
+          parsed && !snapshot.pending.present &&
+          snapshot.claude.job_count == 1);
+  }
+
+  memset(&snapshot, 0, sizeof snapshot);
+  check("okända fält inuti pending bryter inte bygget",
+        PARSE(WITH_PENDING("{\"request_id\":\"abc\",\"kind\":\"approval\","
+                           "\"expires_in_ms\":5000,\"tool\":\"Bash\","
+                           "\"title\":\"npm test\",\"can_approve\":true,"
+                           "\"something_new\":42}"), &snapshot) &&
+        snapshot.pending.present &&
+        snapshot.pending.kind == TK_PENDING_APPROVAL &&
+        snapshot.pending.can_approve &&
+        strcmp(snapshot.pending.tool, "Bash") == 0);
+
+  memset(&snapshot, 0, sizeof snapshot);
+  check("utan titel går det aldrig att godkänna",
+        PARSE(WITH_PENDING("{\"request_id\":\"abc\",\"kind\":\"approval\","
+                           "\"expires_in_ms\":5000,\"can_approve\":true}"),
+              &snapshot) &&
+        snapshot.pending.present && !snapshot.pending.can_approve &&
+        !snapshot.pending.has_title);
+
+  memset(&snapshot, 0, sizeof snapshot);
+  check("integritetsläget ger något att gå till, inget att godkänna",
+        PARSE(WITH_PENDING("{\"request_id\":\"abc\",\"kind\":\"question\","
+                           "\"expires_in_ms\":5000,\"project\":\"vibepulse\","
+                           "\"can_approve\":false,\"options_total\":2}"),
+              &snapshot) &&
+        snapshot.pending.present && !snapshot.pending.can_approve &&
+        !snapshot.pending.has_prompt && !snapshot.pending.has_title &&
+        strcmp(snapshot.pending.project, "vibepulse") == 0);
+
+  memset(&snapshot, 0, sizeof snapshot);
+  check("för lång text kastas hellre än trunkeras här",
+        PARSE(WITH_PENDING("{\"request_id\":\"abc\",\"kind\":\"question\","
+                           "\"expires_in_ms\":5000,\"can_approve\":true,"
+                           "\"title\":\"" \
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+  "aaaaaaaaaaaaaaaaaaaa\"}"), &snapshot) &&
+        snapshot.pending.present && !snapshot.pending.has_title &&
+        !snapshot.pending.can_approve);
+
+  memset(&snapshot, 0, sizeof snapshot);
+  check("kontrolltecken i titeln avvisas",
+        PARSE(WITH_PENDING("{\"request_id\":\"abc\",\"kind\":\"question\","
+                           "\"expires_in_ms\":5000,\"can_approve\":true,"
+                           "\"title\":\"npm\\ttest\"}"), &snapshot) &&
+        snapshot.pending.present && !snapshot.pending.has_title &&
+        !snapshot.pending.can_approve);
+
   if (failures == 0) {
     printf("OK: alla agentstatus-v2-tester gröna\n");
     return 0;

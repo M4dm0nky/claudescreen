@@ -69,6 +69,18 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
 /tmp/torget-agent-status-test
 
 cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/app_tokens/needs_you_policy.c \
+  test_needs_you_policy.c \
+  -o /tmp/torget-needs-you-test
+/tmp/torget-needs-you-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/app_tokens/needs_you_send_policy.c \
+  test_needs_you_send_policy.c \
+  -o /tmp/torget-needs-you-send-test
+/tmp/torget-needs-you-send-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
   ../components/app_tokens/github_status_parse.c \
   test_github_status.c /tmp/torget-cjson.o \
   -lm \
@@ -174,6 +186,7 @@ cd ..
 "$PYTHON_BIN" test/test_vibepulse_visual_landmarks.py
 "$PYTHON_BIN" test/test_shared_amoled_skill.py
 "$PYTHON_BIN" test/test_token_body_capacity.py
+"$PYTHON_BIN" test/test_agent_status_body_capacity.py
 "$PYTHON_BIN" -m unittest tools.test_hardware_registry -v
 "$PYTHON_BIN" -m unittest \
   tools.tokenserver.test_github_monitor \
@@ -185,4 +198,5 @@ cd ..
   tools.tokenserver.test_value_meter \
   tools.tokenserver.test_update_prices \
   tools.tokenserver.test_codex_usage \
+  tools.tokenserver.test_interactions \
   tools.tokenserver.test_smoke -v

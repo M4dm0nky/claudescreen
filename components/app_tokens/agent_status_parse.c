@@ -458,6 +458,110 @@ static bool activity_member(const cJSON *object, tk_agent_activity *out) {
   return true;
 }
 
+/* Optional display string: absent, null or unusable leaves the field empty and
+ * its has_* flag false. Never fails the parse — see parse_pending. */
+static void optional_pending_string(const cJSON *object, const char *key,
+                                    char *destination, size_t capacity,
+                                    bool *has_value) {
+  *has_value = false;
+  destination[0] = '\0';
+  const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
+  if (!cJSON_IsString(item) || !item->valuestring) return;
+
+  const unsigned char *source = (const unsigned char *)item->valuestring;
+  size_t length = 0;
+  while (source[length] != '\0') {
+    if (source[length] < 0x20 || length + 1 >= capacity) return;
+    length++;
+  }
+  if (!length) return;
+  memcpy(destination, source, length + 1);
+  *has_value = true;
+}
+
+static bool pending_bool(const cJSON *object, const char *key) {
+  const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
+  return cJSON_IsTrue(item);
+}
+
+/* The pending interaction is OPTIONAL and parsed softly on purpose.
+ *
+ * Every other field here is all-or-nothing, because half a quota number is a
+ * lie. This one is different: it arrives on the same payload as the agent
+ * list, and rejecting the whole body over an unexpected pending field would
+ * blank the screen's existing, shipped contract — the exact failure the
+ * service is careful to avoid on its side. So anything wrong here means "no
+ * interaction", never "no agent status", and a future service may add fields
+ * inside `pending` without bricking a panel running this build.
+ *
+ * The conservative direction matters too: on any doubt the panel shows
+ * nothing to tap, and the decision stays in the terminal where it is safe. */
+static void parse_pending(const char *json, size_t len, const cJSON *root,
+                          tk_pending_interaction *out) {
+  memset(out, 0, sizeof *out);
+
+  const cJSON *pending = cJSON_GetObjectItemCaseSensitive(root, "pending");
+  if (!cJSON_IsObject(pending)) return;
+
+  const cJSON *kind = cJSON_GetObjectItemCaseSensitive(pending, "kind");
+  if (!cJSON_IsString(kind) || !kind->valuestring) return;
+  if (strcmp(kind->valuestring, "question") == 0) {
+    out->kind = TK_PENDING_QUESTION;
+  } else if (strcmp(kind->valuestring, "approval") == 0) {
+    out->kind = TK_PENDING_APPROVAL;
+  } else {
+    return; /* a kind this build cannot render is not one it may answer */
+  }
+
+  bool has_request_id = false;
+  optional_pending_string(pending, "request_id", out->request_id,
+                          sizeof out->request_id, &has_request_id);
+  if (!has_request_id) {
+    memset(out, 0, sizeof *out);
+    return; /* nothing to answer with */
+  }
+
+  uint32_t expires_in_ms = 0;
+  if (!uint32_member(json, len, root, pending, "expires_in_ms",
+                     &expires_in_ms)) {
+    memset(out, 0, sizeof *out);
+    return;
+  }
+  out->expires_in_ms = expires_in_ms;
+
+  /* Optional: the original hold, for the countdown ring. Absent on an older
+   * service, which just leaves the ring reading full — never a wrong time. */
+  uint32_t hold_ms = 0;
+  if (uint32_member(json, len, root, pending, "hold_ms", &hold_ms)) {
+    out->hold_ms = hold_ms;
+  }
+
+  uint32_t options_total = 0;
+  if (uint32_member(json, len, root, pending, "options_total",
+                    &options_total) && options_total <= 0xFF) {
+    out->options_total = (uint8_t)options_total;
+  }
+
+  optional_pending_string(pending, "project", out->project,
+                          sizeof out->project, &out->has_project);
+  optional_pending_string(pending, "prompt", out->prompt,
+                          sizeof out->prompt, &out->has_prompt);
+  optional_pending_string(pending, "title", out->title,
+                          sizeof out->title, &out->has_title);
+  optional_pending_string(pending, "subtitle", out->subtitle,
+                          sizeof out->subtitle, &out->has_subtitle);
+  optional_pending_string(pending, "tool", out->tool,
+                          sizeof out->tool, &out->has_tool);
+
+  out->marked = pending_bool(pending, "marked");
+  /* APPROVE exists only when the service says so AND there is something
+   * readable to approve. Two independent reasons to withhold it, because
+   * approving text you cannot see is the failure this whole feature must not
+   * ship with. */
+  out->can_approve = pending_bool(pending, "can_approve") && out->has_title;
+  out->present = true;
+}
+
 static bool job_member(const char *json, size_t len, const cJSON *root,
                        const cJSON *job, tk_agent_status *out) {
   if (!required_keys_once(job, job_required_keys) ||
@@ -541,6 +645,8 @@ bool tk_agent_status_parse(const char *json, size_t len,
   if (!provider_member(json, len, root, agents, "codex", &next.codex)) {
     goto done;
   }
+
+  parse_pending(json, len, root, &next.pending);
 
   *out = next;
   ok = true;

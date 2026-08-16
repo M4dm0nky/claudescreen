@@ -27,6 +27,7 @@
 #include "app_tokens.h"
 #include "agent_monitor.h"
 #include "agent_monitor_policy.h"
+#include "needs_you_send_policy.h"
 #include "agent_status_parse.h"
 #include "github_status_parse.h"
 #include "max_tracker_parse.h"
@@ -72,6 +73,12 @@ static const char *const AGENT_FIXTURES[] = {
   "agent-status-codex-done.json",
   "agent-status-codex-error.json",
   "agent-status-unknown.json",
+  /* The interactive "Needs You" takeover: a parked question, an approval, and
+   * the privacy/not-approvable case. S cycles into these so all three states
+   * are reachable on the glass. */
+  "agent-status-needs-you-question.json",
+  "agent-status-needs-you-approval.json",
+  "agent-status-needs-you-private.json",
 };
 static int agent_fixture_idx;
 static int capture_failures;
@@ -96,6 +103,24 @@ void torget_keep_awake(void) {} /* ljusrampen finns bara på panelen */
 void torget_data_alive(void) {}  /* bootskärmen drivs manuellt i QA:n */
 
 int64_t torget_now_us(void) { return (int64_t)lv_tick_get() * 1000; }
+
+/* The sim has no network, so a tap on the glass just prints the canonical
+ * message the device would sign and POST — the exact bytes the send policy
+ * builds, so the wire is provable by fake-panel while the screens are provable
+ * here, and the shared policy proves they agree. */
+static void sim_needs_you_verdict(tk_needs_you_verdict verdict,
+                                  const char *request_id) {
+  const char *name = tk_needs_you_verdict_name(verdict);
+  char message[TK_NEEDS_YOU_MESSAGE_CAP];
+  uint64_t ts = (uint64_t)(lv_tick_get() / 1000);
+  if (name && request_id &&
+      tk_needs_you_canonical_message(message, sizeof message, request_id, name,
+                                     ts) > 0) {
+    printf("needs-you verdict: %s\n", message);
+  } else {
+    printf("needs-you verdict: (unsendable)\n");
+  }
+}
 
 /* ------------------------------------------------------------------ BMP:er */
 
@@ -536,6 +561,45 @@ static void poll_keys(lv_timer_t *t) {
   }
 }
 
+/* Needs You v2, the interactive takeover in every stage the policy can put on
+ * the glass: the attract summon, the three decision screens, the page it
+ * yields to, and the static payoff beat. The two-stage summon is driven by the
+ * deterministic tap/press paths that stand in for a glass touch. Payoff is last
+ * because it owns the glass for its static window. */
+static void capture_needs_you_v2(void) {
+  torget_app_show(SIM_APP_VIBEPULSE);
+  feed_tokens();
+  tokens_show_view(VIEW_CLAUDE_FABLE);
+
+  apply_agent_file("agent-status-needs-you-question.json");
+  dump_frame("vibepulse-needs-you-attract");
+  tk_agent_monitor_needs_you_tap();
+  dump_frame("vibepulse-needs-you-question");
+
+  /* Widest realistic copy: a long question must never overwrite the
+   * recommendation card (physical review 2026-08-16). */
+  apply_agent_file("agent-status-needs-you-question-long.json");
+  tk_agent_monitor_needs_you_tap();
+  dump_frame("vibepulse-needs-you-question-long");
+
+  apply_agent_file("agent-status-needs-you-approval.json");
+  tk_agent_monitor_needs_you_tap();
+  dump_frame("vibepulse-needs-you-approval");
+
+  apply_agent_file("agent-status-needs-you-private.json");
+  tk_agent_monitor_needs_you_tap();
+  dump_frame("vibepulse-needs-you-private");
+
+  apply_agent_file("agent-status-claude-working.json");
+  tokens_show_view(VIEW_CLAUDE_FABLE);
+  dump_frame("vibepulse-needs-you-none");
+
+  apply_agent_file("agent-status-needs-you-question.json");
+  tk_agent_monitor_needs_you_tap();
+  tk_agent_monitor_needs_you_press(TK_NEEDS_YOU_VERDICT_APPROVE);
+  dump_frame("vibepulse-needs-you-payoff");
+}
+
 static int run_vibepulse_static_qa(void) {
   capture_failures = 0;
   torget_app_show(SIM_APP_VIBEPULSE);
@@ -904,6 +968,10 @@ static int run_vibepulse_static_qa(void) {
   tokens_apply(&value_solo);
   dump_frame("vibepulse-value-solo");
 
+  /* The Needs You takeover last: its payoff beat owns the glass, so nothing
+   * captured after it would see the page underneath. */
+  capture_needs_you_v2();
+
   return capture_failures == 0 ? 0 : 1;
 }
 
@@ -949,6 +1017,18 @@ static void run_vibepulse_completion_qa(void) {
   dump_frame("vibepulse-two-done-queued");
 }
 
+/* Needs You review deliverable: the interactive takeover in each state the
+ * policy can produce, plus the no-pending page it yields to. Kept out of the
+ * pixel-landmark set on purpose — the design is under review, so these are for
+ * a human to look at, not for an assertion to pin geometry that is not approved
+ * yet. Taps in the sim resolve locally via tk_needs_you_mark_answered because
+ * no verdict callback is wired here (that is the app layer's later job). */
+static int run_vibepulse_needs_you_qa(void) {
+  capture_failures = 0;
+  capture_needs_you_v2();
+  return capture_failures == 0 ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
   /* Radbuffrat även vid pipe: fixtureloggen ska överleva en kill. */
   setvbuf(stdout, NULL, _IOLBF, 0);
@@ -958,6 +1038,7 @@ int main(int argc, char **argv) {
   lv_sdl_mouse_create();
 
   torget_ui_create(); /* bygger apparna via registret, går in i app 0 */
+  tk_agent_monitor_set_needs_you_cb(sim_needs_you_verdict);
   /* OTA-ringen på topplagret, dold tills QA-dumparna väcker den — samma
    * ordning som targetets app_main (overlay EFTER det delade UI:t). */
   torget_ota_ui_create();
@@ -981,6 +1062,10 @@ int main(int argc, char **argv) {
 
   if (argc == 2 && strcmp(argv[1], "--vibepulse-static-qa") == 0) {
     return run_vibepulse_static_qa();
+  }
+
+  if (argc == 2 && strcmp(argv[1], "--vibepulse-needs-you-qa") == 0) {
+    return run_vibepulse_needs_you_qa();
   }
 
   /* VibePulse får sin fixtur direkt: launchern ska visa en levande app,

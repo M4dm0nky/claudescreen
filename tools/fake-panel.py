@@ -71,47 +71,63 @@ def draw(pending):
     project = pending.get("project") or "?"
     seconds = max(0, pending.get("expires_in_ms", 0) // 1000)
     can_approve = bool(pending.get("can_approve"))
+    # v2 semantics, mirroring the device screens exactly:
+    # question -> APPROVE / LEAVE IT; approval -> APPROVE / DENY / LEAVE IT;
+    # private (no title) -> tap-anywhere = LEAVE IT, nothing else offered.
+    private = pending.get("title") is None
+    offer_deny = kind == "approval" and not private
+
+    # the countdown ring, one text line worth of it
+    hold = pending.get("hold_ms") or pending.get("expires_in_ms", 0)
+    frac = (pending.get("expires_in_ms", 0) / hold) if hold else 1.0
+    filled = max(0, min(20, round(frac * 20)))
+    ring_bar = "█" * filled + "░" * (20 - filled)
 
     print(line())
-    if kind == "question":
-        print(line("CLAUDE NEEDS YOU", ORANGE + BOLD))
-    else:
-        print(line("APPROVAL REQUIRED", ORANGE + BOLD))
-    print(line(project, DIM))
+    print(line(f"CLAUDE NEEDS YOU · {project}", ORANGE + BOLD))
+    print(line(f"{ring_bar}  {seconds}s", DIM))
     print(line())
 
     prompt = pending.get("prompt")
     title = pending.get("title")
     subtitle = pending.get("subtitle")
 
-    if title is None:
-        # privacy mode: the screen knows something waits, not what
-        print(line("something is waiting for you", DIM))
-        print(line("(details stay on the Mac)", DIM))
+    if private:
+        print(line("SOMETHING IS WAITING", BOLD))
+        print(line("Details stay on the Mac", DIM))
         print(line())
-    else:
-        if prompt:
-            print(line(prompt, DIM))
-            print(line())
-        if kind == "question" and pending.get("marked"):
-            print(line("CLAUDE RECOMMENDS", ORANGE))
-        print(line(title, BOLD))
-        if subtitle:
-            print(line(subtitle, DIM))
-        print(line())
+        print(line("TAP TO ANSWER AT YOUR DESK", DIM))
+        print(line("(any key sends it to the terminal)", DIM))
+        print("╰" + "─" * WIDTH + "╯")
+        print(f"\n  {DIM}[any] to terminal [p]anic [q]uit{OFF}")
+        return
 
+    if prompt:
+        print(line(prompt, DIM))
+    if kind == "question" and pending.get("marked"):
+        print(line("CLAUDE RECOMMENDS", ORANGE))
+    print(line(title, BOLD))
+    if subtitle:
+        print(line(subtitle, DIM))
+    print(line())
+
+    if can_approve:
+        actions = "[a] APPROVE    [l] LEAVE IT"
+        if offer_deny:
+            actions = "[a] APPROVE    [d] DENY    [l] LEAVE IT"
+        print(line(actions, GREEN))
+    else:
+        print(line("[d] DENY    [l] LEAVE IT" if offer_deny
+                   else "[l] LEAVE IT", DIM))
+        print(line("approve at the terminal for this one", DIM))
     total = pending.get("options_total")
     if kind == "question" and total and total > 1:
-        print(line(f"{total - 1} more option(s) in the terminal", DIM))
-    print(line())
-    if can_approve:
-        print(line("[a] APPROVE    [d] DENY    [l] LEAVE IT", GREEN))
-    else:
-        print(line("[d] DENY    [l] LEAVE IT", DIM))
-        print(line("approve at the terminal for this one", DIM))
-    print(line(f"{seconds}s left · then the terminal asks", DIM))
+        extra = total - 1
+        plural = "S" if extra > 1 else ""
+        print(line(f"{extra} MORE OPTION{plural} IN TERMINAL", DIM))
     print("╰" + "─" * WIDTH + "╯")
-    print(f"\n  {DIM}[a]pprove [d]eny [l]eave [p]anic [q]uit{OFF}")
+    print(f"\n  {DIM}[a]pprove{' [d]eny' if offer_deny else ''} "
+          f"[l]eave [p]anic [q]uit{OFF}")
 
 
 def get_json(url, timeout=5):
@@ -197,7 +213,16 @@ def main():
             time.sleep(1.0)
             current = None
             continue
-        if key not in ("a", "d", "l") or current is None:
+        if current is None:
+            continue
+        # mirror the device screens exactly: private is tap-anywhere =
+        # LEAVE IT, and a question never offers DENY (the terminal, which
+        # shows every option, takes those refusals)
+        if current.get("title") is None:
+            key = "l"
+        elif key == "d" and current.get("kind") != "approval":
+            continue
+        if key not in ("a", "d", "l"):
             continue
         verdict = {"a": "approve", "d": "deny", "l": "leave_it"}[key]
         request_id = current["request_id"]

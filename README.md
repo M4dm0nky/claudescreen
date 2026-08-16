@@ -58,7 +58,8 @@ weekly quota. Each with a reset countdown and how much you've burned today.
 
 **NEEDS YOU** — when an agent blocks on your input, the whole screen turns
 into the alert, in that provider's colour, naming the project it's waiting
-on. Tap to dismiss.
+on. Tap to dismiss — or, with the opt-in Needs You bridge, **tap to answer
+it** without switching windows ([see below](#answer-claude-from-the-panel)).
 
 </td>
 </tr>
@@ -107,6 +108,29 @@ accent colour:
 **Claude Max Tracker**
 
 ![Claude Max Tracker](docs/img/vibepulse-max-tracker-claude.png)
+
+### Answer Claude from the panel
+
+The panel becomes an *input device*. With the opt-in Needs You bridge, when
+Claude Code blocks on a question or a permission the takeover appears and
+**a tap answers it in the same live session** — no window to switch to.
+
+<table>
+<tr>
+<td width="33%"><img src="docs/img/needs-you/vibepulse-needs-you-attract.png" alt="A mascot in a depleting countdown ring — something is waiting" width="100%"></td>
+<td width="33%"><img src="docs/img/needs-you/vibepulse-needs-you-question.png" alt="The decision screen: the question and Claude's recommended answer" width="100%"></td>
+<td width="33%"><img src="docs/img/needs-you/vibepulse-needs-you-payoff.png" alt="A short ON IT payoff beat after you answer" width="100%"></td>
+</tr>
+</table>
+
+**Attract → decision → done.** A held prompt surfaces as a mascot in a
+depleting countdown ring; a tap reveals it; **APPROVE** commits Claude's
+recommended option (or **LEAVE IT** hands it back to the terminal), and the
+flow closes on a short "ON IT" beat. The panel signs every verdict with a
+device key that lives only on the glass — it can answer a prompt this Mac was
+already going to ask about, and nothing more. Walking away always costs
+nothing: an unanswered prompt just falls back to the terminal. Setup is in
+[docs/agent-setup.md](docs/agent-setup.md).
 
 ### Optional GitHub project pulse
 

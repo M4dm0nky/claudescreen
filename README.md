@@ -5,12 +5,12 @@
 ![VibePulse: quota, a NEEDS YOU alert, and the Max Tracker heatmap](docs/img/hero.png)
 
 **A little always-on screen for your shelf that shows what your AI coding
-agents are doing — and taps you on the shoulder when one is stuck waiting
-for you.**
+agents are doing — taps you on the shoulder when one is stuck waiting for
+you, and (if you want) lets you answer it with a tap on the glass.**
 
 Claude Code and Codex usage, live agent activity, and a full-screen
-**NEEDS YOU** alert. A ~$30 ESP32-S3 panel plus a pure-stdlib Python service
-on your Mac. No cloud, no accounts, no API keys on the device. Agent data
+**NEEDS YOU** alert you can answer with a tap. A ~$30 ESP32-S3 panel plus a
+pure-stdlib Python service on your Mac. No cloud, no accounts, no API keys on the device. Agent data
 never leaves your LAN; the optional public-repository module makes only
 anonymous GitHub API reads from the Mac.
 

@@ -44,3 +44,21 @@ the idea is only silicon-capable, board-wired, firmware-enabled, and
 physically verified on the named unit. Mention a relevant
 unused onboard capability when it materially improves the request.
 Never copy secrets or turn an opportunity into authorized implementation work.
+
+## Releases and the README
+
+Two rules, learned 2026-08-16, not optional:
+
+- **When an important feature ships, update `README.md` in the same effort** —
+  headline it at the top (tagline + intro) AND add/refresh its own section with
+  current 480 x 480 simulator frames. A feature nobody can see in the README is
+  a feature nobody adopts.
+- **Every GitHub release gets real feature images and a clean card.** Embed the
+  feature's simulator frames in the release body via absolute
+  `raw.githubusercontent.com/.../<tag>/...` URLs. Do NOT open the body with a
+  `# Release: ...` H1 — GitHub renders it huge and it collides with the title in
+  the auto-generated OG card; lead with a plain intro paragraph instead.
+  Releases are source-only — never attach `torget.bin` (WiFi creds + device key
+  compiled in). The per-release OG card is auto-generated and NOT customisable;
+  the one shared-link image you can set is the repo's Social preview (Settings ->
+  Social preview) — refresh it for a major feature.

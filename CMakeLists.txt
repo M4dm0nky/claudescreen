@@ -64,3 +64,21 @@ else()
 endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(torget)
+
+# LVGL:s minnespool till PSRAM (frysfix 2026-08-16, se docs/lessons.md och
+# main/lv_psram_pool.c). LVGL:s inbyggda allokator lägger annars sin
+# LV_MEM_SIZE-pool i internt BSS; på panelen tryckte det största
+# sammanhängande DMA-blocket under panelflushens 11 520 B → flushen dog i
+# NO_MEM och glaset frös (samma klass som frysläxan 2026-08-14, men annan
+# svältkälla). Vi ber LVGL ta poolen ur PSRAM via LV_MEM_POOL_ALLOC; det
+# interna heapet får då tillbaka ~poolens storlek som sammanhängande block.
+# lv_psram_pool.h/.c bor i main/ (därav include-katalogen); symbolen löses i
+# den gemensamma länkgruppen.
+# Bara en OBJEKT-lik include-def (CMake släpper funktionslika -D:n); själva
+# LV_MEM_POOL_ALLOC-makrot bor i main/lv_psram_pool.h och pekar mot
+# heap_caps_malloc (PSRAM + 8BIT, INTE DMA — se headern). Include-katalogen gör
+# att lvgl-komponenten hittar headern.
+idf_component_get_property(lvgl_lib lvgl__lvgl COMPONENT_LIB)
+target_compile_definitions(${lvgl_lib} PRIVATE
+  "LV_MEM_POOL_INCLUDE=\"lv_psram_pool.h\"")
+target_include_directories(${lvgl_lib} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/main")

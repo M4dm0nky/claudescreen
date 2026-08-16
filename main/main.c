@@ -260,11 +260,22 @@ static void tick_cb(lv_timer_t *t) {
   static int heap_probe;
   if (++heap_probe >= 100) {
     heap_probe = 0;
+    unsigned dma_largest = (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
     ESP_LOGI(TAG, "heap: internt %u fritt (största block %u, lägsta någonsin %u), DMA största %u",
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
-             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+             dma_largest);
+    /* Tidig varning INNAN glaset fryser: panelflushen behöver ett
+     * sammanhängande DMA-block på DISPLAY_FLUSH_ROWS×480×2 byte. Faller
+     * största DMA-blocket mot det taket dör nästa flush i NO_MEM och hela
+     * ritpipen fastnar tyst (frysjakten 2026-08-16: LVGL:s interna pool
+     * svalt blocket → låst render). Larmet gör en framtida regression
+     * högljudd i stället för tyst. Marginal ×2 = andrum för TLS/WiFi-spikar. */
+    const unsigned flush_dma = (unsigned)DISPLAY_FLUSH_ROWS * 480u * 2u;
+    if (dma_largest < flush_dma * 2u)
+      ESP_LOGW(TAG, "LÅGT DMA-block: %u byte (flush behöver %u) — nära fryströskeln",
+               dma_largest, flush_dma);
   }
 
   /* Väckning: ett finger på glaset räknas som aktivitet. Pollat, inte

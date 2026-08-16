@@ -20,6 +20,10 @@ CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
 CONFIG_SPIRAM_RODATA=y
+# (2026-08-16: prövade CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP för att lätta det
+# interna heapet — gjorde det VÄRRE, min-fritt föll till 16 byte och LVGL-tasken
+# fastnade i låst render. Reverterat. Roten är LVGL:s 96 KB-pool i internt BSS;
+# rätt fix mäts fram i diag-heartbeaten innan den sätts.)
 
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_FREERTOS_HZ=1000
@@ -45,7 +49,11 @@ CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
 # Nätverkstacken får jobba på: en hämtning var 30:e sekund är ingen last, men
 # en blockerad TLS-handskakning ska inte svälta LVGL-tasken.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
-CONFIG_LV_MEM_SIZE_KILOBYTES=96
+# LVGL-poolen: 256 KB nu när den bor i PSRAM (frysfix 2026-08-16, se
+# rot-CMakeLists + main/lv_psram_pool.c). Rymligt eftersom PSRAM har 6,4 MB;
+# ger Needs You-takeovern + GitHub-sidan + alla appar gott om objektutrymme
+# utan att röra det interna heapet där panelflushens DMA-buffert bor.
+CONFIG_LV_MEM_SIZE_KILOBYTES=256
 
 # --- Vibbe (app_buddy) --- USB-ljudkortsläget. Parametrarna bor i Kconfig,
 # inte i uac_device_config_t (bänkläxa 2026-08-07: default är 48 kHz medan

@@ -15,6 +15,7 @@ extern const lv_font_t plex_attention_25;
 extern const lv_font_t plex_attention_52;
 extern const lv_font_t plex_ui_14;
 extern const lv_font_t plex_ui_16;
+extern const lv_font_t plex_ui_21; /* full ASCII incl. lowercase — long-question step-down */
 /* Needs You v2 takeover fonts. The command payload is the one element the
  * design keeps in real mono; the question/title need a shelf-readable full-
  * ASCII face (plex_body_27). headline_48 carries the one-word heroes, text_21
@@ -559,7 +560,12 @@ static void create_needs_you(lv_obj_t *app_root) {
   /* -- QUESTION body ------------------------------------------------------- */
   v->q_group = ny_group(v->root);
   v->q_prompt = ny_text(v->q_group, &plex_body_27, COL_WHITE, 148, 70, 300, 0, L);
-  lv_label_set_long_mode(v->q_prompt, LV_LABEL_LONG_WRAP);
+  /* Fixed band above the card (y140): two 27px lines. LONG_DOT (not WRAP)
+   * ellipsizes instead of overrunning the recommendation card — the render
+   * steps the font to 21px first so a long ask stays readable, not clipped.
+   * The full question is always in the terminal. */
+  lv_obj_set_height(v->q_prompt, 68);
+  lv_label_set_long_mode(v->q_prompt, LV_LABEL_LONG_DOT);
   v->q_card = bare(v->q_group);
   lv_obj_set_pos(v->q_card, 24, 140);
   lv_obj_set_size(v->q_card, 432, 92);
@@ -767,6 +773,14 @@ static void render_needs_you(void) {
 
   if (is_question) {
     lv_label_set_text(v->q_prompt, p->has_prompt ? p->prompt : "");
+    /* Keep the question inside its 68px band: 27px for a short ask (<=2 lines),
+     * else step to 21px so a longer one stays two readable lines above the
+     * card instead of overrunning it. LONG_DOT ellipsizes the truly enormous. */
+    lv_point_t qsz;
+    lv_text_get_size(&qsz, p->has_prompt ? p->prompt : "", &plex_body_27, 0, 0,
+                     300, LV_TEXT_FLAG_NONE);
+    lv_obj_set_style_text_font(v->q_prompt,
+                               qsz.y > 68 ? &plex_ui_21 : &plex_body_27, 0);
     ny_show(v->q_prompt, p->has_prompt);
     /* The recommendation card exists only when Claude marked an option; an
      * unmarked question arrives here alert-only (can_approve already false). */

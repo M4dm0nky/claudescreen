@@ -212,6 +212,7 @@ EXPECTED = {
     # Needs You v2 takeover — the approved interactive direction.
     "torget-vibepulse-needs-you-attract.bmp",
     "torget-vibepulse-needs-you-question.bmp",
+    "torget-vibepulse-needs-you-question-long.bmp",
     "torget-vibepulse-needs-you-approval.bmp",
     "torget-vibepulse-needs-you-private.bmp",
     "torget-vibepulse-needs-you-none.bmp",
@@ -262,6 +263,28 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
         for name in sorted(EXPECTED):
             with self.subTest(name=name):
                 self.assertEqual(self.image(name).size, (480, 480))
+
+    def test_long_question_never_overwrites_the_recommendation_card(self):
+        # A long question steps to 21px and is capped in its band above the
+        # card (y140); it must not bleed onto the card or bury the recommended
+        # answer. Two independent proofs on the widest-copy frame.
+        img = self.image("torget-vibepulse-needs-you-question-long.bmp")
+
+        # The strip just above the card border is near-black: the question is
+        # contained, not spilling down onto the card. (Overlap would light it.)
+        gap = img.crop((24, 126, 456, 138))
+        gap_lit = sum(1 for p in gap.getdata() if max(p) > 90)
+        self.assertLess(
+            gap_lit, 400,
+            f"question bleeds into the card boundary ({gap_lit} lit px)")
+
+        # The recommended answer ("Ship it now") is bright white in the card —
+        # visible, not muddied by an overlapping dimmer question.
+        title = img.crop((44, 168, 300, 200))
+        title_bright = sum(1 for p in title.getdata() if min(p) > 180)
+        self.assertGreater(
+            title_bright, 400,
+            f"recommended answer missing/buried ({title_bright} bright px)")
 
     def test_github_star_popup_uses_full_black_stage_and_large_filled_star(self):
         before = self.image("torget-vibepulse-github-popup-before.bmp")

@@ -576,6 +576,12 @@ static void capture_needs_you_v2(void) {
   tk_agent_monitor_needs_you_tap();
   dump_frame("vibepulse-needs-you-question");
 
+  /* Widest realistic copy: a long question must never overwrite the
+   * recommendation card (physical review 2026-08-16). */
+  apply_agent_file("agent-status-needs-you-question-long.json");
+  tk_agent_monitor_needs_you_tap();
+  dump_frame("vibepulse-needs-you-question-long");
+
   apply_agent_file("agent-status-needs-you-approval.json");
   tk_agent_monitor_needs_you_tap();
   dump_frame("vibepulse-needs-you-approval");

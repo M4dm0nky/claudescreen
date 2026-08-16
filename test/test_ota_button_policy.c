@@ -48,15 +48,48 @@ static void test_press_alone_does_nothing(void) {
         tg_button_update(&policy, true, 1000 + 2999999LL) == TG_BUTTON_NONE);
 }
 
-static void test_short_release_emits_one_next_app(void) {
+static void test_release_windows_split_at_the_panic_threshold(void) {
+  /* Kort tryck byter app; mellanhåll-och-släpp panikar. Gränsen är 1,5 s. */
+  {
+    tg_button_policy policy = {0};
+    arm(&policy, 500);
+    tg_button_update(&policy, true, 1000);
+    check("release just under 1.5 s emits next-app",
+          tg_button_update(&policy, false, 1000 + TG_PANIC_HOLD_US - 1) ==
+              TG_BUTTON_NEXT_APP);
+  }
+  {
+    tg_button_policy policy = {0};
+    arm(&policy, 500);
+    tg_button_update(&policy, true, 1000);
+    check("release at exactly 1.5 s panics",
+          tg_button_update(&policy, false, 1000 + TG_PANIC_HOLD_US) ==
+              TG_BUTTON_PANIC);
+  }
+  {
+    tg_button_policy policy = {0};
+    arm(&policy, 500);
+    tg_button_update(&policy, true, 1000);
+    check("release just before three seconds panics, not next-app",
+          tg_button_update(&policy, false, 1000 + 2999999LL) ==
+              TG_BUTTON_PANIC);
+    check("repeated released polls emit nothing more",
+          tg_button_update(&policy, false, 1000 + 3100000LL) == TG_BUTTON_NONE);
+  }
+}
+
+static void test_panic_cannot_collide_with_the_ota_hold(void) {
+  /* Ett håll som når tre sekunder avfyrar OTA medan fingret ligger kvar; det
+   * efterföljande släppet får INTE också panika, trots att hållet vida
+   * översteg panikgränsen. Detta är hela poängen med panik-vid-släpp. */
   tg_button_policy policy = {0};
   arm(&policy, 500);
   tg_button_update(&policy, true, 1000);
-  check("release before three seconds emits next-app",
-        tg_button_update(&policy, false, 1000 + 2999999LL) ==
-            TG_BUTTON_NEXT_APP);
-  check("repeated released polls emit nothing more",
-        tg_button_update(&policy, false, 1000 + 3100000LL) == TG_BUTTON_NONE);
+  check("crossing three seconds opens maintenance",
+        tg_button_update(&policy, true, 1000 + TG_MAINTENANCE_HOLD_US) ==
+            TG_BUTTON_OPEN_MAINTENANCE);
+  check("release long after the OTA hold does not also panic",
+        tg_button_update(&policy, false, 1000 + 5000000LL) == TG_BUTTON_NONE);
 }
 
 static void test_hold_emits_one_open_maintenance(void) {
@@ -119,7 +152,8 @@ static void test_time_before_press_cannot_trigger_hold(void) {
 int main(void) {
   test_boot_low_pin_never_fires();
   test_press_alone_does_nothing();
-  test_short_release_emits_one_next_app();
+  test_release_windows_split_at_the_panic_threshold();
+  test_panic_cannot_collide_with_the_ota_hold();
   test_hold_emits_one_open_maintenance();
   test_release_after_hold_does_not_switch_app();
   test_time_before_press_cannot_trigger_hold();

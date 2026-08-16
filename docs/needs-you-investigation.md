@@ -15,11 +15,19 @@ experiment — see [Test Zero](#test-zero). Everything else is documented in the
 current Claude Code docs, or was already verified against the shipped binary in
 [`companion-features-brainstorm.md`](companion-features-brainstorm.md).
 
-> **Status, 2026-08-15.** Test Zero **passed**: an interactive session accepts
-> a hook-supplied answer. The bridge (stage 1) is built —
-> `tools/tokenserver/interactions.py` plus the endpoints below — and the whole
-> loop is provable on the Mac alone with `tools/fake-panel.py`. No firmware
-> has been written and nothing has been flashed.
+> **Status, 2026-08-16.** Test Zero **passed** and the loop is now built end to
+> end in software. The bridge (stage 1) is `tools/tokenserver/interactions.py`
+> plus the endpoints below; the device-side parser, policy, and the approved v2
+> takeover screens are in `components/app_tokens/`; and the verdict now leaves
+> the glass — a tap runs `needs_you_send_policy` (canonical message + portable
+> HMAC, host-tested byte-for-byte against the bridge's `sign_answer`) through
+> `needs_you_net` (a signed `esp_http_client` POST on a worker task). KEY3
+> mid-hold-and-release panics; the 3 s hold still opens OTA, cleanly separated.
+> Without a device key the sender compiles out and the screens stay
+> display-only. **The wiring is done. What remains is physical:** verify touch
+> and KEY3 on the named unit, ask the explicit flash question, then the static
+> physical AMOLED review (`lv_arc` anti-aliasing and the mascot poses under the
+> real panel). No board has been flashed.
 
 This document supersedes nothing. It is the deeper follow-up to the "Can the
 screen answer back?" section of the brainstorm, which reached the same

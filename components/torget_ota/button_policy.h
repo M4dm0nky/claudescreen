@@ -5,17 +5,26 @@
 #include <stdint.h>
 
 /*
- * KEY3 bär två avsikter på en enda knapp: kort tryck byter app, tre
- * sekunders håll öppnar OTA-underhållsfönstret. Policyn är ren och
- * pollas med (nere, nu) — ingen GPIO, inga timers — så gränsfallen
- * kan låsas i värdtester innan main.c byter från sin råa flankkoll.
+ * KEY3 bär tre avsikter på en enda knapp, åtskilda så ingen kan förväxlas med
+ * en annan:
+ *   - kort tryck (< 1,5 s), släpp: byter app.
+ *   - mellanhåll (1,5-3 s), släpp: Needs You-panik — neka allt parkerat.
+ *   - tre sekunders håll: öppnar OTA-underhållsfönstret.
+ * Panik avgörs vid SLÄPPET; OTA avfyras MEDAN fingret ligger kvar vid tre
+ * sekunder. Ett håll blir därför antingen panik (släppt före 3 s) eller OTA
+ * (kvar vid 3 s), aldrig båda. Priset: paniken har ingen ring under hållet —
+ * det är en håll-och-släpp-gest, inte en håll-igenom-gest. Policyn är ren och
+ * pollas med (nere, nu) så gränsfallen låses i värdtester före main.c:s
+ * flankkoll.
  */
 
+#define TG_PANIC_HOLD_US 1500000LL
 #define TG_MAINTENANCE_HOLD_US 3000000LL
 
 typedef enum {
   TG_BUTTON_NONE,
   TG_BUTTON_NEXT_APP,
+  TG_BUTTON_PANIC,
   TG_BUTTON_OPEN_MAINTENANCE,
 } tg_button_action;
 

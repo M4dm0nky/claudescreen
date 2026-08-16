@@ -27,6 +27,7 @@
 #include "app_tokens.h"
 #include "agent_monitor.h"
 #include "agent_monitor_policy.h"
+#include "needs_you_send_policy.h"
 #include "agent_status_parse.h"
 #include "github_status_parse.h"
 #include "max_tracker_parse.h"
@@ -102,6 +103,24 @@ void torget_keep_awake(void) {} /* ljusrampen finns bara på panelen */
 void torget_data_alive(void) {}  /* bootskärmen drivs manuellt i QA:n */
 
 int64_t torget_now_us(void) { return (int64_t)lv_tick_get() * 1000; }
+
+/* The sim has no network, so a tap on the glass just prints the canonical
+ * message the device would sign and POST — the exact bytes the send policy
+ * builds, so the wire is provable by fake-panel while the screens are provable
+ * here, and the shared policy proves they agree. */
+static void sim_needs_you_verdict(tk_needs_you_verdict verdict,
+                                  const char *request_id) {
+  const char *name = tk_needs_you_verdict_name(verdict);
+  char message[TK_NEEDS_YOU_MESSAGE_CAP];
+  uint64_t ts = (uint64_t)(lv_tick_get() / 1000);
+  if (name && request_id &&
+      tk_needs_you_canonical_message(message, sizeof message, request_id, name,
+                                     ts) > 0) {
+    printf("needs-you verdict: %s\n", message);
+  } else {
+    printf("needs-you verdict: (unsendable)\n");
+  }
+}
 
 /* ------------------------------------------------------------------ BMP:er */
 
@@ -1013,6 +1032,7 @@ int main(int argc, char **argv) {
   lv_sdl_mouse_create();
 
   torget_ui_create(); /* bygger apparna via registret, går in i app 0 */
+  tk_agent_monitor_set_needs_you_cb(sim_needs_you_verdict);
   /* OTA-ringen på topplagret, dold tills QA-dumparna väcker den — samma
    * ordning som targetets app_main (overlay EFTER det delade UI:t). */
   torget_ota_ui_create();

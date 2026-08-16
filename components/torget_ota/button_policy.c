@@ -35,13 +35,17 @@ tg_button_action tg_button_update(tg_button_policy *policy,
   }
 
   if (policy->was_down) {
-    /* Släppet efter ett avfyrat håll sväljs: handen bad om underhåll,
-     * inte om ett appbyte bakom overlayn. Flaggan nollas här så nästa
-     * korta tryck byter app som vanligt. */
+    /* Släppet avgör mellan appbyte och panik; ett redan avfyrat OTA-håll
+     * sväljs. Panikfönstret ligger HELT före OTA-tröskeln, så ett håll som
+     * nådde tre sekunder har redan avfyrat OTA (hold_fired) och kan aldrig
+     * också bli panik. Flaggorna nollas så nästa korta tryck byter app. */
     bool fired = policy->hold_fired;
+    int64_t held_us = now_us - policy->pressed_at_us;
     policy->was_down = false;
     policy->hold_fired = false;
-    return fired ? TG_BUTTON_NONE : TG_BUTTON_NEXT_APP;
+    if (fired) return TG_BUTTON_NONE;
+    if (held_us >= TG_PANIC_HOLD_US) return TG_BUTTON_PANIC;
+    return TG_BUTTON_NEXT_APP;
   }
   return TG_BUTTON_NONE;
 }

@@ -39,6 +39,7 @@
 #include "boot_health.h"
 #include "boot_screen.h"
 #include "button_policy.h"
+#include "needs_you_net.h"
 #include "ota_service.h"
 #include "ota_ui.h"
 #include "rotation.h"
@@ -303,6 +304,11 @@ static void tick_cb(lv_timer_t *t) {
      * från en hängd (2026-08-14). Stängningen är atomär och ofarlig här. */
     if (!torget_ota_service_maintenance_open()) torget_app_next();
     else torget_ota_service_close_maintenance();
+  } else if (key3_action == TG_BUTTON_PANIC) {
+    /* Mellanhåll-och-släpp: neka allt Needs You parkerat. Bara ett köinlägg
+     * (atomärt), så det är säkert från LVGL-tasken; en avstängd svarskanal
+     * (ingen enhetsnyckel) gör det till en no-op. */
+    tk_needs_you_send_panic();
   } else if (key3_action == TG_BUTTON_OPEN_MAINTENANCE) {
     torget_ota_service_open_maintenance();
   }

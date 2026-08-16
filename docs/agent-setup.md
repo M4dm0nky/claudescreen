@@ -174,6 +174,81 @@ For autostart on login, see [../tools/tokenserver/README.md](../tools/tokenserve
 The screen polls every 30 seconds, so wait that long before judging. Then
 confirm with the user that real numbers replaced the dashes.
 
+## Needs You — answer Claude from the panel (optional)
+
+This turns the panel from a monitor into an input device: when Claude Code
+blocks on a question or a permission, the takeover appears and a tap answers
+it in the same live session. Everything below is opt-in; without it the panel
+is display-only and nothing changes. Full design: `docs/needs-you-investigation.md`.
+
+Three things must line up — a device key, the bridge, and hooks.
+
+1. **Device key.** One shared secret authenticates the panel's answers. It is
+   the only new secret on the device, it grants nothing but the ability to
+   answer a prompt this Mac was already going to ask about, and revoking it is
+   changing it. Generate one and put the *same* value in two places:
+
+   ```sh
+   python3 -c "import secrets; print(secrets.token_hex(32))"
+   ```
+
+   - In `secrets.h`: uncomment and set
+     `#define TK_VIBEPULSE_DEVICE_KEY "…64 hex…"`, then rebuild and flash (Step
+     2–3). Without this define the sender compiles out and the screens stay
+     display-only — that is the safe default, not a bug.
+   - On the Mac, so the bridge reads the same key: write it to
+     `~/.vibepulse-device-key` (`chmod 600`), or export `VIBEPULSE_DEVICE_KEY`,
+     or set `TK_VIBEPULSE_DEVICE_KEY` in `secrets.h` (the bridge reads it too).
+
+2. **The bridge.** Run the tokenserver with interactions on:
+
+   ```sh
+   python3 tools/tokenserver/tokenserver.py --interactions --interaction-detail
+   ```
+
+   `--interactions` opens the held-hook endpoints and the signed answer path;
+   `--interaction-detail` lets the command/question text reach the glass (leave
+   it off to keep the panel to "something is waiting" only). Prove the whole
+   loop on the Mac alone first, before any hardware: `python3 tools/fake-panel.py`.
+
+3. **Hooks.** Point Claude Code's hooks at the bridge on loopback (Claude Code
+   blocks http hooks that resolve to the LAN, which is why the bridge splits
+   loopback-in / LAN-out). In your Claude Code settings:
+
+   ```json
+   {
+     "hooks": {
+       "PreToolUse": [{
+         "matcher": "AskUserQuestion",
+         "hooks": [{
+           "type": "http",
+           "url": "http://127.0.0.1:8737/api/hook/question",
+           "timeout": 120,
+           "statusMessage": "Waiting for VibePulse…"
+         }]
+       }],
+       "PermissionRequest": [{
+         "matcher": ".*",
+         "hooks": [{
+           "type": "http",
+           "url": "http://127.0.0.1:8737/api/hook/permission",
+           "timeout": 120,
+           "statusMessage": "Waiting for VibePulse…"
+         }]
+       }]
+     }
+   }
+   ```
+
+   Fail-safe by design: a held hook that times out or is left alone renders no
+   decision, so Claude Code falls back to its normal terminal prompt. Walking
+   away always costs nothing. A managed/enterprise `allowedHttpHookUrls` policy
+   can silently block http hooks — if the panel never reacts, check that first.
+
+On the glass: a tap opens the decision; APPROVE / DENY / LEAVE IT answer it; on
+the private screen a tap hands it to the terminal. KEY3 held ~1.5–3 s and
+released is the panic — deny everything parked; the 3 s hold still opens OTA.
+
 ## When it does not work
 
 After the first USB flash, day-to-day updates go over the air — the full

@@ -68,22 +68,22 @@ int main(void) {
 
   tk_agent_provider_status zero_jobs = {0};
   check_header("zero jobs reports no active chat", &zero_jobs, 0, false, true,
-               "NO ACTIVE AGENT", false);
+               "IDLE", false);
 
   tk_agent_provider_status one_working = {0};
   one_working.active_count = 4;
   add_job(&one_working, job(TK_AGENT_WORKING, 0, "GPT-5", "HIGH"));
   check_header("one working job names its complete metadata", &one_working, 0,
-               false, true, "NOW · GPT-5 · HIGH", true);
+               false, true, "GPT-5", true);
 
   tk_agent_provider_status model_only = {0};
   add_job(&model_only, job(TK_AGENT_WORKING, 0, "Claude", NULL));
   check_header("model-only metadata omits effort", &model_only, 0, false,
-               true, "NOW · Claude", true);
+               true, "Claude", true);
   tk_agent_provider_status effort_only = {0};
   add_job(&effort_only, job(TK_AGENT_WORKING, 0, NULL, "LOW"));
   check_header("effort-only metadata omits model", &effort_only, 0, false,
-               true, "NOW · LOW", true);
+               true, "LOW", true);
   tk_agent_provider_status no_metadata = {0};
   add_job(&no_metadata, job(TK_AGENT_WORKING, 0, NULL, NULL));
   check_header("working without metadata is still NOW", &no_metadata, 0,
@@ -93,49 +93,49 @@ int main(void) {
   add_job(&two_jobs, job(TK_AGENT_WORKING, 0, "GPT-5", "HIGH"));
   add_job(&two_jobs, job(TK_AGENT_WAITING, 0, NULL, NULL));
   check_header("two effective jobs never select one model", &two_jobs, 0,
-               false, true, "2 AGENTS ACTIVE", true);
+               false, true, "2 AGENTS", true);
   tk_agent_provider_status four_jobs = {0};
   add_job(&four_jobs, job(TK_AGENT_WORKING, 0, NULL, NULL));
   add_job(&four_jobs, job(TK_AGENT_WAITING, 0, NULL, NULL));
   add_job(&four_jobs, job(TK_AGENT_ERROR, 0, NULL, NULL));
   add_job(&four_jobs, job(TK_AGENT_DONE, 0, NULL, NULL));
   check_header("four shaped jobs count only effective active jobs", &four_jobs,
-               0, false, true, "3 AGENTS ACTIVE", true);
+               0, false, true, "3 AGENTS", true);
   tk_agent_provider_status four_active_jobs = {0};
   add_job(&four_active_jobs, job(TK_AGENT_WORKING, 0, NULL, NULL));
   add_job(&four_active_jobs, job(TK_AGENT_WAITING, 0, NULL, NULL));
   add_job(&four_active_jobs, job(TK_AGENT_ERROR, 0, NULL, NULL));
   add_job(&four_active_jobs, job(TK_AGENT_WORKING, 0, NULL, NULL));
   check_header("four effective jobs report the exact active count",
-               &four_active_jobs, 0, false, true, "4 AGENTS ACTIVE", true);
+               &four_active_jobs, 0, false, true, "4 AGENTS", true);
 
   tk_agent_provider_status nonworking = {0};
   add_job(&nonworking, job(TK_AGENT_WAITING, 0, NULL, NULL));
   check_header("one waiting job remains truthful without halo", &nonworking,
-               0, false, true, "1 AGENT ACTIVE", false);
+               0, false, true, "1 AGENT", false);
   nonworking.jobs[0].state = TK_AGENT_ERROR;
   check_header("one error job remains truthful without halo", &nonworking, 0,
-               false, true, "1 AGENT ACTIVE", false);
+               false, true, "1 AGENT", false);
   check_header("error stays active at packet lease boundary", &nonworking,
-               TK_AGENT_WORKING_LEASE_MS, false, true, "1 AGENT ACTIVE", false);
+               TK_AGENT_WORKING_LEASE_MS, false, true, "1 AGENT", false);
   check_header("error expires after packet lease", &nonworking,
                TK_AGENT_WORKING_LEASE_MS + 1, false, true,
-               "NO ACTIVE AGENT", false);
+               "IDLE", false);
   nonworking.jobs[0].state = TK_AGENT_WAITING;
   check_header("waiting stays active at packet lease boundary", &nonworking,
-               TK_AGENT_WORKING_LEASE_MS, false, true, "1 AGENT ACTIVE", false);
+               TK_AGENT_WORKING_LEASE_MS, false, true, "1 AGENT", false);
   check_header("waiting expires after packet lease", &nonworking,
                TK_AGENT_WORKING_LEASE_MS + 1, false, true,
-               "NO ACTIVE AGENT", false);
+               "IDLE", false);
   nonworking.jobs[0].state = TK_AGENT_DONE;
   check_header("done alone is not an active chat", &nonworking, 0, false,
-               true, "NO ACTIVE AGENT", false);
+               true, "IDLE", false);
 
   tk_agent_provider_status expired = {0};
   add_job(&expired, job(TK_AGENT_WORKING, TK_AGENT_WORKING_LEASE_MS, "GPT-5",
                         "HIGH"));
   check_header("expired packet lease never presents stale NOW", &expired, 1,
-               false, true, "NO ACTIVE AGENT", false);
+               false, true, "IDLE", false);
   check_header("stale data defers header text to the screen stale contract",
                &one_working, 0, true, true, "", false);
   check_header("unavailable flag suppresses otherwise shaped provider data",

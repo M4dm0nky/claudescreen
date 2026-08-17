@@ -15,15 +15,17 @@ static bool is_effectively_active(tk_agent_state state,
 
 static void build_now_context(const tk_agent_status *working,
                               usage_live_header_view *out) {
+  /* Raden delar providerraden med namnet och har ~72 px kvar på 240 px-
+   * panelen. "NOW · SONNET · EXPERT" mäter 160 px och skulle kapas mitt i
+   * ordet. Modellnamnet är det som faktiskt bär information — att något
+   * kör just nu säger halon bredvid ikonen redan. Så: modellen ensam,
+   * annars ansträngningen, annars "NOW". */
   const bool has_model = working->has_model && working->model[0];
   const bool has_effort = working->has_effort && working->effort[0];
-  if (has_model && has_effort) {
-    snprintf(out->context, sizeof out->context, "NOW · %s · %s",
-             working->model, working->effort);
-  } else if (has_model) {
-    snprintf(out->context, sizeof out->context, "NOW · %s", working->model);
+  if (has_model) {
+    snprintf(out->context, sizeof out->context, "%s", working->model);
   } else if (has_effort) {
-    snprintf(out->context, sizeof out->context, "NOW · %s", working->effort);
+    snprintf(out->context, sizeof out->context, "%s", working->effort);
   } else {
     snprintf(out->context, sizeof out->context, "NOW");
   }
@@ -52,13 +54,13 @@ void usage_live_build_header(const tk_agent_provider_status *provider,
 
   out->halo_active = working != NULL;
   if (active_count == 0) {
-    snprintf(out->context, sizeof out->context, "NO ACTIVE AGENT");
+    snprintf(out->context, sizeof out->context, "IDLE");
   } else if (active_count == 1 && working) {
     build_now_context(working, out);
   } else if (active_count == 1) {
-    snprintf(out->context, sizeof out->context, "1 AGENT ACTIVE");
+    snprintf(out->context, sizeof out->context, "1 AGENT");
   } else {
-    snprintf(out->context, sizeof out->context, "%u AGENTS ACTIVE",
+    snprintf(out->context, sizeof out->context, "%u AGENTS",
              active_count);
   }
 }

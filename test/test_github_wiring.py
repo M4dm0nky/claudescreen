@@ -55,7 +55,13 @@ class GitHubWiringTests(unittest.TestCase):
         self.assertIn("LV_OPA_COVER", popup)
         self.assertIn("lv_draw_triangle", popup)
         self.assertNotIn("image_recolor", popup)
-        self.assertIn("filled_star(popup.root, 130, 80, 220, 220)", popup)
+        # The hero star is centred on the panel rather than pinned to the
+        # 480-era (130, 80); the size lives in one #define so a board port
+        # moves it in one place.
+        self.assertIn("#define PS_STAR 100", popup)
+        self.assertIn(
+            "filled_star(popup.root, (VP_SCREEN_W - PS_STAR) / 2, 46, "
+            "PS_STAR, PS_STAR)", popup)
         self.assertIn("event->repo[0] ? event->repo : event->project", popup)
         self.assertIn('"%ld stars"', popup)
         self.assertNotIn("STARRED %s", popup)

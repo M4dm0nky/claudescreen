@@ -22,10 +22,13 @@
 extern const lv_font_t plex_num_164;
 extern const lv_font_t plex_num_118;
 extern const lv_font_t plex_num_84;
+extern const lv_font_t plex_hero_84;
 extern const lv_font_t plex_money_118;
+extern const lv_font_t plex_money_56;
 extern const lv_font_t plex_money_35;
 extern const lv_font_t plex_num_38;
 extern const lv_font_t plex_headline_48;
+extern const lv_font_t plex_attention_25;
 extern const lv_font_t plex_stat_35;
 extern const lv_font_t plex_ui_21;
 extern const lv_font_t plex_ui_16;
@@ -50,39 +53,70 @@ extern const lv_font_t plex_text_17;
 #define COL_DOT       lv_color_hex(0x41444A)
 #define COL_DOT_ON    lv_color_hex(0xCDD2DA)
 
-_Static_assert(VP_PERCENT_FONT_PX == 164,
-               "plex_num_164 must match the Studio percent token");
+_Static_assert(VP_PERCENT_FONT_PX == 84,
+               "plex_hero_84 must match the Studio percent token");
 
-#define HEADER_LINE_Y 63
-#define PAGER_Y 456
+/* Derived from the Studio tokens, never from the panel size directly: the
+ * generated header is the one place a resolution change lands. */
+#define HEADER_LINE_Y (VP_QUOTA_Y - 9)
+/* Analyssidornas huvud bär TVÅ högerrader, inte en — linjen måste under
+ * båda, inte under kvotsidans enradiga providerrad. */
+#define ANALYTICS_LINE_Y (VP_PROVIDER_Y + 40)
+#define PAGER_Y (VP_SCREEN_H - 12)
 #define STAT_VALUE_Y VP_RESET_Y
-#define STAT_LABEL_Y 396
-#define RIGHT_STAT_X 240
-#define RIGHT_STAT_W 218
+/* plex_stat_35 renders 32 px, plus an optical gutter before the caption. */
+#define STAT_LABEL_Y (VP_RESET_Y + 36)
+/* The provider name shares its row with the right-aligned live context.
+ * "CLAUDE" measures 90 px, so 92 is the tightest honest fit and every px
+ * saved here goes to the context, which carries a model name from the net. */
+#define PROVIDER_NAME_W 92
+/* Icon is 32 px wide; 4 px optical gap before the name. */
+#define PROVIDER_NAME_X (VP_SAFE_X + 36)
+/* Burn rate: two stacked forecast rows between the header and the pager. */
+#define FORECAST_ROW_H 70
+#define FORECAST_ROW1_Y 52
+#define FORECAST_ROW2_Y 134
+/* Two equal stat columns inside the safe area, split by an 8 px gutter. */
+#define STAT_COL_W ((VP_CONTENT_W - 8) / 2)
+#define RIGHT_STAT_W STAT_COL_W
+#define RIGHT_STAT_X (VP_SAFE_X + VP_CONTENT_W - RIGHT_STAT_W)
+/* The hero owns everything between its top anchor and the progress bar. */
+#define PERCENT_BOX_H (VP_BAR_Y - VP_PERCENT_Y - 8)
+/* "100%" mäter 221 px i plex_hero_84 — bredare än innehållsspalten. Talet
+ * är sidans hela poäng, så heron får en egen, vidare spalt än texten runt
+ * den; 8 px marginal räcker för att inte röra glaskanten. */
+#define HERO_X 8
+#define HERO_W (VP_SCREEN_W - 2 * HERO_X)
 
-/* Max Tracker geometry — approved 2026-08-12 mocks, matches the studio
- * design tokens: content safe X 22/width 436, grid indented a further
- * 9-10 px each side so the heatmap reads as its own object. */
-#define MT_EYEBROW_Y (VP_QUOTA_Y + 4)
-#define MT_GRID_X 31
-#define MT_GRID_Y 112
-#define MT_CELL 18
-#define MT_GAP 3
+/* GitHub-sidan: stjarnorna ar hero, forks en stodrad under en linje. */
+#define GH_STARS_LABEL_Y 58
+#define GH_STARS_Y 78
+#define GH_FORKS_LINE_Y 152
+#define GH_FORKS_LABEL_Y 162
+#define GH_FORKS_Y 182
+
+/* Max Tracker geometry. 20 ISO-veckor x 7 rader måste rymmas i
+ * innehållsbredden: 10 px delning ger 198 px rutnät, centrerat. */
+#define MT_EYEBROW_Y (VP_QUOTA_Y + 2)
+#define MT_CELL 8
+#define MT_GAP 2
 #define MT_PITCH (MT_CELL + MT_GAP)
 #define MT_ROWS 7
-#define MT_GRID_W (TK_MT_WEEKS * MT_PITCH - MT_GAP)  /* 417 */
-#define MT_GRID_H (MT_ROWS * MT_PITCH - MT_GAP)      /* 144 */
-#define MT_GRID_RIGHT (MT_GRID_X + MT_GRID_W)         /* 448 */
-#define MT_LEGEND_SWATCH 12
-#define MT_LEGEND_GAP 3
-#define MT_LEGEND_BLOCK_W (5 * MT_LEGEND_SWATCH + 4 * MT_LEGEND_GAP) /* 72 */
-#define MT_LEGEND_LABEL_W 40
+#define MT_GRID_W (TK_MT_WEEKS * MT_PITCH - MT_GAP)  /* 198 */
+#define MT_GRID_H (MT_ROWS * MT_PITCH - MT_GAP)      /* 68 */
+#define MT_GRID_X ((VP_SCREEN_W - MT_GRID_W) / 2)
+#define MT_GRID_Y 76
+#define MT_GRID_RIGHT (MT_GRID_X + MT_GRID_W)
+#define MT_LEGEND_SWATCH 8
+#define MT_LEGEND_GAP 2
+#define MT_LEGEND_BLOCK_W (5 * MT_LEGEND_SWATCH + 4 * MT_LEGEND_GAP) /* 48 */
+#define MT_LEGEND_LABEL_W 38
 #define MT_LEGEND_LABEL_GAP 8
-#define MT_LEGEND_Y (MT_GRID_Y + MT_GRID_H + 10)      /* 266 */
-#define MT_DRAW_H (MT_LEGEND_Y - MT_GRID_Y + MT_LEGEND_SWATCH) /* 166 */
-#define MT_STAT_LINE_Y (MT_LEGEND_Y + MT_LEGEND_SWATCH + 20)   /* 298 */
-#define MT_STAT_LABEL_Y (MT_STAT_LINE_Y + 16)
-#define MT_STAT_VALUE_Y (MT_STAT_LABEL_Y + 34)
+#define MT_LEGEND_Y (MT_GRID_Y + MT_GRID_H + 8)       /* 152 */
+#define MT_DRAW_H (MT_LEGEND_Y - MT_GRID_Y + MT_LEGEND_SWATCH)
+#define MT_STAT_LINE_Y (MT_LEGEND_Y + MT_LEGEND_SWATCH + 6)    /* 166 */
+#define MT_STAT_LABEL_Y (MT_STAT_LINE_Y + 4)
+#define MT_STAT_VALUE_Y (MT_STAT_LABEL_Y + 18)
 #define MT_STAT_COL_W (MT_GRID_W / 4)
 
 typedef struct {
@@ -189,7 +223,9 @@ static lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font,
   lv_obj_set_style_text_color(object, color, 0);
   lv_obj_set_pos(object, x, y);
   lv_obj_set_size(object, width, height);
-  lv_label_set_long_mode(object, LV_LABEL_LONG_CLIP);
+  /* DOT, inte CLIP: svämmar texten över visas "…" i stället för en halv
+   * bokstav. Ett överflöd ska SYNAS, inte se ut som ett stavfel. */
+  lv_label_set_long_mode(object, LV_LABEL_LONG_DOT);
   lv_obj_remove_flag(object, LV_OBJ_FLAG_CLICKABLE);
   return object;
 }
@@ -245,8 +281,10 @@ static void create_provider_identity(lv_obj_t *tile,
   else
     create_codex_icon(tile, VP_SAFE_X, VP_PROVIDER_Y - 2);
 
+  /* Ikonen är 32 px bred; namnet börjar strax efter den. */
   lv_obj_t *provider_name = label(tile, &plex_ui_21, COL_WHITE,
-                                  64, VP_PROVIDER_Y + 1, 180, 30);
+                                  PROVIDER_NAME_X, VP_PROVIDER_Y + 1,
+                                  PROVIDER_NAME_W, 26);
   lv_obj_set_style_text_letter_space(provider_name, 2, 0);
   lv_label_set_text(provider_name,
                     provider == USAGE_PROVIDER_CLAUDE ? "CLAUDE" : "CODEX");
@@ -259,9 +297,11 @@ static void create_provider_identity(lv_obj_t *tile,
 static void create_live_header_widgets(lv_obj_t *tile, usage_provider provider,
                                        lv_obj_t **halo_out,
                                        lv_obj_t **context_out) {
+  /* Ringen sitter centrerad runt den 32 px stora providerikonen — härledd
+   * ur samma token som ikonen, aldrig ur ett eget origo. */
   lv_obj_t *halo = bare(tile);
-  lv_obj_set_pos(halo, 18, 14);
-  lv_obj_set_size(halo, 40, 40);
+  lv_obj_set_pos(halo, VP_SAFE_X - 2, VP_PROVIDER_Y - 4);
+  lv_obj_set_size(halo, 36, 36);
   lv_obj_set_style_radius(halo, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_border_width(halo, 2, 0);
   lv_obj_set_style_border_opa(halo, LV_OPA_COVER, 0);
@@ -270,8 +310,10 @@ static void create_live_header_widgets(lv_obj_t *tile, usage_provider provider,
   lv_obj_add_flag(halo, LV_OBJ_FLAG_HIDDEN);
 
   create_provider_identity(tile, provider);
-  lv_obj_t *context = label(tile, &plex_ui_14, COL_META,
-                            180, VP_PROVIDER_Y + 5, 278, 20);
+  lv_obj_t *context = label(tile, &plex_ui_12, COL_META,
+                            PROVIDER_NAME_X + PROVIDER_NAME_W,
+                            VP_PROVIDER_Y + 8,
+                            VP_CONTENT_W - 36 - PROVIDER_NAME_W, 18);
   lv_obj_set_style_text_align(context, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_set_style_text_letter_space(context, 1, 0);
   create_hairline(tile, HEADER_LINE_Y);
@@ -289,20 +331,24 @@ static void create_quota_header(quota_page *page) {
 static void create_analytics_header(lv_obj_t *tile, const char *title,
                                     const char *top_right,
                                     const char *bottom_right) {
-  lv_obj_t *heading = label(tile, &plex_ui_21, COL_WHITE,
-                            VP_SAFE_X, 23, 240, 30);
+  /* Två rader i stället för en: på 240 px ryms inte rubrik plus båda
+   * högerraderna bredvid varandra utan att den nedre kapas. */
+  lv_obj_t *heading = label(tile, &plex_ui_16, COL_WHITE,
+                            VP_SAFE_X, VP_PROVIDER_Y, 112, 22);
   lv_obj_set_style_text_letter_space(heading, 2, 0);
   lv_label_set_text(heading, title);
-  lv_obj_t *top = label(tile, &plex_ui_14, COL_META, 280, 21, 178, 18);
+  lv_obj_t *top = label(tile, &plex_ui_12, COL_META,
+                        VP_SAFE_X + 112, VP_PROVIDER_Y + 3,
+                        VP_CONTENT_W - 112, 16);
   lv_obj_set_style_text_align(top, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_set_style_text_letter_space(top, 1, 0);
   lv_label_set_text(top, top_right);
   lv_obj_t *bottom = label(tile, &plex_ui_12, COL_MUTED,
-                           280, 42, 178, 16);
+                           VP_SAFE_X, VP_PROVIDER_Y + 22,
+                           VP_CONTENT_W, 16);
   lv_obj_set_style_text_align(bottom, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_set_style_text_letter_space(bottom, 2, 0);
   lv_label_set_text(bottom, bottom_right);
-  create_hairline(tile, HEADER_LINE_Y);
+  create_hairline(tile, ANALYTICS_LINE_Y);
 }
 
 /* Centred from the dot geometry rather than a hard-coded origin: the row
@@ -341,19 +387,19 @@ static void compact_count(int32_t value, char *out, size_t cap) {
   }
 }
 
+/* Stegen foljer panelen, inte 480-erans rastrar: hero_84 baer upp till fyra
+ * siffror i 224 px, darefter kliver talet ner ett steg, och over en miljon
+ * kortas det till "1.2M" som forut. */
 static void set_star_hero(int32_t stars) {
   char text[24];
-  const lv_font_t *font = &plex_num_164;
-  if (stars <= 999) {
-    snprintf(text, sizeof text, "%ld", (long)stars);
-  } else if (stars <= 99999) {
-    font = &plex_num_118;
+  const lv_font_t *font = &plex_hero_84;
+  if (stars <= 9999) {
     snprintf(text, sizeof text, "%ld", (long)stars);
   } else if (stars <= 999999) {
-    font = &plex_num_84;
+    font = &plex_ui_21;
     snprintf(text, sizeof text, "%ld", (long)stars);
   } else {
-    font = &plex_stat_35;
+    font = &plex_ui_21;
     compact_count(stars, text, sizeof text);
   }
   lv_obj_set_style_text_font(ui.github.stars, font, 0);
@@ -365,39 +411,43 @@ static void create_github_page(void) {
   memset(page, 0, sizeof *page);
   page->tile = new_tile(VIEW_GITHUB);
 
-  lv_obj_t *heading = label(page->tile, &plex_ui_21, COL_WHITE,
-                            VP_SAFE_X, 23, 170, 30);
+  /* Samma tvaradiga huvud som analyssidorna: pa 240 px ryms inte rubrik
+   * plus bada hogerraderna bredvid varandra. */
+  lv_obj_t *heading = label(page->tile, &plex_ui_16, COL_WHITE,
+                            VP_SAFE_X, VP_PROVIDER_Y, 80, 22);
   lv_obj_set_style_text_letter_space(heading, 2, 0);
   lv_label_set_text(heading, "GITHUB");
-  page->project = label(page->tile, &plex_ui_14, COL_META,
-                        180, 21, 278, 18);
+  page->project = label(page->tile, &plex_ui_12, COL_META,
+                        VP_SAFE_X + 80, VP_PROVIDER_Y + 3,
+                        VP_CONTENT_W - 80, 16);
   lv_obj_set_style_text_align(page->project, LV_TEXT_ALIGN_RIGHT, 0);
   page->provenance = label(page->tile, &plex_ui_12, COL_MUTED,
-                           280, 42, 178, 16);
+                           VP_SAFE_X, VP_PROVIDER_Y + 22, VP_CONTENT_W, 16);
   lv_obj_set_style_text_align(page->provenance, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_set_style_text_letter_space(page->provenance, 2, 0);
-  create_hairline(page->tile, HEADER_LINE_Y);
+  create_hairline(page->tile, ANALYTICS_LINE_Y);
 
-  lv_obj_t *stars_label = label(page->tile, &plex_ui_21, COL_STAR,
-                                VP_SAFE_X, 88, VP_CONTENT_W, 30);
+  lv_obj_t *stars_label = label(page->tile, &plex_ui_12, COL_STAR,
+                                VP_SAFE_X, GH_STARS_LABEL_Y, VP_CONTENT_W, 16);
   lv_obj_set_style_text_align(stars_label, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_letter_space(stars_label, 3, 0);
   lv_label_set_text(stars_label, "STARS");
 
-  page->stars = label(page->tile, &plex_num_164, COL_WHITE,
-                      16, 128, 448, 190);
+  /* Stjarntalet ar sidans hero — samma spalt som kvotsidans procenttal. */
+  page->stars = label(page->tile, &plex_hero_84, COL_WHITE,
+                      HERO_X, GH_STARS_Y, HERO_W, 66);
   lv_obj_set_style_text_align(page->stars, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_letter_space(page->stars, -7, 0);
+  lv_obj_set_style_text_letter_space(page->stars, -4, 0);
   lv_label_set_text(page->stars, "–");
 
-  create_hairline(page->tile, 354);
-  lv_obj_t *forks_label = label(page->tile, &plex_ui_14, COL_MUTED,
-                                VP_SAFE_X, 378, VP_CONTENT_W, 20);
+  create_hairline(page->tile, GH_FORKS_LINE_Y);
+  lv_obj_t *forks_label = label(page->tile, &plex_ui_12, COL_MUTED,
+                                VP_SAFE_X, GH_FORKS_LABEL_Y, VP_CONTENT_W, 16);
   lv_obj_set_style_text_align(forks_label, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_letter_space(forks_label, 2, 0);
   lv_label_set_text(forks_label, "FORKS");
-  page->forks = label(page->tile, &plex_stat_35, COL_WHITE,
-                      VP_SAFE_X, 407, VP_CONTENT_W, 43);
+  page->forks = label(page->tile, &plex_ui_21, COL_WHITE,
+                      VP_SAFE_X, GH_FORKS_Y, VP_CONTENT_W, 28);
   lv_obj_set_style_text_align(page->forks, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(page->forks, "–");
   create_pager(page->tile, VIEW_GITHUB);
@@ -440,16 +490,18 @@ static lv_obj_t *new_tile(int index) {
 static void create_stat(lv_obj_t *tile, lv_obj_t **value_out,
                         int x, int width, bool right, lv_color_t color,
                         const char *caption) {
-  *value_out = label(tile, &plex_stat_35, color, x, STAT_VALUE_Y, width, 42);
+  *value_out = label(tile, &plex_ui_21, color, x, STAT_VALUE_Y, width, 28);
   lv_obj_set_style_text_align(*value_out,
                               right ? LV_TEXT_ALIGN_RIGHT : LV_TEXT_ALIGN_LEFT,
                               0);
-  lv_obj_t *name = label(tile, &plex_ui_14, COL_MUTED,
-                         x, STAT_LABEL_Y, width, 20);
+  /* plex_ui_12 utan sperrning: på 240 px ryms "USED TODAY" annars inte i
+   * sin halva och kapas mot grannkolumnen. */
+  lv_obj_t *name = label(tile, &plex_ui_12, COL_MUTED,
+                         x, STAT_LABEL_Y, width, 18);
   lv_obj_set_style_text_align(name,
                               right ? LV_TEXT_ALIGN_RIGHT : LV_TEXT_ALIGN_LEFT,
                               0);
-  lv_obj_set_style_text_letter_space(name, 2, 0);
+  lv_obj_set_style_text_letter_space(name, 1, 0);
   lv_label_set_text(name, caption);
 }
 
@@ -462,13 +514,13 @@ static void create_quota_page(quota_page *page, int index,
   page->tile = new_tile(index);
   create_quota_header(page);
 
-  page->quota = label(page->tile, &plex_ui_21, COL_LABEL,
-                      VP_SAFE_X, VP_QUOTA_Y, VP_CONTENT_W, 30);
+  page->quota = label(page->tile, &plex_ui_16, COL_LABEL,
+                      VP_SAFE_X, VP_QUOTA_Y, VP_CONTENT_W, 24);
   lv_obj_set_style_text_letter_space(page->quota, 2, 0);
 
-  page->percent = label(page->tile, &plex_num_164, COL_WHITE,
-                        16, VP_PERCENT_Y, 448, 190);
-  lv_obj_set_style_text_letter_space(page->percent, -9, 0);
+  page->percent = label(page->tile, &plex_hero_84, COL_WHITE,
+                        HERO_X, VP_PERCENT_Y, HERO_W, PERCENT_BOX_H);
+  lv_obj_set_style_text_letter_space(page->percent, -4, 0);
   lv_label_set_text(page->percent, "–");
 
   page->track = bare(page->tile);
@@ -503,7 +555,7 @@ static void create_quota_page(quota_page *page, int index,
   lv_obj_set_style_bg_color(page->marker, COL_WHITE, 0);
   lv_obj_add_flag(page->marker, LV_OBJ_FLAG_HIDDEN);
 
-  create_stat(page->tile, &page->today, VP_SAFE_X, 210, false,
+  create_stat(page->tile, &page->today, VP_SAFE_X, STAT_COL_W, false,
               provider == USAGE_PROVIDER_CLAUDE ? COL_CLAUDE : COL_CODEX,
               "USED TODAY");
   create_stat(page->tile, &page->reset, RIGHT_STAT_X, RIGHT_STAT_W, true,
@@ -517,27 +569,26 @@ static void create_forecast_row(lv_obj_t *tile, forecast_row *row,
                                 int y, usage_provider provider) {
   row->root = bare(tile);
   lv_obj_set_pos(row->root, VP_SAFE_X, y);
-  lv_obj_set_size(row->root, VP_CONTENT_W, 120);
-  row->label = label(row->root, &plex_ui_16, COL_LABEL, 0, 0,
-                     VP_CONTENT_W, 22);
+  lv_obj_set_size(row->root, VP_CONTENT_W, FORECAST_ROW_H);
+  row->label = label(row->root, &plex_ui_12, COL_LABEL, 0, 0,
+                     VP_CONTENT_W, 16);
   lv_obj_set_style_text_letter_space(row->label, 2, 0);
-  row->headline = label(row->root, &plex_headline_48, COL_WHITE,
-                        0, 31, VP_CONTENT_W, 58);
-  lv_obj_set_style_text_letter_space(row->headline, -2, 0);
-  row->detail = label(row->root, &plex_ui_16,
+  row->headline = label(row->root, &plex_attention_25, COL_WHITE,
+                        0, 18, VP_CONTENT_W, 32);
+  lv_obj_set_style_text_letter_space(row->headline, -1, 0);
+  row->detail = label(row->root, &plex_ui_12,
                       provider == USAGE_PROVIDER_CLAUDE
                           ? COL_CLAUDE : COL_CODEX,
-                      0, 95, VP_CONTENT_W, 24);
-  lv_obj_set_style_text_letter_space(row->detail, 1, 0);
+                      0, 52, VP_CONTENT_W, 18);
 }
 
 static void create_burn_rate_page(void) {
   lv_obj_t *tile = new_tile(VIEW_BURN_RATE);
   create_analytics_header(tile, "BURN RATE", "WEEKLY", "FORECAST");
-  create_forecast_row(tile, &ui.forecast_rows[0], 82,
+  create_forecast_row(tile, &ui.forecast_rows[0], FORECAST_ROW1_Y,
                       USAGE_PROVIDER_CLAUDE);
-  create_hairline(tile, 251);
-  create_forecast_row(tile, &ui.forecast_rows[1], 270,
+  create_hairline(tile, FORECAST_ROW2_Y - 12);
+  create_forecast_row(tile, &ui.forecast_rows[1], FORECAST_ROW2_Y,
                       USAGE_PROVIDER_CODEX);
   create_pager(tile, VIEW_BURN_RATE);
 }
@@ -554,17 +605,20 @@ static void create_burn_rate_page(void) {
  * than as a page from somewhere else. Only the hero font differs, and only
  * because the 164 px numerals carry no "$" or "x" and adding either would
  * shift all four approved quota rasters. */
-#define VALUE_HERO_X 18
-#define VALUE_HERO_Y 143   /* ink top lands on 151, the quota hero's own */
-#define VALUE_MONEY_HERO_Y 151
-#define VALUE_WORD_HERO_Y 150
-#define VALUE_VERDICT_Y 72
-#define VALUE_ATTRIB_Y 272
+/* Egen y-rytm, inte kvotsidans: värdesidan bär en rad mer (attribution
+ * mellan hero och stapel) och pengafonten är högre än sifferfonten —
+ * plex_money_56 mäter 52 px. */
+#define VALUE_HERO_X (VP_SAFE_X - 2)
+#define VALUE_HERO_Y 72
+#define VALUE_MONEY_HERO_Y VALUE_HERO_Y
+#define VALUE_WORD_HERO_Y VALUE_HERO_Y
+#define VALUE_VERDICT_Y 52
+#define VALUE_ATTRIB_Y 124
+#define VALUE_BAR_Y 146
 /* Break-even is half scale, and half the content width is the screen centre. */
 #define VALUE_MARKER_X (VP_SAFE_X + VP_CONTENT_W / 2 - 1)
-/* plex_money_35's line_height is 3 px taller than the quota stat font's, so
- * y=349 puts its digit ink on the family's 352 row. Do not "fix" to 352. */
-#define VALUE_STAT_Y 349
+#define VALUE_STAT_Y 162
+#define VALUE_CAP_Y 199
 
 static void create_value_page(void) {
   value_page *page = &ui.value;
@@ -573,21 +627,19 @@ static void create_value_page(void) {
   create_analytics_header(page->tile, "VALUE", "MONTH TO DATE",
                           "AT LIST API PRICES");
 
-  page->verdict = label(page->tile, &plex_ui_21, COL_LABEL,
-                        VP_SAFE_X, VALUE_VERDICT_Y, VP_CONTENT_W, 26);
-  lv_obj_set_style_text_letter_space(page->verdict, 2, 0);
+  page->verdict = label(page->tile, &plex_ui_12, COL_LABEL,
+                        VP_SAFE_X, VALUE_VERDICT_Y, VP_CONTENT_W, 18);
 
-  page->hero = label_auto(page->tile, &plex_money_118, COL_WHITE,
+  page->hero = label_auto(page->tile, &plex_money_56, COL_WHITE,
                           VALUE_HERO_X, VALUE_HERO_Y);
-  lv_obj_set_style_text_letter_space(page->hero, -3, 0);
+  lv_obj_set_style_text_letter_space(page->hero, -2, 0);
   lv_label_set_text(page->hero, "–");
 
-  page->attribution = label(page->tile, &plex_ui_16, COL_MUTED,
-                            VP_SAFE_X, VALUE_ATTRIB_Y, VP_CONTENT_W, 22);
-  lv_obj_set_style_text_letter_space(page->attribution, 2, 0);
+  page->attribution = label(page->tile, &plex_ui_12, COL_MUTED,
+                            VP_SAFE_X, VALUE_ATTRIB_Y, VP_CONTENT_W, 18);
 
   page->track = bare(page->tile);
-  lv_obj_set_pos(page->track, VP_SAFE_X, VP_BAR_Y);
+  lv_obj_set_pos(page->track, VP_SAFE_X, VALUE_BAR_Y);
   lv_obj_set_size(page->track, VP_CONTENT_W, VP_BAR_H);
   lv_obj_set_style_bg_opa(page->track, LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(page->track, COL_TRACK, 0);
@@ -605,30 +657,35 @@ static void create_value_page(void) {
   /* The family's own break-even mark, 3x32 proud of the bar -- not the 124 px
    * one this page used to invent. */
   page->marker = bare(page->tile);
-  lv_obj_set_pos(page->marker, VALUE_MARKER_X, VP_BAR_Y - 4);
+  lv_obj_set_pos(page->marker, VALUE_MARKER_X, VALUE_BAR_Y - 4);
   lv_obj_set_size(page->marker, 3, VP_BAR_H + 8);
   lv_obj_set_style_bg_opa(page->marker, LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(page->marker, COL_WHITE, 0);
 
   page->stat_api = label(page->tile, &plex_money_35, COL_WHITE,
-                         VP_SAFE_X, VALUE_STAT_Y, 210, 38);
+                         VP_SAFE_X, VALUE_STAT_Y, STAT_COL_W, 36);
   page->stat_paid = label(page->tile, &plex_money_35, COL_WHITE,
-                          240, VALUE_STAT_Y, 218, 38);
+                          RIGHT_STAT_X, VALUE_STAT_Y, RIGHT_STAT_W, 36);
   lv_obj_set_style_text_align(page->stat_paid, LV_TEXT_ALIGN_RIGHT, 0);
 
-  page->cap_api = label(page->tile, &plex_ui_14, COL_MUTED,
-                        VP_SAFE_X, STAT_LABEL_Y, 140, 20);
-  page->cap_break = label(page->tile, &plex_ui_14, COL_MUTED,
-                          170, STAT_LABEL_Y, 140, 20);
-  page->cap_paid = label(page->tile, &plex_ui_14, COL_MUTED,
-                         318, STAT_LABEL_Y, 140, 20);
+  /* Tre bildtexter delar innehållsbredden: vänster, mitt, höger. */
+  page->cap_api = label(page->tile, &plex_ui_12, COL_MUTED,
+                        VP_SAFE_X, VALUE_CAP_Y, VP_CONTENT_W / 3, 18);
+  page->cap_break = label(page->tile, &plex_ui_12, COL_MUTED,
+                          VP_SAFE_X + VP_CONTENT_W / 3, VALUE_CAP_Y,
+                          VP_CONTENT_W / 3, 18);
+  page->cap_paid = label(page->tile, &plex_ui_12, COL_MUTED,
+                         VP_SAFE_X + 2 * (VP_CONTENT_W / 3), VALUE_CAP_Y,
+                         VP_CONTENT_W / 3, 18);
   lv_obj_set_style_text_align(page->cap_break, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_align(page->cap_paid, LV_TEXT_ALIGN_RIGHT, 0);
   for (lv_obj_t **c = (lv_obj_t *[]){page->cap_api, page->cap_break,
                                      page->cap_paid, NULL}; *c; c++)
-    lv_obj_set_style_text_letter_space(*c, 2, 0);
+    lv_obj_set_style_text_letter_space(*c, 1, 0);
   lv_label_set_text(page->cap_api, "VIA API");
-  lv_label_set_text(page->cap_break, "BREAK EVEN");
+  /* "BREAK EVEN" spränger sin tredjedel på 240 px; markören under den
+   * säger redan att det är jämviktspunkten. */
+  lv_label_set_text(page->cap_break, "BREAK");
   lv_label_set_text(page->cap_paid, "YOU PAID");
   create_pager(page->tile, VIEW_VALUE);
 }
@@ -641,9 +698,19 @@ static void apply_value_hero(value_page *page,
                              const usage_value_page_view *view) {
   const bool word = view->hero_is_word;
   const bool money = view->state == USAGE_VALUE_NO_PLAN_COST;
-  lv_obj_set_style_text_font(page->hero,
-                             word ? &plex_headline_48 : &plex_money_118, 0);
-  lv_obj_set_style_text_letter_space(page->hero, word ? -1 : -3, 0);
+  /* Ett stort belopp ("$9999999" vid takvärdet) mäter 255 px i 56:an och
+   * skulle rinna ut över glaset. Heron är självstorlekande, så ingen box
+   * fångar det — mät och kliv ner ETT steg i stället, som kommandoraden
+   * på Needs You-skärmen gör. */
+  const lv_font_t *hero_font = word ? &plex_attention_25 : &plex_money_56;
+  if (!word) {
+    lv_point_t measured;
+    lv_text_get_size(&measured, view->hero_text, &plex_money_56, -2, 0,
+                     LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    if (measured.x > VP_CONTENT_W) hero_font = &plex_money_35;
+  }
+  lv_obj_set_style_text_font(page->hero, hero_font, 0);
+  lv_obj_set_style_text_letter_space(page->hero, word ? -1 : -2, 0);
   lv_obj_set_pos(page->hero, word ? VP_SAFE_X : VALUE_HERO_X,
                  word ? VALUE_WORD_HERO_Y
                       : money ? VALUE_MONEY_HERO_Y : VALUE_HERO_Y);
@@ -902,16 +969,17 @@ static void create_tracker_page(tracker_page *page, int index, bool codex) {
                              &page->context);
   page->halo_initialized = true;
 
-  lv_obj_t *eyebrow = label(page->tile, &plex_text_21, COL_MUTED,
-                            VP_SAFE_X, MT_EYEBROW_Y, 240, 26);
-  lv_obj_set_style_text_letter_space(eyebrow, 2, 0);
+  lv_obj_t *eyebrow = label(page->tile, &plex_ui_16, COL_MUTED,
+                            VP_SAFE_X, MT_EYEBROW_Y, 145, 20);
+  lv_obj_set_style_text_letter_space(eyebrow, 1, 0);
   lv_label_set_text(eyebrow, "MAX TRACKER");
 
   /* plan_label kan innehålla siffror ("MAX 20X"); plex_text_16 saknar
    * 0-9 (bara A-Z/mellanslag/ÅÄÖ). plex_ui_16 är SAMMA typsnitt/storlek
    * (IBM Plex Sans SemiBold 16 px) med bredare glyftäckning. */
-  page->plan_badge = label(page->tile, &plex_ui_16, COL_MUTED,
-                           298, MT_EYEBROW_Y, 160, 20);
+  page->plan_badge = label(page->tile, &plex_ui_12, COL_MUTED,
+                           VP_SAFE_X + 145, MT_EYEBROW_Y + 2,
+                           VP_CONTENT_W - 145, 18);
   lv_obj_set_style_text_align(page->plan_badge, LV_TEXT_ALIGN_RIGHT, 0);
   lv_label_set_text(page->plan_badge, "");
 
@@ -921,7 +989,7 @@ static void create_tracker_page(tracker_page *page, int index, bool codex) {
   lv_obj_add_event_cb(page->grid, tracker_grid_draw, LV_EVENT_DRAW_MAIN,
                       page);
 
-  lv_obj_t *max_label = label(page->tile, &plex_text_16, COL_MUTED,
+  lv_obj_t *max_label = label(page->tile, &plex_ui_12, COL_MUTED,
                               MT_GRID_RIGHT - MT_LEGEND_LABEL_W,
                               MT_LEGEND_Y - 2, MT_LEGEND_LABEL_W, 16);
   lv_obj_set_style_text_align(max_label, LV_TEXT_ALIGN_RIGHT, 0);
@@ -929,23 +997,25 @@ static void create_tracker_page(tracker_page *page, int index, bool codex) {
 
   create_hairline(page->tile, MT_STAT_LINE_Y);
 
+  /* Fyra kolumner delar 198 px — "MAX WEEKS" ryms inte i 49 px. Prefixet
+   * MAX står redan i sidans egen rubrik, så kolumnerna får bära resten. */
   static const char *const captions[4] = {
-    "STREAK", "MAX WEEKS", "AVG PEAK", "MAX DAYS",
+    "STREAK", "WEEKS", "PEAK", "DAYS",
   };
   for (int i = 0; i < 4; i++) {
     int x = MT_GRID_X + (i * MT_GRID_W) / 4;
     /* -8 px gutter (samma marginal som RIGHT_STAT_X/RIGHT_STAT_W lämnar
      * mellan kvotsidornas kolumner) så "MAX WEEKS" aldrig rör vid
      * "AVG PEAK" — fyra jämnbreda kolumner, inte fyra sammanhängande. */
-    lv_obj_t *caption = label(page->tile, &plex_text_16, COL_MUTED,
-                              x, MT_STAT_LABEL_Y, MT_STAT_COL_W - 6, 16);
+    lv_obj_t *caption = label(page->tile, &plex_ui_12, COL_MUTED,
+                              x, MT_STAT_LABEL_Y, MT_STAT_COL_W - 1, 16);
     lv_label_set_text(caption, captions[i]);
 
-    page->stat_value[i] = label_auto(page->tile, &plex_num_38, COL_WHITE,
+    page->stat_value[i] = label_auto(page->tile, &plex_ui_21, COL_WHITE,
                                      x, MT_STAT_VALUE_Y);
     lv_label_set_text(page->stat_value[i], "–");
-    page->stat_unit[i] = label_auto(page->tile, &plex_text_17, COL_MUTED,
-                                    x, MT_STAT_VALUE_Y + 14);
+    page->stat_unit[i] = label_auto(page->tile, &plex_ui_12, COL_MUTED,
+                                    x, MT_STAT_VALUE_Y + 26);
     lv_label_set_text(page->stat_unit[i], "");
     lv_obj_add_flag(page->stat_unit[i], LV_OBJ_FLAG_HIDDEN);
   }

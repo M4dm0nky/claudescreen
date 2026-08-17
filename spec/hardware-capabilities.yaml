@@ -76,6 +76,48 @@ capabilities:
       unit: torget-home-01
       test: display-lock-gdb-and-panel-operation-2026-08-06
 
+  - id: display.lcd-240
+    name: 1.54-inch ST7789 TFT LCD (ESP32-S3-Touch-LCD-1.54)
+    width: 240
+    height: 240
+    color_format: RGB565
+    byte_order: big_endian
+    bus: SPI
+    bus_mhz: 40
+    states:
+      soc_capable: "yes"
+      board_wired: "yes"
+      bsp_support: "yes"
+      firmware_enabled: "yes"
+      unit_verified: unknown
+    confidence: source_inspected
+    resources:
+      - "SPI3_HOST"
+      - "GPIO21 CS"
+      - "GPIO38 SCLK"
+      - "GPIO39 MOSI"
+      - "GPIO45 DC"
+      - "GPIO40 reset"
+      - "GPIO46 backlight (LEDC PWM, active high)"
+      - "PSRAM display buffers"
+    constraints:
+      - "40 MHz SPI mode 0, taken from the vendor LVGL example"
+      - "RGB565 pixels need byte swapping, same as the AMOLED panel"
+      - "panel ships colour-inverted; init must call esp_lcd_panel_invert_color(true)"
+      - "backlight is a real GPIO, not a panel command"
+    conflicts:
+      - "Waveshare publishes no BSP component; components/board_lcd_1_54 stands in"
+      - "MADCTL rotation and touch coordinate rotation must change together"
+    opportunities: ["240 x 240 Studio preview"]
+    sources:
+      - waveshare-lcd-1-54-examples-2026-08-17
+    evidence:
+      - {field: soc_capable, value: "yes", source: waveshare-lcd-1-54-examples-2026-08-17}
+      - {field: board_wired, value: "yes", source: waveshare-lcd-1-54-examples-2026-08-17}
+      - {field: bsp_support, value: "yes", source: waveshare-lcd-1-54-examples-2026-08-17}
+      - {field: firmware_enabled, value: "yes", source: waveshare-lcd-1-54-examples-2026-08-17}
+    last_verified: "2026-08-17"
+
   - id: memory.psram
     name: 8 MB octal PSRAM
     states:

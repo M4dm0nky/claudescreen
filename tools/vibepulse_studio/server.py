@@ -34,6 +34,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from tools.hardware_registry import load_registry
 from tools.vibepulse_studio.design import (
+    DISPLAY_CAPABILITY,
     DesignError,
     generate_header,
     validate_design,
@@ -161,10 +162,12 @@ def _capability_enabled(capability):
 
 
 def _safe_hardware(registry):
-    display = registry.capabilities.get("display.amoled")
+    display = registry.capabilities.get(DISPLAY_CAPABILITY)
     touch = registry.capabilities.get("touch.controller")
     if not isinstance(display, dict):
-        raise DesignError("display.amoled is missing from the hardware registry")
+        raise DesignError(
+            f"{DISPLAY_CAPABILITY} is missing from the hardware registry",
+        )
     width = display.get("width")
     height = display.get("height")
     if (not _is_integer(width) or not _is_integer(height)

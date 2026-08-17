@@ -8,9 +8,17 @@ set -e
 cd "$(dirname "$0")"
 BASE="https://github.com/IBM/plex/raw/master/packages/plex-sans/fonts/complete/ttf"
 
+# Om $BASE svarar 404/429 (IBM har flyttat filerna, GitHub rate-limitar):
+# npm-paketet @ibm/plex-sans bär samma snitt som .woff, och lv_font_conv
+# läser woff. Verifierat 2026-08-17: plex_num_84 genererad ur woff blev
+# BITIDENTISK med den TTF-genererade committade filen — bara sökvägen i
+# opts-kommentaren skiljer. Hämta då paketet och peka --font mot woff:en.
+#   npm pack @ibm/plex-sans && tar xzf ibm-plex-sans-*.tgz
+#   cp package/fonts/complete/woff/IBMPlexSans-Bold.woff src/
 mkdir -p src
 for w in Bold SemiBold Medium; do
-  [ -f "src/IBMPlexSans-$w.ttf" ] || curl -fsSL "$BASE/IBMPlexSans-$w.ttf" -o "src/IBMPlexSans-$w.ttf"
+  [ -f "src/IBMPlexSans-$w.ttf" ] || [ -f "src/IBMPlexSans-$w.woff" ] || \
+    curl -fsSL "$BASE/IBMPlexSans-$w.ttf" -o "src/IBMPlexSans-$w.ttf"
 done
 
 if command -v npx >/dev/null 2>&1; then
@@ -34,6 +42,10 @@ conv Bold     164 "0x30-0x39,0x25,0x2E,0x2013"           plex_num_164
 # (rastergranskning 2026-08-14), 84 är mockupens klockstorlek. Bara det
 # klockan behöver: siffror, kolon, mellanslag.
 conv Bold      84 "0x30-0x39,0x20,0x3A"                  plex_num_84
+# Kvotsidans hero på 240x240-panelen. EGEN font i stället för utökad
+# plex_num_84: den bär OTA-ringens mm:ss och ska förbli bitidentisk.
+# Samma range som 164:an, som är den hero fonten ersätter.
+conv Bold      84 "0x30-0x39,0x25,0x2E,0x2013"           plex_hero_84
 # 118 bär kolon sedan 2026-08-14 (kvar för ev. framtida stora klockor).
 conv Bold     118 "0x30-0x39,0x20,0x25,0x2E,0xA0,0x2013,0x3A" plex_num_118
 conv Bold      50 "0x30-0x39,0x25,0x2C,0x2013"           plex_num_50
@@ -43,6 +55,8 @@ conv Bold      50 "0x30-0x39,0x25,0x2C,0x2013"           plex_num_50
 # Egna fonter i stället för utökade delade — ~40 KB flash för att lämna alla
 # godkända rastrar bitidentiska, och för att Solelkollens 118 inte ska flytta.
 conv Bold     118 "0x30-0x39,0x24,0x2C,0x2E,0x2013,0xD7" plex_money_118
+# Värdesidans hero på 240x240-panelen. Samma range som 118:an den ersätter.
+conv Bold      56 "0x30-0x39,0x24,0x2C,0x2E,0x2013,0xD7" plex_money_56
 conv Bold      35 "0x20,0x24,0x2C,0x2E,0x30-0x39,0x41-0x5A,0xD7,0x2013" plex_money_35
 # VibePulse Burn Rate outcomes: uppercase action words plus compact durations.
 conv Bold      48 "0x20,0x30-0x39,0x41-0x5A"             plex_headline_48
@@ -66,7 +80,7 @@ conv Medium    17 "0x20,0x25,0x2C,0x30-0x39,0x41-0x5A,0x61-0x7A,0xA0,0xC5,0xC4,0
 # äldre, hårt bantade 16/17-fonterna i hela plattformen.
 conv SemiBold  14 "0x20-0x7E,0xA0,0xB7,0xC5,0xC4,0xD6,0xD7,0xE5,0xE4,0xF6,0x2013" plex_ui_14
 conv SemiBold  16 "0x20-0x7E,0xA0,0xB7,0xD7,0x2013,0x2248" plex_ui_16
-conv SemiBold  12 "0x20-0x7E,0xA0,0xB7,0xC5,0xC4,0xD6,0xD7,0xE5,0xE4,0xF6,0x2013" plex_ui_12
+conv SemiBold  12 "0x20-0x7E,0xA0,0xB7,0xC5,0xC4,0xD6,0xD7,0xE5,0xE4,0xF6,0x2013,0x2248" plex_ui_12
 # Samma kompletta UI-rang i naturliga 21 px för VibePulse. Skala aldrig
 # dynamiska etiketter med LVGL-transformer: de kräver oskivbara ARGB-lager.
 conv SemiBold  21 "0x20-0x7E,0xA0,0xB7,0xC5,0xC4,0xD6,0xD7,0xE5,0xE4,0xF6,0x2013" plex_ui_21

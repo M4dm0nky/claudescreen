@@ -2,19 +2,19 @@
 #ifndef VIBEPULSE_LAYOUT_GENERATED_H
 #define VIBEPULSE_LAYOUT_GENERATED_H
 
-#define VP_SCREEN_W 480
-#define VP_SCREEN_H 480
-#define VP_SAFE_X 22
-#define VP_CONTENT_W 436
-#define VP_PROVIDER_Y 22
-#define VP_QUOTA_Y 72
-#define VP_PERCENT_Y 150
-#define VP_PERCENT_FONT_PX 164
-#define VP_BAR_Y 304
-#define VP_BAR_H 24
-#define VP_RESET_Y 352
-#define VP_STATUS_Y 390
-#define VP_STATUS_H 66
+#define VP_SCREEN_W 240
+#define VP_SCREEN_H 240
+#define VP_SAFE_X 16
+#define VP_CONTENT_W 208
+#define VP_PROVIDER_Y 10
+#define VP_QUOTA_Y 51
+#define VP_PERCENT_Y 81
+#define VP_PERCENT_FONT_PX 84
+#define VP_BAR_Y 152
+#define VP_BAR_H 12
+#define VP_RESET_Y 174
+#define VP_STATUS_Y 202
+#define VP_STATUS_H 36
 
 #define VP_COLOR_BACKGROUND 0x000000
 #define VP_COLOR_TEXT 0xFFFFFF

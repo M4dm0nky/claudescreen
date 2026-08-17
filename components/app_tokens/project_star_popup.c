@@ -8,7 +8,7 @@
 #include "project_star_style.h"
 #include "vibepulse_layout.generated.h"
 
-extern const lv_font_t plex_num_38;
+extern const lv_font_t plex_ui_12;
 extern const lv_font_t plex_ui_21;
 extern const lv_font_t plex_ui_16;
 extern const lv_font_t plex_ui_14;
@@ -103,6 +103,12 @@ static void star_draw(lv_event_t *event) {
   }
 }
 
+/* Popupen aeger hela glaset, sa den har egna marginaler snarare an
+ * kvotsidans innehallsspalt. */
+#define PS_MARGIN 12
+#define PS_CONTENT_W (VP_SCREEN_W - 2 * PS_MARGIN)
+#define PS_STAR 100
+
 static lv_obj_t *filled_star(lv_obj_t *parent, int x, int y,
                              int width, int height) {
   lv_obj_t *object = bare(parent);
@@ -134,26 +140,26 @@ void tk_project_star_popup_create(lv_obj_t *app_root) {
 
   lv_obj_t *github_mark = lv_image_create(popup.root);
   lv_image_set_src(github_mark, &tk_img_github_mark_24);
-  lv_obj_set_pos(github_mark, 20, 20);
+  lv_obj_set_pos(github_mark, PS_MARGIN, 12);
   lv_obj_remove_flag(github_mark, LV_OBJ_FLAG_CLICKABLE);
 
-  popup.repo = label(popup.root, &plex_ui_16, COL_REPO,
-                     55, 24, 405, 24);
+  popup.repo = label(popup.root, &plex_ui_12, COL_REPO,
+                     PS_MARGIN + 30, 15, PS_CONTENT_W - 30, 18);
   lv_obj_set_style_text_align(popup.repo, LV_TEXT_ALIGN_LEFT, 0);
 
   /* Final state of the impact: one large, still, fully filled gold star. */
-  filled_star(popup.root, 130, 80, 220, 220);
+  filled_star(popup.root, (VP_SCREEN_W - PS_STAR) / 2, 46, PS_STAR, PS_STAR);
 
-  popup.actor = label(popup.root, &plex_ui_21, COL_WHITE,
-                      20, 327, 440, 30);
+  popup.actor = label(popup.root, &plex_ui_16, COL_WHITE,
+                      PS_MARGIN, 158, PS_CONTENT_W, 22);
 
-  filled_star(popup.root, 145, 380, 40, 40);
-  popup.count = label(popup.root, &plex_num_38, COL_WHITE,
-                      200, 380, 240, 46);
+  filled_star(popup.root, 62, 190, 18, 18);
+  popup.count = label(popup.root, &plex_ui_21, COL_WHITE,
+                      86, 186, VP_SCREEN_W - 86 - PS_MARGIN, 26);
   lv_obj_set_style_text_align(popup.count, LV_TEXT_ALIGN_LEFT, 0);
 
-  popup.dismiss = label(popup.root, &plex_ui_14, COL_MUTED,
-                        20, 442, 440, 20);
+  popup.dismiss = label(popup.root, &plex_ui_12, COL_MUTED,
+                        PS_MARGIN, 218, PS_CONTENT_W, 16);
   lv_obj_set_style_text_letter_space(popup.dismiss, 2, 0);
   lv_label_set_text(popup.dismiss, "TAP TO DISMISS");
 

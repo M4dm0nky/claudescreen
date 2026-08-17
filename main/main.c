@@ -51,6 +51,17 @@ static const char *TAG = "torget";
 #define TICK_EVERY_MS 100 /* ~10 Hz: ljusrampen är mjuk, CPU:n sover */
 #define DISPLAY_FLUSH_ROWS 12
 
+/* Autorotation: av tills kvartsvarven är kalibrerade för DET HÄR kortet.
+ * Se motiveringen vid sg_rotation_start() längre ned. */
+#define TORGET_AUTOROTATE 0
+
+/* Kortet och layouten måste vara samma panel. Byts kortkomponenten utan att
+ * plattformens ruta följer med ritar apparna mot fel storlek och felet syns
+ * först på glaset — här dör bygget i stället. */
+_Static_assert(TORGET_SCREEN_W == BSP_LCD_H_RES &&
+               TORGET_SCREEN_H == BSP_LCD_V_RES,
+               "platform screen size must match the board BSP resolution");
+
 /* Nattläge: AMOLED tål mörker bäst av allt, och skärmen står i ett hem.
  * Aktivitet är villkoret, inte klockan: apparna rapporterar liv via
  * torget_keep_awake() (Solelkollen när solen producerar, Tokenmätaren när
@@ -267,12 +278,12 @@ static void tick_cb(lv_timer_t *t) {
              (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
              dma_largest);
     /* Tidig varning INNAN glaset fryser: panelflushen behöver ett
-     * sammanhängande DMA-block på DISPLAY_FLUSH_ROWS×480×2 byte. Faller
+     * sammanhängande DMA-block på DISPLAY_FLUSH_ROWS×BSP_LCD_H_RES×2 byte. Faller
      * största DMA-blocket mot det taket dör nästa flush i NO_MEM och hela
      * ritpipen fastnar tyst (frysjakten 2026-08-16: LVGL:s interna pool
      * svalt blocket → låst render). Larmet gör en framtida regression
      * högljudd i stället för tyst. Marginal ×2 = andrum för TLS/WiFi-spikar. */
-    const unsigned flush_dma = (unsigned)DISPLAY_FLUSH_ROWS * 480u * 2u;
+    const unsigned flush_dma = (unsigned)DISPLAY_FLUSH_ROWS * BSP_LCD_H_RES * 2u;
     if (dma_largest < flush_dma * 2u)
       ESP_LOGW(TAG, "LÅGT DMA-block: %u byte (flush behöver %u) — nära fryströskeln",
                dma_largest, flush_dma);
@@ -410,46 +421,43 @@ static void display_start(void) {
 
   ESP_ERROR_CHECK(bsp_display_brightness_init());
 
-  /* Touchparet hör ihop med MADCTL 0xA0 — ändra aldrig ena sidan ensam. */
+  /* Touchparet hör ihop med bootlägets MADCTL — ändra aldrig ena sidan
+   * ensam. Neutralt tills det kalibrerats mot glaset på det här kortet. */
   bsp_display_cfg_t touch_cfg = {
-    .touch_flags = { .swap_xy = 1, .mirror_x = 0, .mirror_y = 1 },
+    .touch_flags = { .swap_xy = 0, .mirror_x = 0, .mirror_y = 0 },
   };
   esp_lcd_touch_handle_t tp = NULL;
-  ESP_ERROR_CHECK(bsp_touch_new(&touch_cfg, &tp));
-  esp_lv_adapter_touch_config_t adapter_touch =
-    ESP_LV_ADAPTER_TOUCH_DEFAULT_CONFIG(disp, tp);
-  s_touch = esp_lv_adapter_register_touch(&adapter_touch);
+  esp_err_t touch_err = bsp_touch_new(&touch_cfg, &tp);
+  if (touch_err == ESP_OK) {
+    esp_lv_adapter_touch_config_t adapter_touch =
+      ESP_LV_ADAPTER_TOUCH_DEFAULT_CONFIG(disp, tp);
+    s_touch = esp_lv_adapter_register_touch(&adapter_touch);
+  } else {
+    /* Panelen är hela poängen; touch är en bonus. Ett tyst kort som bootar
+     * vidare display-only slår ett kort som panikar i bootslinga. */
+    ESP_LOGE(TAG, "touch init misslyckades (%s) — fortsätter display-only",
+             esp_err_to_name(touch_err));
+  }
 
   ESP_ERROR_CHECK(esp_lv_adapter_start());
 }
 
-/* MADCTL-vridningen ur BSP:ns bsp_display_rotation_set — den läser BSP:ns
- * statiska handles som aldrig sätts när vi startar displayen själva.
+/* MADCTL-vridningen: vi startar displayen själva, så BSP:ns egen
+ * rotationssättare (som läser handles den aldrig får) används inte.
  *
- * PLUS panelens gap: CO5300-glasets fönster börjar på kontrollerkolumn 6
- * (initsekvensens CASET är 0x0006..0x01DD) och drivrutinen adderar
- * x_gap/y_gap till varje adressfönster — men BSP:n justerar aldrig gapet
- * vid rotation. I bootläget 0xA0 går mappningen jämnt ut; i andra lägen
- * hamnar 6-pixelremsan oskriven vid en kant (den vita linjen, hittad på
- * foto 2026-08-06 i läge 0xC0). Konstanterna nedan kalibreras med P24-
- * metoden: ETT strukturerat fyrlägestest, en konstant per läge — aldrig
- * fotoforensik. Ser du en ljus kantlinje i ett läge: justera det lägets
- * par (6 på den axel linjen sitter, spegelvänt om den flyttar till
- * motsatt kant). */
+ * ST7789 över vanlig SPI: kommandot är rena 0x36 (CO5300:s QSPI-inpackning
+ * (0x36<<8)|(0x02<<24) gäller inte här), värdena följer standardkonventionen
+ * MV/MX/MY, och RGB-biten är 0 eftersom panelen konfigureras som RGB.
+ *
+ * Inget gap: CO5300-glasets 6-pixelfönster var en egenhet hos den panelen.
+ * ST7789-modulen på det här kortet mappar 240×240 rakt av — ser du en ljus
+ * kantremsa i något läge kalibreras den med P24-metoden (ETT strukturerat
+ * fyrlägestest, en konstant per läge — aldrig fotoforensik). */
 esp_err_t torget_display_rotation_set(bsp_display_rotation_t rotation) {
   static const uint8_t MADCTL[4] = { 0x00, 0x60, 0xC0, 0xA0 };
-  static const int GAP[4][2] = { /* {x_gap, y_gap} per läge */
-    {0, 0},  /* 0x00 */
-    {6, 0},  /* 0x60 */
-    {0, 6},  /* 0xC0 — linjen satt i botten: skjut raderna +6 */
-    {0, 0},  /* 0xA0 — bootläget, verifierat rent */
-  };
   if (rotation > BSP_DISPLAY_ROTATE_270) return ESP_ERR_INVALID_ARG;
-  uint32_t lcd_cmd = (0x36 << 8) | (0x02 << 24);
-  ESP_LOGI(TAG, "MADCTL 0x%02X gap %d/%d (läge %d)", MADCTL[rotation],
-           GAP[rotation][0], GAP[rotation][1], rotation);
-  esp_lcd_panel_set_gap(s_panel, GAP[rotation][0], GAP[rotation][1]);
-  return esp_lcd_panel_io_tx_param(s_panel_io, lcd_cmd, &MADCTL[rotation], 1);
+  ESP_LOGI(TAG, "MADCTL 0x%02X (läge %d)", MADCTL[rotation], rotation);
+  return esp_lcd_panel_io_tx_param(s_panel_io, 0x36, &MADCTL[rotation], 1);
 }
 
 /* ------------------------------------------------------------------- start */
@@ -516,8 +524,19 @@ void app_main(void) {
   /* Börja släckt: tick_cb:s ramp lyfter till dagsläge på ~1,3 s. Det är
    * bootens fade-in — samma ramp som nattväckningen använder. */
   bsp_display_brightness_set(0);
+  /* Autorotationen är AVSTÄNGD på det här kortet. Konstanterna i rotation.c
+   * (SG_QUAD_UP, SG_QUAD_DIR, TOUCH_CW och bootläget 0xA0) är kalibrerade för
+   * AMOLED-kortets IMU-läge och dess panel som sitter vriden i kåpan. Här
+   * sitter varken IMU:n eller glaset likadant, så varje kvartsvarv landade i
+   * fel läge — och på det gamla kortet svarade IMU:n inte alls, så det här är
+   * också det beteende porten ärvde. Slås på igen först efter ETT strukturerat
+   * fyrlägestest (P24-metoden), en konstant i taget. */
+#if TORGET_AUTOROTATE
   /* s_touch sattes i display_start — BSP:ns accessor vet inget om vår start. */
   sg_rotation_start(s_touch); /* P24: bilden följer med när enheten vrids */
+#else
+  (void)s_touch;
+#endif
 
   /* KEY3 (GPIO18, aktiv låg enligt spec/hardware.md): intern pullup,
    * pollas av tick_cb som appväxlare. */

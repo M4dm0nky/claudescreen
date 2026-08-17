@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "deviceCapability": "display.amoled",
+  "deviceCapability": "display.lcd-240",
   "palette": {
     "background": "#000000",
     "text": "#FFFFFF",
@@ -11,17 +11,17 @@
     "codex": "#6F78FF"
   },
   "hero": {
-    "safeX": 22,
-    "contentWidth": 436,
-    "providerY": 22,
-    "quotaY": 72,
-    "percentY": 150,
-    "percentFontPx": 164,
-    "barY": 304,
-    "barHeight": 24,
-    "resetY": 352,
-    "statusY": 390,
-    "statusHeight": 66
+    "safeX": 16,
+    "contentWidth": 208,
+    "providerY": 10,
+    "quotaY": 51,
+    "percentY": 81,
+    "percentFontPx": 84,
+    "barY": 152,
+    "barHeight": 12,
+    "resetY": 174,
+    "statusY": 202,
+    "statusHeight": 36
   },
   "fixtures": {
     "claude": {

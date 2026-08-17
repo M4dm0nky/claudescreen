@@ -29,10 +29,14 @@
  */
 
 extern const lv_font_t plex_attention_52;
+extern const lv_font_t plex_attention_25;
 extern const lv_font_t plex_num_118;
 extern const lv_font_t plex_num_84;
 extern const lv_font_t plex_num_50;
+extern const lv_font_t plex_stat_35;
 extern const lv_font_t plex_ui_21;
+extern const lv_font_t plex_ui_16;
+extern const lv_font_t plex_ui_12;
 
 /* Färgerna är studio-tokens (design/vibepulse/studio-design.json): muted
  * och track därifrån, inte de äldre lokala nyanserna — rastret på glaset
@@ -40,13 +44,23 @@ extern const lv_font_t plex_ui_21;
 #define COL_DETAIL lv_color_hex(0x9298A2) /* palette.muted */
 #define COL_TRACK  lv_color_hex(0x303238) /* palette.track */
 
-/* Bågen: 296 px yttermått ger radie 148, spår 16 px — samma proportioner
- * som mockupen (2026-08-14, riktning A). Centrum (240, 268) lämnar plats
- * för lägesordet överst utan att sista raden når det klippta hörnglaset. */
-#define ARC_SIZE   296
-#define ARC_X      (240 - ARC_SIZE / 2)
-#define ARC_Y      (268 - ARC_SIZE / 2)
-#define ARC_WIDTH  16
+/* Bågen: samma proportioner som mockupen (2026-08-14, riktning A), men
+ * härledd ur panelen i stället för 480-erans fasta 296 px kring (240, 268).
+ * Centrum sitter något under mitten så lägesordet får plats överst. */
+#define ARC_CX     (TORGET_SCREEN_W / 2)
+#define ARC_CY     134
+#define ARC_SIZE   148
+#define ARC_X      (ARC_CX - ARC_SIZE / 2)
+#define ARC_Y      (ARC_CY - ARC_SIZE / 2)
+#define ARC_WIDTH  8
+
+/* UPDATE READY-notisens pill. */
+#define OTA_MARGIN    16
+#define PILL_W        (TORGET_SCREEN_W - 2 * OTA_MARGIN)
+#define PILL_H        40
+#define PILL_X        OTA_MARGIN
+#define PILL_UPDATE_Y 118
+#define PILL_LATER_Y  (PILL_UPDATE_Y + PILL_H + 8)
 
 /* Fönstret är tio minuter; bågen mappar sekunder → 0..100 mot det taket. */
 #define WINDOW_SECONDS 600
@@ -98,7 +112,7 @@ void torget_ota_ui_create(void) {
    * under anroparens UI-lås (samma mönster som torget_ui_create). */
   ui.overlay = lv_obj_create(lv_layer_top());
   lv_obj_remove_style_all(ui.overlay);
-  lv_obj_set_size(ui.overlay, 480, 480);
+  lv_obj_set_size(ui.overlay, TORGET_SCREEN_W, TORGET_SCREEN_H);
   lv_obj_set_pos(ui.overlay, 0, 0);
   lv_obj_set_style_bg_color(ui.overlay, lv_color_black(), 0);
   lv_obj_set_style_bg_opa(ui.overlay, LV_OPA_COVER, 0);
@@ -107,9 +121,9 @@ void torget_ota_ui_create(void) {
   lv_obj_add_flag(ui.overlay, LV_OBJ_FLAG_HIDDEN);
 
   ui.word = lv_label_create(ui.overlay);
-  lv_obj_set_style_text_font(ui.word, &plex_attention_52, 0);
+  lv_obj_set_style_text_font(ui.word, &plex_attention_25, 0);
   lv_obj_set_style_text_color(ui.word, lv_color_white(), 0);
-  lv_obj_align(ui.word, LV_ALIGN_TOP_MID, 0, 52);
+  lv_obj_align(ui.word, LV_ALIGN_TOP_MID, 0, 14);
   lv_label_set_text(ui.word, "");
 
   /* Bågen är ren visning: ingen knopp, inget klick — värdet sätts bara
@@ -131,18 +145,18 @@ void torget_ota_ui_create(void) {
   lv_arc_set_value(ui.arc, 0);
 
   ui.center = lv_label_create(ui.overlay);
-  lv_obj_set_style_text_font(ui.center, &plex_num_118, 0);
+  lv_obj_set_style_text_font(ui.center, &plex_num_84, 0);
   lv_obj_set_style_text_color(ui.center, lv_color_white(), 0);
   lv_label_set_text(ui.center, "");
 
   ui.pctsign = lv_label_create(ui.overlay);
-  lv_obj_set_style_text_font(ui.pctsign, &plex_num_50, 0);
+  lv_obj_set_style_text_font(ui.pctsign, &plex_stat_35, 0);
   lv_obj_set_style_text_color(ui.pctsign, COL_DETAIL, 0);
   lv_label_set_text(ui.pctsign, "%");
   lv_obj_add_flag(ui.pctsign, LV_OBJ_FLAG_HIDDEN);
 
   ui.detail = lv_label_create(ui.overlay);
-  lv_obj_set_style_text_font(ui.detail, &plex_ui_21, 0);
+  lv_obj_set_style_text_font(ui.detail, &plex_ui_12, 0);
   lv_obj_set_style_text_color(ui.detail, COL_DETAIL, 0);
   lv_obj_set_style_text_letter_space(ui.detail, 2, 0);
   lv_label_set_text(ui.detail, "");
@@ -150,25 +164,26 @@ void torget_ota_ui_create(void) {
   /* Versionsraden under ringen, centrerad — mitt-botten är synligt glas
    * även med de klippta hörnen (hörnlärdomen från brödsmulorna). */
   ui.version = lv_label_create(ui.overlay);
-  lv_obj_set_style_text_font(ui.version, &plex_ui_21, 0);
+  lv_obj_set_style_text_font(ui.version, &plex_ui_12, 0);
   lv_obj_set_style_text_color(ui.version, COL_DETAIL, 0);
   lv_obj_set_style_text_letter_space(ui.version, 2, 0);
-  lv_obj_align(ui.version, LV_ALIGN_TOP_MID, 0, 268 + ARC_SIZE / 2 + 10);
+  lv_obj_align(ui.version, LV_ALIGN_TOP_MID, 0, ARC_CY + ARC_SIZE / 2 + 8);
   lv_label_set_text(ui.version, "");
 
-  /* NOTICE-pillren: LATER dampat, UPDATE vitt. Bada ar generosa
-   * tryckytor (170x44) under ringen; UPDATE har egen callback och
-   * bubblar INTE — allt annat glas ar snooze. */
+  /* NOTICE-pillren: LATER dampat, UPDATE vitt. UPDATE har egen callback
+   * och bubblar INTE — allt annat glas ar snooze. Storleken foljer
+   * panelen: pa 240 px ar 208x40 den storsta tryckyta som ryms med bada
+   * pillren plus versionsraden. */
   ui.later = lv_obj_create(ui.overlay);
   lv_obj_remove_style_all(ui.later);
-  lv_obj_set_size(ui.later, 340, 88);
-  lv_obj_set_pos(ui.later, 240 - 170, 322);
-  lv_obj_set_style_radius(ui.later, 44, 0);
+  lv_obj_set_size(ui.later, PILL_W, PILL_H);
+  lv_obj_set_pos(ui.later, PILL_X, PILL_LATER_Y);
+  lv_obj_set_style_radius(ui.later, PILL_H / 2, 0);
   lv_obj_set_style_border_width(ui.later, 2, 0);
   lv_obj_set_style_border_color(ui.later, COL_TRACK, 0);
   lv_obj_add_flag(ui.later, LV_OBJ_FLAG_HIDDEN);
   lv_obj_t *later_label = lv_label_create(ui.later);
-  lv_obj_set_style_text_font(later_label, &plex_ui_21, 0);
+  lv_obj_set_style_text_font(later_label, &plex_ui_16, 0);
   lv_obj_set_style_text_color(later_label, COL_DETAIL, 0);
   lv_obj_set_style_text_letter_space(later_label, 2, 0);
   lv_label_set_text(later_label, "LATER");
@@ -176,15 +191,15 @@ void torget_ota_ui_create(void) {
 
   ui.update = lv_obj_create(ui.overlay);
   lv_obj_remove_style_all(ui.update);
-  lv_obj_set_size(ui.update, 340, 88);
-  lv_obj_set_pos(ui.update, 240 - 170, 210);
-  lv_obj_set_style_radius(ui.update, 44, 0);
+  lv_obj_set_size(ui.update, PILL_W, PILL_H);
+  lv_obj_set_pos(ui.update, PILL_X, PILL_UPDATE_Y);
+  lv_obj_set_style_radius(ui.update, PILL_H / 2, 0);
   lv_obj_set_style_border_width(ui.update, 2, 0);
   lv_obj_set_style_border_color(ui.update, lv_color_white(), 0);
   lv_obj_add_flag(ui.update, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(ui.update, LV_OBJ_FLAG_HIDDEN);
   lv_obj_t *update_label = lv_label_create(ui.update);
-  lv_obj_set_style_text_font(update_label, &plex_ui_21, 0);
+  lv_obj_set_style_text_font(update_label, &plex_ui_16, 0);
   lv_obj_set_style_text_color(update_label, lv_color_white(), 0);
   lv_obj_set_style_text_letter_space(update_label, 2, 0);
   lv_label_set_text(update_label, "UPDATE NOW");
@@ -295,7 +310,7 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
     lv_arc_set_value(ui.arc, (int32_t)percent);
     char digits[8];
     snprintf(digits, sizeof digits, "%u", percent);
-    lv_obj_set_style_text_font(ui.center, &plex_num_118, 0);
+    lv_obj_set_style_text_font(ui.center, &plex_num_84, 0);
     lv_label_set_text(ui.center, digits);
     if (percent >= 100)
       lv_obj_add_flag(ui.pctsign, LV_OBJ_FLAG_HIDDEN);
@@ -306,15 +321,15 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
   /* Centrera mot bågens mitt när innehållet bytt bredd; %-tecknet hänger
    * på siffrornas nederkant som i mockupen. Detaljraden ligger under
    * mittsiffran, väl innanför bågens innerradie. */
-  lv_obj_align(ui.center, LV_ALIGN_CENTER, 0, 268 - 240);
-  lv_obj_align_to(ui.pctsign, ui.center, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -14);
-  lv_obj_align(ui.detail, LV_ALIGN_CENTER, 0, 268 - 240 + 78);
+  lv_obj_align(ui.center, LV_ALIGN_CENTER, 0, ARC_CY - TORGET_SCREEN_H / 2);
+  lv_obj_align_to(ui.pctsign, ui.center, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -8);
+  lv_obj_align(ui.detail, LV_ALIGN_CENTER, 0, ARC_CY - TORGET_SCREEN_H / 2 + 44);
   /* I NOTICE bor versionen INNE i ringen (under READY) — pillren äger
    * ytan under ringen. Övriga lägen behåller raden under ringen. */
   if (state == TG_OTA_UI_NOTICE)
-    lv_obj_align(ui.version, LV_ALIGN_TOP_MID, 0, 130);
+    lv_obj_align(ui.version, LV_ALIGN_TOP_MID, 0, 62);
   else
-    lv_obj_align(ui.version, LV_ALIGN_TOP_MID, 0, 268 + ARC_SIZE / 2 + 10);
+    lv_obj_align(ui.version, LV_ALIGN_TOP_MID, 0, ARC_CY + ARC_SIZE / 2 + 8);
 
   lv_obj_remove_flag(ui.overlay, LV_OBJ_FLAG_HIDDEN);
   lv_obj_move_foreground(ui.overlay);

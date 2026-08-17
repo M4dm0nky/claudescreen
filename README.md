@@ -1,6 +1,15 @@
-# VibePulse
+# VibePulse — ESP32-S3-Touch-LCD-1.54 port
 
-[![CI](https://github.com/niclasvestlund-YT/vibepulse/actions/workflows/ci.yml/badge.svg)](https://github.com/niclasvestlund-YT/vibepulse/actions/workflows/ci.yml)
+> This is a fork of [niclasvestlund-YT/vibepulse](https://github.com/niclasvestlund-YT/vibepulse)
+> (MIT, © Niclas Vestlund), ported from the 480×480 AMOLED board it targets to
+> the **Waveshare ESP32-S3-Touch-LCD-1.54**: 240×240, ST7789 over SPI, CST816
+> touch, GPIO backlight. Waveshare publishes no BSP for that board, so the
+> panel-near layer lives in `components/board_lcd_1_54/`, and every screen was
+> re-laid out for half the pixels in each direction.
+>
+> See [upstream issue #5](https://github.com/niclasvestlund-YT/vibepulse/issues/5)
+> ("Hardware ports: other boards and panel sizes") for the maintainer's take on
+> ports. Everything below is the upstream README unless noted.
 
 ![VibePulse: quota, a NEEDS YOU alert, and the Max Tracker heatmap](docs/img/hero.png)
 

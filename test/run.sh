@@ -183,6 +183,7 @@ cd ..
   tools.vibepulse_studio.test_server -v
 "$PYTHON_BIN" tools/vibepulse_studio/design.py --check
 "$PYTHON_BIN" test/test_vibepulse_studio_wiring.py
+"$PYTHON_BIN" test/test_text_fits_panel.py
 "$PYTHON_BIN" test/test_vibepulse_visual_landmarks.py
 "$PYTHON_BIN" test/test_shared_amoled_skill.py
 "$PYTHON_BIN" test/test_token_body_capacity.py

@@ -9,7 +9,7 @@
  * appregistret. Ren LVGL 9 — ingen SDL, ingen ESP-IDF, inget nätverk. Byggs
  * byte-identiskt i simulatorn och på targetet.
  *
- * Skärmmodellen: ett drift-lager (480×480) med en root-låda per app plus
+ * Skärmmodellen: ett drift-lager (TORGET_SCREEN_W×H) med en root-låda per app plus
  * launcher-overlayn. Exakt en av dem är synlig. Apparna målar fritt i sin
  * root; plattformen rör den aldrig efter create().
  */
@@ -81,7 +81,7 @@ static void icon_clicked(lv_event_t *e) {
  * proportioner som bänkens ikon (96-platta, radie 22). */
 static void launcher_build(void) {
   tg.launcher = bare(tg.shift);
-  lv_obj_set_size(tg.launcher, 480, 480);
+  lv_obj_set_size(tg.launcher, TORGET_SCREEN_W, TORGET_SCREEN_H);
   lv_obj_set_flex_flow(tg.launcher, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(tg.launcher, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
@@ -173,7 +173,7 @@ void torget_ui_create(void) {
   lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
 
   tg.shift = bare(scr);
-  lv_obj_set_size(tg.shift, 480, 480);
+  lv_obj_set_size(tg.shift, TORGET_SCREEN_W, TORGET_SCREEN_H);
 
   for (int i = 0; i < torget_app_count; i++) {
     const torget_app_t *app = torget_apps[i];
@@ -185,7 +185,7 @@ void torget_ui_create(void) {
       continue;
     }
     tg.roots[i] = bare(tg.shift);
-    lv_obj_set_size(tg.roots[i], 480, 480);
+    lv_obj_set_size(tg.roots[i], TORGET_SCREEN_W, TORGET_SCREEN_H);
     lv_obj_add_flag(tg.roots[i], LV_OBJ_FLAG_HIDDEN);
     app->create(tg.roots[i]);
   }

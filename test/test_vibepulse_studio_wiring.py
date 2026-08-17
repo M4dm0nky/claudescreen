@@ -10,6 +10,11 @@ import unittest
 from html.parser import HTMLParser
 from pathlib import Path
 
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.vibepulse_studio.design import load_display  # noqa: E402
+
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "tools/vibepulse_studio/web"
@@ -58,6 +63,7 @@ class StudioWiringTests(unittest.TestCase):
         cls.css = CSS_PATH.read_text(encoding="utf-8")
         cls.js = JS_PATH.read_text(encoding="utf-8")
         cls.design = json.loads(DESIGN_PATH.read_text(encoding="utf-8"))
+        cls.display = load_display(ROOT / "spec")
         cls.inventory = MarkupInventory()
         cls.inventory.feed(cls.html)
 
@@ -213,8 +219,8 @@ class StudioWiringTests(unittest.TestCase):
         self.assertIn("const MIN_TEXT_ROW_STEP = 26", self.js)
         self.assertIn("const MIN_SECTION_GAP = 8", self.js)
         self.assertIn("const MIN_QUOTA_TO_PERCENT_STEP = 28", self.js)
-        self.assertIn("const PERCENT_RENDERED_LINE_HEIGHT = 119", self.js)
-        self.assertIn("const PERCENT_FONT_PX = 164", self.js)
+        self.assertIn("const PERCENT_RENDERED_LINE_HEIGHT = 61", self.js)
+        self.assertIn("const PERCENT_FONT_PX = 84", self.js)
         self.assertIn(
             "hero.percentFontPx !== PERCENT_FONT_PX",
             self.js,
@@ -258,33 +264,42 @@ class StudioWiringTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("osascript"), "JXA is unavailable")
     def test_repository_geometry_matches_browser_contract_and_stays_editable(self):
         hero = self.design["hero"]
-        self.assertEqual(hero["percentY"], 150)
-        self.assertEqual(hero["barY"], 304)
-        self.assertEqual(hero["barHeight"], 24)
+        width, height = self.display["width"], self.display["height"]
+        # Nudge every field one pixel and require the browser to agree with the
+        # server. The direction that keeps the layout legal is "later/smaller",
+        # so rows move down and the two heights shrink — derived from the
+        # design, never pinned to one panel.
+        requested = {
+            "safeX": hero["safeX"] + 1,
+            "providerY": hero["providerY"] + 1,
+            "quotaY": hero["quotaY"] + 1,
+            "percentY": hero["percentY"] + 1,
+            "barY": hero["barY"] + 1,
+            "barHeight": hero["barHeight"] + 1,
+            "resetY": hero["resetY"] + 1,
+            "statusY": hero["statusY"] + 1,
+            "statusHeight": hero["statusHeight"] - 1,
+        }
         expression = f"""
           (() => {{
             const hero = {json.dumps(hero)};
-            const requested = {{
-              safeX: 23, providerY: 23, quotaY: 73, percentY: 151,
-              barY: 305, barHeight: 23, resetY: 353,
-              statusY: 391, statusHeight: 65
-            }};
+            const requested = {json.dumps(requested)};
             const changes = {{}};
             for (const [name, value] of Object.entries(requested)) {{
-              const result = applyHeroChange(hero, name, value, 480, 480);
+              const result = applyHeroChange(hero, name, value, {width}, {height});
               changes[name] = {{
                 value: result.hero[name],
-                valid: heroIsServerValid(result.hero, 480, 480),
+                valid: heroIsServerValid(result.hero, {width}, {height}),
                 accepted: result.accepted
               }};
             }}
             const bounds = {{}};
             for (const name of Object.keys(requested)) {{
-              bounds[name] = heroBounds(hero, name, 480, 480);
+              bounds[name] = heroBounds(hero, name, {width}, {height});
             }}
-            const badType = applyHeroChange(hero, "statusY", true, 480, 480);
+            const badType = applyHeroChange(hero, "statusY", true, {width}, {height});
             return {{
-              valid: heroIsServerValid(hero, 480, 480),
+              valid: heroIsServerValid(hero, {width}, {height}),
               changes, bounds, badType
             }};
           }})()
@@ -293,17 +308,7 @@ class StudioWiringTests(unittest.TestCase):
         self.assertTrue(result["valid"])
         self.assertEqual(
             {name: item["value"] for name, item in result["changes"].items()},
-            {
-                "safeX": 23,
-                "providerY": 23,
-                "quotaY": 73,
-                "percentY": 151,
-                "barY": 305,
-                "barHeight": 23,
-                "resetY": 353,
-                "statusY": 391,
-                "statusHeight": 65,
-            },
+            requested,
         )
         self.assertTrue(all(
             item["valid"] and item["accepted"]
@@ -313,15 +318,15 @@ class StudioWiringTests(unittest.TestCase):
             bounds["min"] <= bounds["max"]
             for bounds in result["bounds"].values()
         ))
+        # safeX's reviewed range is panel-independent design law. barHeight
+        # keeps its reviewed floor, but its ceiling is legitimately narrowed by
+        # the rows around it, so only the law is asserted here.
         self.assertEqual(result["bounds"]["safeX"], {"min": 16, "max": 40})
-        self.assertEqual(result["bounds"]["providerY"], {"min": 0, "max": 46})
-        self.assertEqual(result["bounds"]["quotaY"], {"min": 48, "max": 122})
-        self.assertEqual(result["bounds"]["percentY"], {"min": 100, "max": 177})
-        self.assertEqual(result["bounds"]["barY"], {"min": 277, "max": 320})
-        self.assertEqual(result["bounds"]["barHeight"], {"min": 12, "max": 24})
-        self.assertEqual(result["bounds"]["resetY"], {"min": 336, "max": 364})
-        self.assertEqual(result["bounds"]["statusY"], {"min": 378, "max": 414})
-        self.assertEqual(result["bounds"]["statusHeight"], {"min": 1, "max": 90})
+        self.assertEqual(result["bounds"]["barHeight"]["min"], 12)
+        self.assertLessEqual(result["bounds"]["barHeight"]["max"], 24)
+        for name, bounds in result["bounds"].items():
+            self.assertLessEqual(bounds["min"], hero[name], name)
+            self.assertLessEqual(hero[name], bounds["max"], name)
         self.assertFalse(result["badType"]["accepted"])
         self.assertEqual(result["badType"]["hero"], hero)
 

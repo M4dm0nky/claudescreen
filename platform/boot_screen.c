@@ -6,8 +6,8 @@
 
 /* Samma studio-tokens som OTA-ringen: vitt för det som hänt, muted för det
  * som väntar, äkta svart bakom. Wordmärket i attention-fonten (A-Z). */
-extern const lv_font_t plex_attention_52;
-extern const lv_font_t plex_ui_21;
+extern const lv_font_t plex_attention_25;
+extern const lv_font_t plex_ui_16;
 
 #define COL_MUTED lv_color_hex(0x9298A2)
 
@@ -22,7 +22,7 @@ static const char *const STEP_WORDS[3] = { "WIFI", "TIME", "DATA" };
 void torget_boot_screen_create(void) {
   ui.overlay = lv_obj_create(lv_layer_top());
   lv_obj_remove_style_all(ui.overlay);
-  lv_obj_set_size(ui.overlay, 480, 480);
+  lv_obj_set_size(ui.overlay, TORGET_SCREEN_W, TORGET_SCREEN_H);
   lv_obj_set_pos(ui.overlay, 0, 0);
   lv_obj_set_style_bg_color(ui.overlay, lv_color_black(), 0);
   lv_obj_set_style_bg_opa(ui.overlay, LV_OPA_COVER, 0);
@@ -31,19 +31,22 @@ void torget_boot_screen_create(void) {
   lv_obj_add_flag(ui.overlay, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t *wordmark = lv_label_create(ui.overlay);
-  lv_obj_set_style_text_font(wordmark, &plex_attention_52, 0);
+  /* 52 px skulle mäta 284 px — bredare än glaset. 25:an mäter 135. */
+  lv_obj_set_style_text_font(wordmark, &plex_attention_25, 0);
   lv_obj_set_style_text_color(wordmark, lv_color_white(), 0);
-  lv_obj_align(wordmark, LV_ALIGN_TOP_MID, 0, 170);
+  lv_obj_align(wordmark, LV_ALIGN_TOP_MID, 0, 96);
   lv_label_set_text(wordmark, "VIBEPULSE");
 
-  /* Tre steg med jämn luft, optiskt centrerade som grupp. */
-  static const int STEP_X[3] = { -140, 0, 140 };
+  /* Tre steg med jämn luft, optiskt centrerade som grupp. Delningen följer
+   * panelen: 72 px isär rymmer det bredaste ordet (48 px) utan att de rör
+   * varandra, och gruppen håller sig innanför 240 px. */
+  static const int STEP_X[3] = { -72, 0, 72 };
   for (int i = 0; i < 3; i++) {
     ui.steps[i] = lv_label_create(ui.overlay);
-    lv_obj_set_style_text_font(ui.steps[i], &plex_ui_21, 0);
+    lv_obj_set_style_text_font(ui.steps[i], &plex_ui_16, 0);
     lv_obj_set_style_text_color(ui.steps[i], COL_MUTED, 0);
     lv_obj_set_style_text_letter_space(ui.steps[i], 2, 0);
-    lv_obj_align(ui.steps[i], LV_ALIGN_TOP_MID, STEP_X[i], 268);
+    lv_obj_align(ui.steps[i], LV_ALIGN_TOP_MID, STEP_X[i], 140);
     lv_label_set_text(ui.steps[i], STEP_WORDS[i]);
   }
 }

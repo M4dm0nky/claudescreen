@@ -13,6 +13,7 @@
 extern const lv_font_t plex_attention_18;
 extern const lv_font_t plex_attention_25;
 extern const lv_font_t plex_attention_52;
+extern const lv_font_t plex_ui_12;
 extern const lv_font_t plex_ui_14;
 extern const lv_font_t plex_ui_16;
 extern const lv_font_t plex_ui_21; /* full ASCII incl. lowercase — long-question step-down */
@@ -36,6 +37,11 @@ extern const lv_font_t plex_text_21;
  * restrained red the design law allows — for DENY, and DENY only. */
 #define COL_DIM     lv_color_hex(0x5C687B)
 #define COL_RED     lv_color_hex(0xE5484D)
+
+/* Fullskärmstagningarnas säkra spalt. Egen från kvotsidans VP_SAFE_X: de här
+ * skärmarna har en ram att hålla sig innanför, inte en hårlinje. */
+#define TAKEOVER_X 10
+#define TAKEOVER_W (VP_SCREEN_W - 2 * TAKEOVER_X)
 
 typedef struct {
   lv_obj_t *root;
@@ -317,60 +323,60 @@ static void create_completion(lv_obj_t *app_root) {
                       LV_EVENT_LONG_PRESSED, NULL);
 
   view->outline = bare(view->root);
-  lv_obj_set_pos(view->outline, 8, 8);
-  lv_obj_set_size(view->outline, 464, 464);
+  lv_obj_set_pos(view->outline, 4, 4);
+  lv_obj_set_size(view->outline, VP_SCREEN_W - 8, VP_SCREEN_H - 8);
   lv_obj_set_style_bg_opa(view->outline, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_opa(view->outline, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_width(view->outline, 6, 0);
-  lv_obj_set_style_radius(view->outline, 36, 0);
+  lv_obj_set_style_border_width(view->outline, 3, 0);
+  lv_obj_set_style_radius(view->outline, 18, 0);
 
-  view->provider = label(view->root, &plex_attention_18, COL_WHITE);
-  lv_obj_set_pos(view->provider, 20, 31);
-  lv_obj_set_size(view->provider, 440, 25);
+  view->provider = label(view->root, &plex_ui_12, COL_WHITE);
+  lv_obj_set_pos(view->provider, TAKEOVER_X, 14);
+  lv_obj_set_size(view->provider, TAKEOVER_W, 18);
   lv_obj_set_style_text_align(view->provider, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_letter_space(view->provider, 3, 0);
 
   view->icon_ring = bare(view->root);
-  lv_obj_set_pos(view->icon_ring, 172, 77);
-  lv_obj_set_size(view->icon_ring, 136, 136);
+  lv_obj_set_pos(view->icon_ring, (VP_SCREEN_W - 68) / 2, 40);
+  lv_obj_set_size(view->icon_ring, 68, 68);
   lv_obj_set_style_bg_opa(view->icon_ring, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_opa(view->icon_ring, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(view->icon_ring, 3, 0);
   lv_obj_set_style_radius(view->icon_ring, LV_RADIUS_CIRCLE, 0);
 
   lv_obj_t *claude_group = bare(view->root);
-  lv_obj_set_pos(claude_group, 184, 89);
-  lv_obj_set_size(claude_group, 112, 112);
+  lv_obj_set_pos(claude_group, (VP_SCREEN_W - 56) / 2, 46);
+  lv_obj_set_size(claude_group, 56, 56);
   view->claude_icon = lv_image_create(claude_group);
   lv_image_set_src(view->claude_icon, &tk_img_claude);
-  lv_obj_set_size(view->claude_icon, 112, 112);
+  lv_obj_set_size(view->claude_icon, 56, 56);
   lv_image_set_inner_align(view->claude_icon, LV_IMAGE_ALIGN_STRETCH);
   lv_obj_set_pos(view->claude_icon, 0, 0);
   lv_obj_set_style_image_recolor(view->claude_icon, COL_CLAUDE, 0);
   lv_obj_set_style_image_recolor_opa(view->claude_icon, LV_OPA_COVER, 0);
 
-  view->codex_icon = create_codex_icon(view->root, 184, 89);
+  view->codex_icon = create_codex_icon(view->root, (VP_SCREEN_W - 32) / 2, 58);
 
-  view->title = label(view->root, &plex_attention_52, COL_WHITE);
-  lv_obj_set_pos(view->title, 14, 246);
-  lv_obj_set_size(view->title, 452, 68);
+  view->title = label(view->root, &plex_attention_25, COL_WHITE);
+  lv_obj_set_pos(view->title, TAKEOVER_X, 124);
+  lv_obj_set_size(view->title, TAKEOVER_W, 34);
   lv_obj_set_style_text_align(view->title, LV_TEXT_ALIGN_CENTER, 0);
 
-  view->project = label(view->root, &plex_attention_25, COL_WHITE);
-  lv_obj_set_pos(view->project, 20, 321);
-  lv_obj_set_size(view->project, 440, 34);
+  view->project = label(view->root, &plex_ui_16, COL_WHITE);
+  lv_obj_set_pos(view->project, TAKEOVER_X, 164);
+  lv_obj_set_size(view->project, TAKEOVER_W, 22);
   lv_obj_set_style_text_align(view->project, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_letter_space(view->project, 2, 0);
 
-  view->detail = label(view->root, &plex_ui_14, COL_MUTED);
-  lv_obj_set_pos(view->detail, 20, 365);
-  lv_obj_set_size(view->detail, 440, 25);
+  view->detail = label(view->root, &plex_ui_12, COL_MUTED);
+  lv_obj_set_pos(view->detail, TAKEOVER_X, 190);
+  lv_obj_set_size(view->detail, TAKEOVER_W, 18);
   lv_obj_set_style_text_align(view->detail, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_letter_space(view->detail, 2, 0);
 
-  view->dismiss = label(view->root, &plex_ui_14, COL_MUTED);
-  lv_obj_set_pos(view->dismiss, 20, 430);
-  lv_obj_set_size(view->dismiss, 440, 26);
+  view->dismiss = label(view->root, &plex_ui_12, COL_MUTED);
+  lv_obj_set_pos(view->dismiss, TAKEOVER_X, 214);
+  lv_obj_set_size(view->dismiss, TAKEOVER_W, 18);
   lv_obj_set_style_text_align(view->dismiss, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_letter_space(view->dismiss, 2, 0);
   lv_label_set_text(view->dismiss, "TAP TO DISMISS");
@@ -484,7 +490,7 @@ static lv_obj_t *ny_button(lv_obj_t *parent, const char *text,
                            lv_color_t accent, bool filled,
                            tk_needs_you_verdict verdict) {
   lv_obj_t *btn = bare(parent);
-  lv_obj_set_style_radius(btn, 18, 0);
+  lv_obj_set_style_radius(btn, 9, 0);
   if (filled) {
     lv_obj_set_style_bg_color(btn, accent, 0);
     lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
@@ -525,8 +531,8 @@ static void create_needs_you(lv_obj_t *app_root) {
   lv_obj_add_event_cb(v->root, needs_you_root_event, LV_EVENT_CLICKED, NULL);
 
   v->frame = bare(v->root);
-  lv_obj_set_pos(v->frame, 14, 14);
-  lv_obj_set_size(v->frame, 452, 452);
+  lv_obj_set_pos(v->frame, 7, 7);
+  lv_obj_set_size(v->frame, VP_SCREEN_W - 14, VP_SCREEN_H - 14);
   lv_obj_set_style_bg_opa(v->frame, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_color(v->frame, COL_CLAUDE, 0);
   lv_obj_set_style_border_opa(v->frame, LV_OPA_COVER, 0);
@@ -535,97 +541,117 @@ static void create_needs_you(lv_obj_t *app_root) {
 
   /* -- ATTRACT: the across-the-room alert, ring carrying the countdown ------ */
   v->a_group = ny_group(v->root);
-  v->a_ring = ny_ring(v->a_group, 240, 150, 78, 9);
+  /* Ringen rymmer alert-maskoten (128x104) — den finns bara i den storleken
+   * och skalas aldrig i körtid, så ringen får rätta sig efter den. */
+  v->a_ring = ny_ring(v->a_group, VP_SCREEN_W / 2, 76, 62, 7);
   v->a_mascot = lv_image_create(v->a_group);
   lv_image_set_src(v->a_mascot, &tk_img_mascot_alert_8);
-  lv_obj_set_pos(v->a_mascot, 176, 96);
+  lv_obj_set_pos(v->a_mascot, (VP_SCREEN_W - 128) / 2, 24);
   lv_obj_remove_flag(v->a_mascot, LV_OBJ_FLAG_CLICKABLE);
-  v->a_word = ny_text(v->a_group, &plex_headline_48, COL_WHITE, 0, 278, 480, 0, C);
+  /* headline_48 skulle bli ~250 px bred — "NEEDS YOU" ryms inte på en rad. */
+  v->a_word = ny_text(v->a_group, &plex_attention_25, COL_WHITE, 0, 152,
+                      VP_SCREEN_W, 0, C);
   lv_label_set_text(v->a_word, "NEEDS YOU");
-  v->a_project = ny_text(v->a_group, &plex_text_21, COL_CLAUDE, 0, 332, 480, 3, C);
-  v->a_tap = ny_text(v->a_group, &plex_ui_16, COL_DIM, 0, 424, 480, 2, C);
+  v->a_project = ny_text(v->a_group, &plex_ui_16, COL_CLAUDE, 0, 186,
+                         VP_SCREEN_W, 2, C);
+  v->a_tap = ny_text(v->a_group, &plex_ui_12, COL_DIM, 0, 214,
+                     VP_SCREEN_W, 2, C);
   lv_label_set_text(v->a_tap, "TAP TO ANSWER");
 
   /* -- Shared decision header: ring + mascot + eyebrow --------------------- */
   v->h_group = ny_group(v->root);
-  v->h_ring = ny_ring(v->h_group, 80, 80, 44, 8);
+  v->h_ring = ny_ring(v->h_group, 48, 46, 30, 5);
   v->h_mascot = lv_image_create(v->h_group);
   lv_image_set_src(v->h_mascot, &tk_img_mascot_asking_4);
-  lv_obj_set_pos(v->h_mascot, 48, 49);
+  lv_obj_set_pos(v->h_mascot, 16, 20);
   lv_obj_remove_flag(v->h_mascot, LV_OBJ_FLAG_CLICKABLE);
-  /* 14 px keeps CLAUDE NEEDS YOU · PROJECT on one line beside the ring; the
-   * design's 15 px has no full-ASCII raster and 16 px wrapped. */
-  v->h_eyebrow = ny_text(v->h_group, &plex_ui_14, COL_CLAUDE, 148, 46, 312, 1, L);
+  /* Bredvid ringen finns ~146 px; raden bryts till två rader. */
+  v->h_eyebrow = ny_text(v->h_group, &plex_ui_12, COL_CLAUDE, 82, 22,
+                         VP_SCREEN_W - 92, 1, L);
 
   /* -- QUESTION body ------------------------------------------------------- */
   v->q_group = ny_group(v->root);
-  v->q_prompt = ny_text(v->q_group, &plex_body_27, COL_WHITE, 148, 70, 300, 0, L);
-  /* Fixed band above the card (y140): two 27px lines. LONG_DOT (not WRAP)
-   * ellipsizes instead of overrunning the recommendation card — the render
-   * steps the font to 21px first so a long ask stays readable, not clipped.
-   * The full question is always in the terminal. */
-  lv_obj_set_height(v->q_prompt, 68);
+  /* Under huvudet i stället för bredvid det: 148 px vid sidan av ringen är
+   * för smalt för en fråga på 240 px panel. */
+  v->q_prompt = ny_text(v->q_group, &plex_ui_16, COL_WHITE,
+                        TAKEOVER_X, 80, TAKEOVER_W, 0, L);
+  /* Fast band ovanför kortet. LONG_DOT (inte WRAP) ellipserar i stället för
+   * att svämma över rekommendationskortet — hela frågan finns i terminalen. */
+  lv_obj_set_height(v->q_prompt, 22);
   lv_label_set_long_mode(v->q_prompt, LV_LABEL_LONG_DOT);
   v->q_card = bare(v->q_group);
-  lv_obj_set_pos(v->q_card, 24, 140);
-  lv_obj_set_size(v->q_card, 432, 92);
+  lv_obj_set_pos(v->q_card, TAKEOVER_X, 106);
+  lv_obj_set_size(v->q_card, TAKEOVER_W, 40);
   lv_obj_set_style_bg_opa(v->q_card, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_color(v->q_card, COL_HAIR, 0);
   lv_obj_set_style_border_opa(v->q_card, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(v->q_card, 2, 0);
-  lv_obj_set_style_radius(v->q_card, 14, 0);
-  v->q_rec = ny_text(v->q_card, &plex_ui_14, COL_CLAUDE, 20, 14, 392, 1, L);
+  lv_obj_set_style_radius(v->q_card, 8, 0);
+  /* På 240 px ryms två rader i kortet. Den statiska etiketten "CLAUDE
+   * RECOMMENDS" får vika — kortets accentram säger redan vad det är, och
+   * rekommendationens EGEN text är det som bär informationen. */
+  v->q_rec = ny_text(v->q_card, &plex_ui_12, COL_CLAUDE, 8, 2,
+                     TAKEOVER_W - 16, 1, L);
   lv_label_set_text(v->q_rec, "CLAUDE RECOMMENDS");
-  v->q_title = ny_text(v->q_card, &plex_body_27, COL_WHITE, 20, 34, 392, 0, L);
-  v->q_sub = ny_text(v->q_card, &plex_ui_16, COL_MUTED, 20, 70, 392, 0, L);
-  v->q_footer = ny_text(v->q_group, &plex_ui_14, COL_DIM, 0, 440, 480, 1, C);
+  lv_obj_add_flag(v->q_rec, LV_OBJ_FLAG_HIDDEN);
+  v->q_title = ny_text(v->q_card, &plex_ui_16, COL_WHITE, 8, 2,
+                       TAKEOVER_W - 16, 0, L);
+  v->q_sub = ny_text(v->q_card, &plex_ui_12, COL_MUTED, 8, 21,
+                     TAKEOVER_W - 16, 0, L);
+  v->q_footer = ny_text(v->q_group, &plex_ui_12, COL_DIM, 0, 210,
+                        VP_SCREEN_W, 0, C);
 
   /* -- APPROVAL body: the command is the hero, in mono --------------------- */
   v->p_group = ny_group(v->root);
-  v->p_desc = ny_text(v->p_group, &plex_body_27, COL_WHITE, 148, 70, 300, 0, L);
+  v->p_desc = ny_text(v->p_group, &plex_ui_16, COL_WHITE,
+                      TAKEOVER_X, 80, TAKEOVER_W, 0, L);
   v->p_chip = bare(v->p_group);
-  lv_obj_set_pos(v->p_chip, 24, 146);
-  lv_obj_set_size(v->p_chip, 58, 26);
+  lv_obj_set_pos(v->p_chip, TAKEOVER_X, 110);
+  lv_obj_set_size(v->p_chip, 46, 20);
   lv_obj_set_style_bg_opa(v->p_chip, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_color(v->p_chip, COL_HAIR, 0);
   lv_obj_set_style_border_opa(v->p_chip, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(v->p_chip, 2, 0);
-  lv_obj_set_style_radius(v->p_chip, 7, 0);
-  v->p_chip_lbl = label(v->p_chip, &plex_ui_14, COL_MUTED);
+  lv_obj_set_style_radius(v->p_chip, 5, 0);
+  v->p_chip_lbl = label(v->p_chip, &plex_ui_12, COL_MUTED);
   lv_obj_center(v->p_chip_lbl);
-  v->p_cmd = ny_text(v->p_group, &plex_mono_40, COL_WHITE, 24, 182, 432, 0, L);
+  v->p_cmd = ny_text(v->p_group, &plex_mono_24, COL_WHITE,
+                     TAKEOVER_X, 136, TAKEOVER_W, 0, L);
 
   /* -- Shared buttons: APPROVE always filled, DENY the one restrained red -- */
-  v->approve = ny_button(v->root, "APPROVE", &plex_attention_25, COL_BLACK,
+  v->approve = ny_button(v->root, "APPROVE", &plex_ui_16, COL_BLACK,
                          COL_CLAUDE, true, TK_NEEDS_YOU_VERDICT_APPROVE);
-  v->deny = ny_button(v->root, "DENY", &plex_attention_25, COL_RED, COL_RED,
+  v->deny = ny_button(v->root, "DENY", &plex_ui_16, COL_RED, COL_RED,
                       false, TK_NEEDS_YOU_VERDICT_DENY);
-  v->leave = ny_button(v->root, "LEAVE IT", &plex_attention_25, COL_MUTED,
+  v->leave = ny_button(v->root, "LEAVE IT", &plex_ui_16, COL_MUTED,
                        COL_DIM, false, TK_NEEDS_YOU_VERDICT_LEAVE_IT);
 
   /* -- PRIVATE: no buttons; the mascot holds the secret at 60% ------------- */
   v->pv_group = ny_group(v->root);
-  v->pv_ring = ny_ring(v->pv_group, 240, 152, 72, 9);
+  v->pv_ring = ny_ring(v->pv_group, VP_SCREEN_W / 2, 78, 56, 7);
   v->pv_mascot = lv_image_create(v->pv_group);
   lv_image_set_src(v->pv_mascot, &tk_img_mascot_neutral_7);
-  lv_obj_set_pos(v->pv_mascot, 184, 96);
+  lv_obj_set_pos(v->pv_mascot, (VP_SCREEN_W - 112) / 2, 32);
   lv_obj_set_style_image_opa(v->pv_mascot, 153, 0); /* 60%: private reads dim */
   lv_obj_remove_flag(v->pv_mascot, LV_OBJ_FLAG_CLICKABLE);
-  v->pv_title = ny_text(v->pv_group, &plex_body_27, COL_WHITE, 0, 274, 480, 1, C);
+  v->pv_title = ny_text(v->pv_group, &plex_ui_16, COL_WHITE, 0, 150,
+                        VP_SCREEN_W, 1, C);
   lv_label_set_text(v->pv_title, "SOMETHING IS WAITING");
-  v->pv_sub = ny_text(v->pv_group, &plex_ui_16, COL_MUTED, 0, 324, 480, 0, C);
+  v->pv_sub = ny_text(v->pv_group, &plex_ui_12, COL_MUTED, 0, 174,
+                      VP_SCREEN_W, 0, C);
   lv_label_set_text(v->pv_sub, "Details stay on the Mac");
-  v->pv_tap = ny_text(v->pv_group, &plex_ui_16, COL_DIM, 0, 420, 480, 2, C);
+  v->pv_tap = ny_text(v->pv_group, &plex_ui_12, COL_DIM, 0, 210,
+                      VP_SCREEN_W, 2, C);
   lv_label_set_text(v->pv_tap, "TAP TO ANSWER AT YOUR DESK");
 
   /* -- PAYOFF: a static beat, no motion until the motion gate -------------- */
   v->po_group = ny_group(v->root);
   v->po_mascot = lv_image_create(v->po_group);
   lv_image_set_src(v->po_mascot, &tk_img_mascot_happy_8);
-  lv_obj_set_pos(v->po_mascot, 176, 120);
+  lv_obj_set_pos(v->po_mascot, (VP_SCREEN_W - 128) / 2, 56);
   lv_obj_remove_flag(v->po_mascot, LV_OBJ_FLAG_CLICKABLE);
-  const int spark[5][3] = {{150, 110, 10}, {322, 96, 12}, {346, 180, 8},
-                           {128, 196, 8}, {306, 236, 10}};
+  const int spark[5][3] = {{75, 52, 5}, {161, 46, 6}, {173, 90, 4},
+                           {64, 98, 4}, {153, 118, 5}};
   for (int i = 0; i < 5; i++) {
     lv_obj_t *s = bare(v->po_group);
     lv_obj_set_pos(s, spark[i][0], spark[i][1]);
@@ -636,9 +662,11 @@ static void create_needs_you(lv_obj_t *app_root) {
   }
   /* "ON IT" without the mockup's full stop: headline_48 is uppercase+digits
    * only, and extending that shared font would risk the burn-rate rasters. */
-  v->po_word = ny_text(v->po_group, &plex_headline_48, COL_WHITE, 0, 300, 480, 0, C);
+  v->po_word = ny_text(v->po_group, &plex_headline_48, COL_WHITE, 0, 168,
+                       VP_SCREEN_W, 0, C);
   lv_label_set_text(v->po_word, "ON IT");
-  v->po_echo = ny_text(v->po_group, &plex_ui_16, COL_MUTED, 0, 358, 480, 0, C);
+  v->po_echo = ny_text(v->po_group, &plex_ui_12, COL_MUTED, 0, 216,
+                       VP_SCREEN_W, 0, C);
 
   lv_obj_add_flag(v->root, LV_OBJ_FLAG_HIDDEN);
 }
@@ -773,21 +801,21 @@ static void render_needs_you(void) {
 
   if (is_question) {
     lv_label_set_text(v->q_prompt, p->has_prompt ? p->prompt : "");
-    /* Keep the question inside its 68px band: 27px for a short ask (<=2 lines),
-     * else step to 21px so a longer one stays two readable lines above the
-     * card instead of overrunning it. LONG_DOT ellipsizes the truly enormous. */
+    /* Keep the question inside its 22px band: 16px for a short ask, else step
+     * to 12px so a longer one stays readable instead of overrunning the card.
+     * LONG_DOT ellipsizes the truly enormous. */
     lv_point_t qsz;
-    lv_text_get_size(&qsz, p->has_prompt ? p->prompt : "", &plex_body_27, 0, 0,
-                     300, LV_TEXT_FLAG_NONE);
+    lv_text_get_size(&qsz, p->has_prompt ? p->prompt : "", &plex_ui_16, 0, 0,
+                     TAKEOVER_W, LV_TEXT_FLAG_NONE);
     lv_obj_set_style_text_font(v->q_prompt,
-                               qsz.y > 68 ? &plex_ui_21 : &plex_body_27, 0);
+                               qsz.y > 22 ? &plex_ui_12 : &plex_ui_16, 0);
     ny_show(v->q_prompt, p->has_prompt);
     /* The recommendation card exists only when Claude marked an option; an
      * unmarked question arrives here alert-only (can_approve already false). */
     lv_label_set_text(v->q_title, p->title);
     lv_label_set_text(v->q_sub, p->has_subtitle ? p->subtitle : "");
     ny_show(v->q_card, p->marked);
-    ny_show(v->q_rec, p->marked);
+    ny_show(v->q_rec, false); /* se create_needs_you: ryms inte på 240 px */
     ny_show(v->q_title, p->marked);
     ny_show(v->q_sub, p->marked && p->has_subtitle);
     int more = (int)p->options_total - 1;
@@ -808,33 +836,41 @@ static void render_needs_you(void) {
     lv_label_set_text(v->p_chip_lbl, tool);
     ny_show(v->p_chip, p->has_tool);
     /* Payload is the hero: mono, verbatim, one stepwise shrink so the longest
-     * approvable command still fits at 432 px before truncation would kick in. */
+     * approvable command still fits in the safe column before truncation
+     * would kick in. mono_24 is the floor — det finns ingen mindre monofont. */
     lv_label_set_text(v->p_cmd, p->title);
     lv_point_t measured;
-    lv_text_get_size(&measured, p->title, &plex_mono_40, 0, 0, LV_COORD_MAX,
+    lv_text_get_size(&measured, p->title, &plex_mono_24, 0, 0, LV_COORD_MAX,
                      LV_TEXT_FLAG_NONE);
-    lv_obj_set_style_text_font(
-        v->p_cmd, measured.x > 432 ? &plex_mono_24 : &plex_mono_40, 0);
+    lv_obj_set_style_text_font(v->p_cmd, &plex_mono_24, 0);
+    lv_label_set_long_mode(v->p_cmd,
+                           measured.x > TAKEOVER_W ? LV_LABEL_LONG_DOT
+                                                   : LV_LABEL_LONG_CLIP);
     ny_show(v->p_group, true);
   }
 
-  /* -- Buttons: every target >= 90 px; APPROVE filled and only where allowed */
-  int approve_y = is_question ? 244 : 252;
+  /* -- Buttons: APPROVE filled and only where allowed. På 240 px panel är
+   * 32 px (~3,7 mm) det största som ryms med tre val — mindre än de 90 px
+   * den stora panelen kunde ge, men det är glasets gräns, inte designens. */
+  int approve_y = is_question ? 148 : 168;
+  const int row_gap = 4, btn_h = 28;
+  const int half_w = (TAKEOVER_W - row_gap) / 2;
   if (offer_approve) {
-    lv_obj_set_pos(v->approve, 24, approve_y);
-    lv_obj_set_size(v->approve, 432, 96);
+    lv_obj_set_pos(v->approve, TAKEOVER_X, approve_y);
+    lv_obj_set_size(v->approve, TAKEOVER_W, btn_h);
     ny_show(v->approve, true);
   }
   if (offer_deny) {
-    int row_y = approve_y + 108;
-    lv_obj_set_pos(v->deny, 24, row_y);
-    lv_obj_set_size(v->deny, 208, 90);
+    int row_y = approve_y + btn_h + row_gap;
+    lv_obj_set_pos(v->deny, TAKEOVER_X, row_y);
+    lv_obj_set_size(v->deny, half_w, btn_h);
     ny_show(v->deny, true);
-    lv_obj_set_pos(v->leave, 248, row_y);
-    lv_obj_set_size(v->leave, 208, 90);
+    lv_obj_set_pos(v->leave, TAKEOVER_X + half_w + row_gap, row_y);
+    lv_obj_set_size(v->leave, half_w, btn_h);
   } else {
-    lv_obj_set_pos(v->leave, 24, offer_approve ? approve_y + 106 : approve_y);
-    lv_obj_set_size(v->leave, 432, 90);
+    lv_obj_set_pos(v->leave, TAKEOVER_X,
+                   offer_approve ? approve_y + btn_h + row_gap : approve_y);
+    lv_obj_set_size(v->leave, TAKEOVER_W, btn_h);
   }
   ny_show(v->leave, true);
 

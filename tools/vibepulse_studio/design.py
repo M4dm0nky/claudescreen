@@ -68,10 +68,15 @@ RGB_COLOR = re.compile(r"#[0-9A-Fa-f]{6}\Z")
 MIN_TEXT_ROW_HEIGHT_PX = 18
 MIN_SECTION_GAP_PX = 8
 MIN_TEXT_ROW_STEP_PX = MIN_TEXT_ROW_HEIGHT_PX + MIN_SECTION_GAP_PX
-PERCENT_FONT_PX = 164
-PERCENT_RENDERED_LINE_HEIGHT_PX = 119
-# The real LVGL raster is authoritative: the 21 px quota row needs enough
-# room for its visible glyphs plus an optical gutter before the 164 px hero.
+# The panel the platform is pinned to, named once so the registry, the Studio
+# server and the design contract can never drift apart.
+DISPLAY_CAPABILITY = "display.lcd-240"
+# The 240 x 240 ST7789 panel: the hero drops to plex_num_84, whose committed
+# raster reports line_height 61 (platform/fonts/plex_num_84.c).
+PERCENT_FONT_PX = 84
+PERCENT_RENDERED_LINE_HEIGHT_PX = 61
+# The real LVGL raster is authoritative: the quota row needs enough
+# room for its visible glyphs plus an optical gutter before the hero.
 MIN_QUOTA_TO_PERCENT_STEP_PX = 28
 
 
@@ -98,9 +103,11 @@ def load_display(spec_dir):
         raise DesignError(
             f"cannot load hardware registry: {_error_summary(error)}",
         ) from error
-    capability = registry.capabilities.get("display.amoled")
+    capability = registry.capabilities.get(DISPLAY_CAPABILITY)
     if not isinstance(capability, dict):
-        raise DesignError("display.amoled is missing from the hardware registry")
+        raise DesignError(
+            f"{DISPLAY_CAPABILITY} is missing from the hardware registry",
+        )
     display = {
         "width": capability.get("width"),
         "height": capability.get("height"),
@@ -148,7 +155,8 @@ def _validate_hero(hero, width, height):
         raise DesignError("hero geometry must remain on screen")
     if hero["percentFontPx"] != PERCENT_FONT_PX:
         raise DesignError(
-            "percentFontPx must remain 164 for the plex_num_164 raster",
+            f"percentFontPx must remain {PERCENT_FONT_PX} "
+            f"for the plex_num_{PERCENT_FONT_PX} raster",
         )
     if hero["providerY"] + MIN_TEXT_ROW_STEP_PX > hero["quotaY"]:
         raise DesignError(
@@ -195,7 +203,7 @@ def validate_design(value, display):
     width, height = _display_dimensions(display)
     if not isinstance(value, dict):
         raise DesignError("document keys do not match the v1 contract")
-    if "canvas" in value or value.get("deviceCapability") != "display.amoled":
+    if "canvas" in value or value.get("deviceCapability") != DISPLAY_CAPABILITY:
         raise DesignError("device facts belong only in the hardware registry")
     if set(value) != DOCUMENT_KEYS:
         raise DesignError("document keys do not match the v1 contract")

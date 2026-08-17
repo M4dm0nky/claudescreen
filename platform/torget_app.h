@@ -18,6 +18,15 @@
 
 #define TORGET_APP_API_VERSION 1
 
+/* Panelens logiska storlek. Plattformens fakta, inte appens: både targetet
+ * och simulatorn ritar mot den här rutan. På targetet paras den ihop med
+ * BSP_LCD_H_RES/V_RES av ett _Static_assert i main/main.c, så kortbytet
+ * aldrig kan glida isär från layouten. */
+#define TORGET_SCREEN_W 240
+#define TORGET_SCREEN_H 240
+/* Samma sanning som text, för fönstertitlar och loggar. */
+#define TORGET_SCREEN_LABEL "240x240"
+
 /* Launcherns ikon, deklarativ: en platta med en glyf och en accentprick.
  * Samma proportioner som bänkens ikon (96-platta, radie 22, 64-pixelglyf).
  * Vill en app ha en riktig bild i stället är det en kontraktsversion till —
@@ -35,7 +44,7 @@ typedef struct {
   const char *name;       /* versaler, visas under ikonen: "SOLELKOLLEN" */
   torget_icon_t icon;
 
-  /* Bygg appens hela UI i root (en 480×480-låda plattformen äger och
+  /* Bygg appens hela UI i root (en TORGET_SCREEN_W×H-låda plattformen äger och
    * visar/gömmer). Körs EN gång vid boot, under UI-låset, innan nätet är
    * uppe. Starta appens egen hämttask här — den ska själv vänta på
    * torget_net_wait() innan den rör nätverket. */

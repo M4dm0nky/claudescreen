@@ -4,8 +4,10 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const MIN_TEXT_ROW_STEP = 26;
 const MIN_SECTION_GAP = 8;
 const MIN_QUOTA_TO_PERCENT_STEP = 28;
-const PERCENT_FONT_PX = 164;
-const PERCENT_RENDERED_LINE_HEIGHT = 119;
+// Must stay in step with tools/vibepulse_studio/design.py — the server is the
+// authority, this is the browser's copy of the same contract.
+const PERCENT_FONT_PX = 84;
+const PERCENT_RENDERED_LINE_HEIGHT = 61;
 // Browser SVG and LVGL use different font rasterizers. These measured offsets
 // align visible IBM Plex Sans ink with the LVGL simulator without changing the
 // firmware layout tokens that remain the geometry authority.

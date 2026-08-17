@@ -1033,8 +1033,8 @@ int main(int argc, char **argv) {
   /* Radbuffrat även vid pipe: fixtureloggen ska överleva en kill. */
   setvbuf(stdout, NULL, _IOLBF, 0);
   lv_init();
-  lv_display_t *disp = lv_sdl_window_create(480, 480);
-  lv_sdl_window_set_title(disp, "Torget 480x480 — G GitHub-star, S agentstatus, T VibePulse, M Max Tracker, [ och ] vy, N nästa app, L launcher");
+  lv_display_t *disp = lv_sdl_window_create(TORGET_SCREEN_W, TORGET_SCREEN_H);
+  lv_sdl_window_set_title(disp, "Torget " TORGET_SCREEN_LABEL " — G GitHub-star, S agentstatus, T VibePulse, M Max Tracker, [ och ] vy, N nästa app, L launcher");
   lv_sdl_mouse_create();
 
   torget_ui_create(); /* bygger apparna via registret, går in i app 0 */

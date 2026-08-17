@@ -45,7 +45,7 @@ for required in (
     "create_quota_page",
     "create_burn_rate_page",
     "usage_presenter_build_quota_page",
-    "plex_num_164",
+    "plex_hero_84",
     "plex_headline_48",
     "plex_ui_16",
     "tk_img_claude_32",
@@ -58,7 +58,7 @@ for required in (
     assert required in source, f"missing full-screen UI primitive: {required}"
 
 assert "extern const lv_font_t plex_num_146" not in source
-assert "VP_PERCENT_FONT_PX == 164" in source
+assert "VP_PERCENT_FONT_PX == 84" in source
 assert "VP_PROVIDER_Y" in source
 assert "#define STAT_VALUE_Y VP_RESET_Y" in source
 assert "VIEW_CLAUDE_DETAILS" not in source
@@ -166,27 +166,29 @@ burn = source[source.index("static void create_burn_rate_page"):]
 burn = burn[:burn.index("static void create_value_page")]
 for copy in ("BURN RATE", "WEEKLY", "FORECAST"):
     assert f'"{copy}"' in burn
-assert "251" in burn, "Burn Rate rows need the approved separator"
+assert "create_hairline(tile, FORECAST_ROW2_Y - 12);" in burn, \
+    "Burn Rate rows need a separator derived from the row token"
 assert "COL_CARD" not in burn
 
-# Value page. It borrows the quota pages' furniture on purpose -- bar on the
-# y=304 token at 24 px with the shared pill radius, the same 3x32 marker, the
-# stats on the family's rows -- because that is what makes it read as this
-# product. Only the hero font differs, and only because the 164 px numerals
-# carry no "$" or "x".
+# Value page. It borrows the quota pages' furniture on purpose -- the same
+# pill radius, the same 3-px-wide marker, the stats on the family's columns --
+# because that is what makes it read as this product. It keeps its own y
+# rhythm: it carries one row more than the quota page (the attribution between
+# hero and bar). Only the hero font differs, because the shared numerals carry
+# no "$" or "x".
 value = source[source.index("static void create_value_page"):]
 value = value[:value.index("static uint64_t agent_packet_age_ms")]
 for copy in ("VALUE", "MONTH TO DATE", "AT LIST API PRICES", "VIA API",
-             "YOU PAID", "BREAK EVEN"):
+             "YOU PAID", "BREAK"):
     assert f'"{copy}"' in value, f"missing value page copy: {copy}"
-assert "lv_obj_set_pos(page->track, VP_SAFE_X, VP_BAR_Y);" in value, \
-    "the bar must sit on the family's own y token"
+assert "lv_obj_set_pos(page->track, VP_SAFE_X, VALUE_BAR_Y);" in value, \
+    "the bar must sit on the value page's own y token"
 assert "lv_obj_set_size(page->track, VP_CONTENT_W, VP_BAR_H);" in value
 assert "LV_RADIUS_CIRCLE" in value, \
     "the pill radius is what makes a bar read as this product's bar"
 assert "lv_obj_set_size(page->marker, 3, VP_BAR_H + 8);" in value, \
     "reuse the family's 3x32 break-even mark, not a bespoke one"
-assert "plex_money_118" in value and "VALUE_HERO_Y" in value
+assert "plex_money_56" in value and "VALUE_HERO_Y" in value
 # Provider accents may only colour a segment, which IS that provider's money.
 assert value.count("COL_CLAUDE") == 2 and value.count("COL_CODEX") == 1, \
     "provider accents belong on bar segments and nowhere else"
@@ -218,6 +220,7 @@ assert "lv_obj_move_foreground(page->marker);" in apply_value
 # already-reviewed page that uses it. Pin both the new recipes and the
 # absence of "$" from the shared ones.
 for recipe, glyph in (("conv Bold     118 \"0x30-0x39,0x24", "plex_money_118"),
+                      ("conv Bold      56 \"0x30-0x39,0x24", "plex_money_56"),
                       ("conv Bold      35 \"0x20,0x24", "plex_money_35")):
     line = next((line for line in font_script.splitlines()
                  if line.startswith(recipe)), "")
@@ -227,7 +230,7 @@ for shared in ("conv Bold     164", "conv Bold     146", "conv Bold      50"):
                 if line.startswith(shared))
     assert "0x24" not in line, \
         f"{shared} must not carry '$': it would shift approved pages"
-for path in ("plex_money_118", "plex_money_35"):
+for path in ("plex_money_118", "plex_money_56", "plex_money_35"):
     generated = root / f"platform/fonts/{path}.c"
     assert generated.is_file(), f"missing generated money font: {path}"
     assert f"const lv_font_t {path}" in generated.read_text()
@@ -345,15 +348,19 @@ assert phase_check < cache_guard < first_overlay_mutation, (
     "that precedes all overlay LVGL mutation"
 )
 
-assert "lv_obj_set_pos(view->outline, 8, 8);" in monitor
-assert "lv_obj_set_size(view->outline, 464, 464);" in monitor
-assert "lv_obj_set_style_border_width(view->outline, 6, 0);" in monitor
-assert "lv_obj_set_style_radius(view->outline, 36, 0);" in monitor
-assert "lv_obj_set_pos(view->icon_ring, 172, 77);" in monitor
-assert "lv_obj_set_size(view->icon_ring, 136, 136);" in monitor
-assert "create_codex_icon(view->root, 184, 89)" in monitor
-for anchor in (31, 246, 321, 365, 430):
+# The completion takeover sits inside a frame derived from the panel token,
+# never a hard-coded 480-era box, and its rows stay in reading order.
+assert "lv_obj_set_pos(view->outline, 4, 4);" in monitor
+assert "lv_obj_set_size(view->outline, VP_SCREEN_W - 8, VP_SCREEN_H - 8);" in monitor
+assert "lv_obj_set_style_border_width(view->outline, 3, 0);" in monitor
+assert "lv_obj_set_style_radius(view->outline, 18, 0);" in monitor
+assert "lv_obj_set_pos(view->icon_ring, (VP_SCREEN_W - 68) / 2, 40);" in monitor
+assert "lv_obj_set_size(view->icon_ring, 68, 68);" in monitor
+assert "create_codex_icon(view->root, (VP_SCREEN_W - 32) / 2, 58)" in monitor
+for anchor in (14, 124, 164, 190, 214):
     assert f", {anchor});" in monitor, f"missing attention y anchor {anchor}"
+# Every takeover column is derived from the shared safe gutter.
+assert "#define TAKEOVER_W (VP_SCREEN_W - 2 * TAKEOVER_X)" in monitor
 
 assert "int usage_screen_current_view(void);" in header
 assert "usage_screen_current_view()" in sim

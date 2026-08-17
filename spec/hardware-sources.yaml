@@ -34,6 +34,21 @@ sources:
     accessed: "2026-08-10"
     board_revision: unknown
 
+  - id: waveshare-lcd-1-54-examples-2026-08-17
+    kind: source-code
+    rank: 3
+    title: waveshareteam/ESP32-S3-Touch-LCD-1.54 vendor examples
+    publisher: Waveshare
+    locator: https://github.com/waveshareteam/ESP32-S3-Touch-LCD-1.54
+    revision: main@2026-08-17
+    accessed: "2026-08-17"
+    board_revision: unknown
+    note: >-
+      Pin map for the LCD-1.54 board. Waveshare publishes no BSP component for
+      it, so ESP-IDF-5.5.1/05_lvgl_example (display + touch),
+      02_button_example (buttons) and 03_qmi8658_example (IMU) are the
+      authoritative GPIO source.
+
   - id: waveshare-cst9217-driver-1.0.0
     kind: source-code
     rank: 3

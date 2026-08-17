@@ -51,7 +51,13 @@ APPROVED_STATES = (
 )
 
 
-def png_bytes(size=(480, 480), color="black"):
+# The panel size is a hardware-registry fact, not a constant this test owns:
+# read it so a board port never has to touch these assertions.
+_PANEL_DISPLAY = load_display(REPOSITORY_ROOT / "spec")
+PANEL = (_PANEL_DISPLAY["width"], _PANEL_DISPLAY["height"])
+
+
+def png_bytes(size=PANEL, color="black"):
     payload = io.BytesIO()
     Image.new("RGB", size, color).save(payload, "PNG")
     return payload.getvalue()
@@ -149,8 +155,8 @@ class StudioApplicationTests(unittest.TestCase):
         self.assertEqual(status, 200)
         hardware = json.loads(body)
         self.assertEqual(set(hardware), {"display", "touch", "amoled"})
-        self.assertEqual(hardware["display"]["width"], 480)
-        self.assertEqual(hardware["display"]["height"], 480)
+        self.assertEqual(hardware["display"]["width"], PANEL[0])
+        self.assertEqual(hardware["display"]["height"], PANEL[1])
         self.assertEqual(hardware["display"]["colorFormat"], "RGB565")
         self.assertTrue(hardware["touch"]["firmwareEnabled"])
         encoded = json.dumps(hardware).lower()
@@ -538,7 +544,7 @@ class StudioApplicationTests(unittest.TestCase):
                 self.assertTrue(stat.S_ISREG(target.lstat().st_mode))
                 with Image.open(target) as image:
                     self.assertEqual(image.format, "PNG")
-                    self.assertEqual(image.size, (480, 480))
+                    self.assertEqual(image.size, PANEL)
                 self.assertEqual(
                     response["digest"], hashlib.sha256(payload).hexdigest()
                 )

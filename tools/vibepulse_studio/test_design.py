@@ -8,6 +8,11 @@ from pathlib import Path
 from unittest import mock
 
 from tools.vibepulse_studio.design import (
+    MIN_QUOTA_TO_PERCENT_STEP_PX,
+    MIN_SECTION_GAP_PX,
+    MIN_TEXT_ROW_STEP_PX,
+    PERCENT_FONT_PX,
+    PERCENT_RENDERED_LINE_HEIGHT_PX,
     DesignError,
     generate_header,
     load_design,
@@ -28,19 +33,20 @@ class DesignTests(unittest.TestCase):
 
     def test_repository_design_is_exact_and_provider_colors_are_locked(self):
         design = load_design(self.path, self.display)
-        self.assertEqual(self.display, {"width": 480, "height": 480})
         self.assertNotIn("canvas", design)
         self.assertEqual(design["palette"]["claude"], "#D97757")
         self.assertEqual(design["palette"]["codex"], "#6F78FF")
         self.assertEqual(design["palette"]["background"], "#000000")
         self.assertNotIn("5-hour", json.dumps(design))
-        self.assertEqual(design["hero"]["providerY"], 22)
-        self.assertEqual(design["hero"]["quotaY"], 72)
-        self.assertEqual(design["hero"]["percentY"], 150)
-        self.assertEqual(design["hero"]["percentFontPx"], 164)
-        self.assertEqual(design["hero"]["barY"], 304)
-        self.assertEqual(design["hero"]["barHeight"], 24)
-        self.assertEqual(design["hero"]["resetY"], 352)
+        # The geometry belongs to whichever panel the registry names; only the
+        # contract between design and panel is asserted here, so a board port
+        # never has to rewrite this test.
+        hero = design["hero"]
+        self.assertEqual(hero["percentFontPx"], PERCENT_FONT_PX)
+        self.assertEqual(hero["contentWidth"],
+                         self.display["width"] - 2 * hero["safeX"])
+        self.assertLessEqual(hero["statusY"] + hero["statusHeight"],
+                             self.display["height"])
 
     def test_device_facts_cannot_be_changed(self):
         design = copy.deepcopy(self.design)
@@ -108,22 +114,24 @@ class DesignTests(unittest.TestCase):
                     validate_design(design, self.display)
 
     def test_percent_font_is_locked_to_generated_raster(self):
-        for value in (163, 165):
+        for value in (PERCENT_FONT_PX - 1, PERCENT_FONT_PX + 1):
             with self.subTest(value=value):
                 design = copy.deepcopy(self.design)
                 design["hero"]["percentFontPx"] = value
                 with self.assertRaisesRegex(
-                        DesignError, "percentFontPx.*164"):
+                        DesignError, f"percentFontPx.*{PERCENT_FONT_PX}"):
                     validate_design(design, self.display)
 
     def test_geometry_rejects_equal_or_overlapping_sections(self):
+        hero = self.design["hero"]
         cases = (
-            ({"providerY": 86}, "reading order"),
-            ({"quotaY": 123}, "reading order"),
-            ({"percentY": 178}, "percentage"),
-            ({"resetY": 294}, "progress bar"),
-            ({"statusY": 312}, "reset row"),
-            ({"statusY": 420, "statusHeight": 66}, "screen"),
+            ({"providerY": hero["quotaY"]}, "reading order"),
+            ({"quotaY": hero["percentY"]}, "reading order"),
+            ({"percentY": hero["barY"]}, "percentage"),
+            ({"resetY": hero["barY"] + hero["barHeight"]}, "progress bar"),
+            ({"statusY": hero["resetY"]}, "reset row"),
+            ({"statusY": self.display["height"] - 1,
+              "statusHeight": hero["statusHeight"]}, "screen"),
         )
         for changes, message in cases:
             with self.subTest(changes=changes):
@@ -133,23 +141,34 @@ class DesignTests(unittest.TestCase):
                     validate_design(design, self.display)
 
     def test_percent_uses_rendered_line_height(self):
+        # The font's declared px is larger than its rendered line height; the
+        # validator must budget the rendered height, not the nominal size.
         design = copy.deepcopy(self.design)
-        design["hero"]["percentY"] = 150
-        design["hero"]["barY"] = 304
+        hero = design["hero"]
+        hero["barY"] = (hero["percentY"] + PERCENT_RENDERED_LINE_HEIGHT_PX
+                        + MIN_SECTION_GAP_PX)
+        hero["resetY"] = hero["barY"] + hero["barHeight"] + MIN_SECTION_GAP_PX
+        hero["statusY"] = hero["resetY"] + MIN_TEXT_ROW_STEP_PX
+        hero["statusHeight"] = self.display["height"] - hero["statusY"]
         self.assertIs(validate_design(design, self.display), design)
 
     def test_rendered_percent_still_needs_optical_gap(self):
         design = copy.deepcopy(self.design)
-        design["hero"]["barY"] = 276
+        hero = design["hero"]
+        hero["barY"] = (hero["percentY"] + PERCENT_RENDERED_LINE_HEIGHT_PX
+                        + MIN_SECTION_GAP_PX - 1)
         with self.assertRaisesRegex(DesignError, "percentage.*progress bar"):
             validate_design(design, self.display)
 
     def test_geometry_accounts_for_text_row_extents(self):
+        hero = self.design["hero"]
         cases = (
-            ({"providerY": 78}, "provider row"),
-            ({"quotaY": 123}, "quota row"),
-            ({"quotaY": 104, "percentY": 131}, "quota row"),
-            ({"resetY": 380}, "reset row"),
+            ({"providerY": hero["quotaY"] - MIN_TEXT_ROW_STEP_PX + 1},
+             "provider row"),
+            ({"quotaY": hero["percentY"] - MIN_QUOTA_TO_PERCENT_STEP_PX + 1},
+             "quota row"),
+            ({"resetY": hero["statusY"] - MIN_TEXT_ROW_STEP_PX + 1},
+             "reset row"),
         )
         for changes, message in cases:
             with self.subTest(changes=changes):
@@ -174,10 +193,11 @@ class DesignTests(unittest.TestCase):
         first = generate_header(design, self.display)
         second = generate_header(design, self.display)
         self.assertEqual(first, second)
-        self.assertIn("#define VP_SCREEN_W 480", first)
-        self.assertIn("#define VP_SCREEN_H 480", first)
-        self.assertIn("#define VP_SAFE_X 22", first)
-        self.assertIn("#define VP_STATUS_H 66", first)
+        self.assertIn(f"#define VP_SCREEN_W {self.display['width']}", first)
+        self.assertIn(f"#define VP_SCREEN_H {self.display['height']}", first)
+        self.assertIn(f"#define VP_SAFE_X {design['hero']['safeX']}", first)
+        self.assertIn(
+            f"#define VP_STATUS_H {design['hero']['statusHeight']}", first)
         self.assertIn("#define VP_COLOR_CLAUDE 0xD97757", first)
         self.assertIn("#define VP_COLOR_CODEX 0x6F78FF", first)
         self.assertEqual(first.count("#define VP_COLOR_"), 7)

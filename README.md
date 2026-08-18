@@ -7,6 +7,10 @@
 > panel-near layer lives in `components/board_lcd_1_54/`, and every screen was
 > re-laid out for half the pixels in each direction.
 >
+> **Working on this port? Start with [docs/port-lcd-1.54.md](docs/port-lcd-1.54.md)** —
+> pin map, the resolution chain, the text-fitting tool and its rules, the build
+> gotchas, and what is still open.
+>
 > See [upstream issue #5](https://github.com/niclasvestlund-YT/vibepulse/issues/5)
 > ("Hardware ports: other boards and panel sizes") for the maintainer's take on
 > ports. Everything below is the upstream README unless noted.

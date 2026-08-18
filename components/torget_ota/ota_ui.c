@@ -73,6 +73,15 @@ extern const lv_font_t plex_ui_12;
 static atomic_bool s_tap_snooze;
 static atomic_bool s_tap_yes;
 
+/* Sant tills main.c sager annat: en anropare som aldrig rapporterar (t.ex.
+ * simulatorn) ska behalla sina pill. Sätts en gång vid boot och lases sedan
+ * i renderingen — inget varv i tiden, ingen last. */
+static bool s_touch_available = true;
+
+void torget_ota_ui_set_touch_available(bool available) {
+  s_touch_available = available;
+}
+
 static void overlay_clicked_cb(lv_event_t *event) {
   (void)event;
   atomic_store(&s_tap_snooze, true);
@@ -268,9 +277,28 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
   lv_label_set_text(ui.word, state_word(state));
   lv_label_set_text(ui.detail, state_detail(state));
 
+  /* Detaljraden ar dampad i alla lagen utom ett — se nedan. Aterstall alltid
+   * forst, sa ingen tidigare ritning lacker sin farg in i nasta. */
+  lv_obj_set_style_text_color(ui.detail, COL_DETAIL, 0);
+
   if (state == TG_OTA_UI_NOTICE) {
-    lv_obj_remove_flag(ui.later, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(ui.update, LV_OBJ_FLAG_HIDDEN);
+    /* Utan touch ar pillren ett lofte enheten inte kan halla (2026-08-18):
+     * de ritas inte alls, och detaljraden namner tangenten i stallet. Med
+     * touch ar allt som forut. */
+    if (s_touch_available) {
+      lv_obj_remove_flag(ui.later, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_remove_flag(ui.update, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(ui.later, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_add_flag(ui.update, LV_OBJ_FLAG_HIDDEN);
+      lv_label_set_text(ui.detail, "HOLD KEY 3S");
+      /* Vit, inte dampad: i alla andra lagen ar detaljraden en bifot till
+       * nagot storre (KEY CLOSES bredvid klockan, SHA-256 bredvid siffran).
+       * Har ar den skarmens ENDA anvisning, och den ska inte vara det
+       * tystaste pa glaset. Fonten star kvar i plex_ui_12 sa matningen i
+       * tools/text_fit.py fortsatter beskriva raden som den faktiskt ritas. */
+      lv_obj_set_style_text_color(ui.detail, lv_color_white(), 0);
+    }
   } else {
     lv_obj_add_flag(ui.later, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(ui.update, LV_OBJ_FLAG_HIDDEN);
@@ -323,7 +351,14 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
    * mittsiffran, väl innanför bågens innerradie. */
   lv_obj_align(ui.center, LV_ALIGN_CENTER, 0, ARC_CY - TORGET_SCREEN_H / 2);
   lv_obj_align_to(ui.pctsign, ui.center, LV_ALIGN_OUT_RIGHT_BOTTOM, 2, -8);
-  lv_obj_align(ui.detail, LV_ALIGN_CENTER, 0, ARC_CY - TORGET_SCREEN_H / 2 + 44);
+  /* Tangenttexten tar UPDATE-pillrets plats, inte detaljradens vanliga:
+   * ogat ska landa dar knappen skulle ha suttit och lasa vad man gor i
+   * stallet. Ovriga lagen behaller raden under mittsiffran. */
+  if (state == TG_OTA_UI_NOTICE && !s_touch_available)
+    lv_obj_align(ui.detail, LV_ALIGN_TOP_MID, 0, PILL_UPDATE_Y + PILL_H / 2);
+  else
+    lv_obj_align(ui.detail, LV_ALIGN_CENTER, 0,
+                 ARC_CY - TORGET_SCREEN_H / 2 + 44);
   /* I NOTICE bor versionen INNE i ringen (under READY) — pillren äger
    * ytan under ringen. Övriga lägen behåller raden under ringen. */
   if (state == TG_OTA_UI_NOTICE)

@@ -571,6 +571,11 @@ void app_main(void) {
   /* OTA-overlayn EFTER det delade UI:t, på topplagret, dold tills KEY3-
    * hållet öppnar underhållsfönstret — appträdet rörs aldrig. */
   torget_ota_ui_create();
+  /* Overlayn får veta om glaset kan svara på ett finger. Utan touch ritar
+   * UPDATE READY inga pill — den namnger tangenten i stället (2026-08-18:
+   * takeovern erbjöd två knappar som ingen kunde trycka på, och touchens
+   * tysta fall är per konstruktion inte fatalt). */
+  torget_ota_ui_set_touch_available(s_touch != NULL);
   lv_timer_create(tick_cb, TICK_EVERY_MS, NULL);
   torget_ui_unlock();
 

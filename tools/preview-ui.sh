@@ -82,7 +82,13 @@ from PIL import Image
 from tools.hardware_registry import load_registry
 
 registry = load_registry(repo / "spec")
-display = registry.capabilities["display.amoled"]
+# DEN HÄR forkens panel, inte uppströms: `display.amoled` stod kvar här efter
+# porten (2026-08-17) och lät verktyget kräva 480x480 av 240x240-bilder, så
+# den visuella grinden gick inte att passera alls. Kapabilitets-id:t ägs av
+# design.py — en plats, som resten av upplösningskedjan.
+from tools.vibepulse_studio.design import DISPLAY_CAPABILITY
+
+display = registry.capabilities[DISPLAY_CAPABILITY]
 expected = (display["width"], display["height"])
 expected_names = {
     "torget-vibepulse-claude-fable.bmp",
@@ -130,6 +136,38 @@ expected_names = {
     "torget-vibepulse-tracker-codex-full.bmp",
     "torget-vibepulse-tracker-empty.bmp",
     "torget-vibepulse-tracker-stale.bmp",
+    # Bootskärmens tre lägen och OTA-overlayns fem. Listan hade halkat 28
+    # bilder efter sim/main.c (2026-08-18) — verktyget dog på "capture set
+    # mismatch" for alla, vilket gor den visuella grinden till nagot man
+    # hoppar over i stallet for nagot man passerar.
+    "torget-boot-cold.bmp",
+    "torget-boot-time.bmp",
+    "torget-boot-wifi.bmp",
+    "torget-ota-ring-open.bmp",
+    "torget-ota-ring-receiving.bmp",
+    "torget-ota-ring-verifying.bmp",
+    "torget-ota-ring-restarting.bmp",
+    "torget-ota-ring-notice.bmp",
+    "torget-ota-ring-notice-no-touch.bmp",
+    "torget-vibepulse-needs-you-approval.bmp",
+    "torget-vibepulse-needs-you-attract.bmp",
+    "torget-vibepulse-needs-you-none.bmp",
+    "torget-vibepulse-needs-you-payoff.bmp",
+    "torget-vibepulse-needs-you-private.bmp",
+    "torget-vibepulse-needs-you-question.bmp",
+    "torget-vibepulse-needs-you-question-long.bmp",
+    "torget-vibepulse-session-active.bmp",
+    "torget-vibepulse-session-idle.bmp",
+    "torget-vibepulse-session-unknown.bmp",
+    "torget-vibepulse-value-ahead.bmp",
+    "torget-vibepulse-value-both.bmp",
+    "torget-vibepulse-value-early.bmp",
+    "torget-vibepulse-value-no-data.bmp",
+    "torget-vibepulse-value-no-plan-cost.bmp",
+    "torget-vibepulse-value-partial.bmp",
+    "torget-vibepulse-value-solo.bmp",
+    "torget-vibepulse-value-uneven.bmp",
+    "torget-vibepulse-value-wide.bmp",
 }
 actual_names = {path.name for path in capture_dir.iterdir()}
 missing = sorted(expected_names - actual_names)

@@ -39,6 +39,17 @@ void torget_ota_ui_set(tg_ota_ui_state state, unsigned percent,
  * kosmetik och nästa anrop skriver om. Samma trådregel som set(). */
 void torget_ota_ui_set_version(const char *version);
 
+/* Har den här enheten en fungerande touch? Overlayn antar JA tills någon
+ * säger annat, så simulatorn och varje ny anropare beter sig som förut.
+ *
+ * Utan touch ritar NOTICE-läget INGA pill — det skriver "HOLD KEY 3S", den
+ * väg som fortfarande finns. Läxan 2026-08-18: touchinit får misslyckas
+ * (panelen är poängen, en bootloop är värre) och lämnar bara en ESP_LOGE-rad,
+ * medan en död touchpanel ser exakt ut som en levande. Takeovern erbjöd två
+ * knappar som ingen kunde trycka på, och sa inte ett ord om varför.
+ * Kallas EFTER torget_ota_ui_create(). */
+void torget_ota_ui_set_touch_available(bool available);
+
 /* Notisens avfärdande: overlayn slukar touch, och ett tryck i NOTICE-läget
  * sätter en atomär flagga som tjänstens vakt konsumerar (LVGL-tasken får
  * aldrig själv röra tjänstelogik). Returnerar true en gång per tryck. */

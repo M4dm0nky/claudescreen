@@ -905,6 +905,15 @@ static int run_vibepulse_static_qa(void) {
   torget_ota_ui_set_version("v0.2.1-31-gnotice");
   torget_ota_ui_set(TG_OTA_UI_NOTICE, 0, 0);
   dump_overlay_frame("ota-ring-notice");
+  /* Samma takeover pa en enhet vars touch inte kom upp (2026-08-18): inga
+   * pill alls, tangentvagen dar JA-knappen skulle ha suttit. Dedupe-nyckeln
+   * ar (lage, procent, sekunder), sa vi maste ga via HIDDEN for att fa en
+   * ny ritning av samma lage. */
+  torget_ota_ui_set(TG_OTA_UI_HIDDEN, 0, 0);
+  torget_ota_ui_set_touch_available(false);
+  torget_ota_ui_set(TG_OTA_UI_NOTICE, 0, 0);
+  dump_overlay_frame("ota-ring-notice-no-touch");
+  torget_ota_ui_set_touch_available(true);
   torget_ota_ui_set(TG_OTA_UI_HIDDEN, 0, 0);
 
   /* Value multiple. Every state the parser can hand the page gets its own

@@ -17,53 +17,24 @@ SCRIPT_PATH = ROOT / "tools/preview-ui.sh"
 SIM_PATH = ROOT / "sim/main.c"
 RUNNER_PATH = ROOT / "test/run.sh"
 
-EXPECTED_BMPS = {
-    "torget-vibepulse-claude-fable.bmp",
-    "torget-vibepulse-claude-all.bmp",
-    "torget-vibepulse-codex-weekly.bmp",
-    "torget-vibepulse-codex-weekly-live-46.bmp",
-    "torget-vibepulse-claude-fable-cached-stale.bmp",
-    "torget-vibepulse-codex-weekly-cached-stale.bmp",
-    "torget-vibepulse-claude-fable-no-data.bmp",
-    "torget-vibepulse-burn-speed-up.bmp",
-    "torget-vibepulse-burn-on-pace.bmp",
-    "torget-vibepulse-burn-early.bmp",
-    "torget-vibepulse-burn-learning.bmp",
-    "torget-vibepulse-burn-unavailable.bmp",
-    "torget-vibepulse-claude-stale.bmp",
-    "torget-vibepulse-claude-missing.bmp",
-    "torget-vibepulse-codex-missing.bmp",
-    "torget-vibepulse-claude-single-working.bmp",
-    "torget-vibepulse-claude-lease-expired.bmp",
-    "torget-vibepulse-claude-multi-chat.bmp",
-    "torget-vibepulse-claude-idle.bmp",
-    "torget-vibepulse-codex-single-working.bmp",
-    "torget-vibepulse-codex-multi-chat.bmp",
-    "torget-vibepulse-codex-idle.bmp",
-    "torget-vibepulse-codex-stale.bmp",
-    "torget-vibepulse-github-live.bmp",
-    "torget-vibepulse-github-cached.bmp",
-    "torget-vibepulse-github-missing.bmp",
-    "torget-vibepulse-github-popup-before.bmp",
-    "torget-vibepulse-github-star-popup.bmp",
-    "torget-vibepulse-github-popup-return.bmp",
-    "torget-vibepulse-claude-today-missing.bmp",
-    "torget-vibepulse-claude-today-contradictory.bmp",
-    "torget-vibepulse-claude-zero-total.bmp",
-    "torget-vibepulse-codex-full-total.bmp",
-    "torget-vibepulse-claude-needs-you.bmp",
-    "torget-vibepulse-codex-needs-you.bmp",
-    "torget-vibepulse-claude-error.bmp",
-    "torget-vibepulse-codex-error.bmp",
-    "torget-vibepulse-two-waiting-queued.bmp",
-    "torget-vibepulse-claude-done-static.bmp",
-    "torget-vibepulse-codex-done-static.bmp",
-    "torget-vibepulse-claude-swedish-project.bmp",
-    "torget-vibepulse-tracker-claude-coldstart.bmp",
-    "torget-vibepulse-tracker-codex-full.bmp",
-    "torget-vibepulse-tracker-empty.bmp",
-    "torget-vibepulse-tracker-stale.bmp",
-}
+# Härledd, inte kopierad: den här listan fanns i två exemplar och den ena
+# halkade 28 bilder efter den andra (2026-08-18). Skriptet äger uppsättningen;
+# testet läser den. Samma sak med panelstorleken — den bor i registret bakom
+# design.py:s DISPLAY_CAPABILITY, inte som en siffra i ett test.
+sys.path.insert(0, str(ROOT))
+from tools.hardware_registry import load_registry  # noqa: E402
+from tools.vibepulse_studio.design import DISPLAY_CAPABILITY  # noqa: E402
+
+_display = load_registry(ROOT / "spec").capabilities[DISPLAY_CAPABILITY]
+PANEL_SIZE = (_display["width"], _display["height"])
+
+EXPECTED_BMPS = set(
+    re.findall(
+        r'"(torget-[a-z0-9-]+\.bmp)"',
+        SCRIPT_PATH.read_text(encoding="utf-8"),
+    )
+)
+assert EXPECTED_BMPS, "kunde inte läsa förväntade bilder ur preview-ui.sh"
 EXPECTED_PNGS = {
     f"{Path(name).stem.removeprefix('torget-')}.png"
     for name in EXPECTED_BMPS
@@ -81,7 +52,7 @@ def extract_heredoc(script, delimiter):
     return match.group("source")
 
 
-def write_bmp(path, size=(480, 480), color="navy"):
+def write_bmp(path, size=PANEL_SIZE, color="navy"):
     Image.new("RGB", size, color).save(path)
 
 
@@ -126,7 +97,14 @@ class PreviewWiringTests(unittest.TestCase):
             "from tools.hardware_registry import load_registry",
             self.script,
         )
-        self.assertIn('registry.capabilities["display.amoled"]', self.script)
+        # Inte "display.amoled": id:t ägs av design.py så porten till ett
+        # annat kort räcker att göra på ETT ställe. Det gamla hårdkodade
+        # id:t lät verktyget kräva 480x480 av 240x240-bilder (2026-08-18).
+        self.assertIn(
+            "from tools.vibepulse_studio.design import DISPLAY_CAPABILITY",
+            self.script,
+        )
+        self.assertIn("registry.capabilities[DISPLAY_CAPABILITY]", self.script)
         self.assertIn('display["width"]', self.script)
         self.assertIn('display["height"]', self.script)
         self.assertNotIn('["properties"]', self.script)
@@ -210,7 +188,7 @@ class ConverterBehaviorTests(unittest.TestCase):
             )
             for output in output_dir.glob("*.png"):
                 with Image.open(output) as image:
-                    self.assertEqual(image.size, (480, 480))
+                    self.assertEqual(image.size, PANEL_SIZE)
                     self.assertEqual(image.mode, "RGB")
             self.assertEqual(
                 {path.name for path in capture_dir.iterdir()},
@@ -277,7 +255,10 @@ class ConverterBehaviorTests(unittest.TestCase):
             result = self.run_converter(capture_dir, output_dir)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn(str(wrong), result.stderr)
-            self.assertIn("expected 480x480, got 32x32", result.stderr)
+            self.assertIn(
+                f"expected {PANEL_SIZE[0]}x{PANEL_SIZE[1]}, got 32x32",
+                result.stderr,
+            )
             self.assertTrue(wrong.is_file())
 
 

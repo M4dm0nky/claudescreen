@@ -55,6 +55,15 @@ static const char *TAG = "torget";
  * Se motiveringen vid sg_rotation_start() längre ned. */
 #define TORGET_AUTOROTATE 0
 
+/* Användarknappen — den som bär KEY3:s tre avsikter (nästa app, panik,
+ * underhållsfönster). Kortets ENDA knapp märkt KEY sitter på BSP_BUTTON_PLUS;
+ * uppmätt på den fysiska enheten 2026-08-18 genom att logga BOOT/PWR/PLUS och
+ * trycka: bara GPIO4 rörde sig, BOOT och PWR låg still. Porten ärvde
+ * AMOLED-kortets GPIO18, som inte är någon knapp här — enda vägen in i
+ * underhållsfönstret var alltså död, och tyst. Gå via BSP-makrot, aldrig via
+ * siffran, så nästa kortbyte inte upprepar det. */
+#define TORGET_KEY_GPIO BSP_BUTTON_PLUS
+
 /* Kortet och layouten måste vara samma panel. Byts kortkomponenten utan att
  * plattformens ruta följer med ritar apparna mot fel storlek och felet syns
  * först på glaset — här dör bygget i stället. */
@@ -295,7 +304,7 @@ static void tick_cb(lv_timer_t *t) {
   if (s_touch && lv_indev_get_state(s_touch) == LV_INDEV_STATE_PRESSED)
     s_last_touch_us = now;
 
-  /* KEY3 (GPIO18, aktiv låg): kort tryck = nästa app, tre sekunders håll =
+  /* KEY (TORGET_KEY_GPIO, aktiv låg): kort tryck = nästa app, tre sekunders håll =
    * OTA-underhållsfönster. Tidsreglerna bor i den värdtestade knappolicyn;
    * 10 Hz-ticken pollar vidare medan knappen är nere så hållet avfyras
    * utan släpp. Körs i LVGL-tasken — därför bara atomära tjänsteanrop här,
@@ -316,7 +325,7 @@ static void tick_cb(lv_timer_t *t) {
   }
 
   static tg_button_policy key3;
-  bool key3_down = gpio_get_level(GPIO_NUM_18) == 0;
+  bool key3_down = gpio_get_level(TORGET_KEY_GPIO) == 0;
   tg_button_action key3_action = tg_button_update(&key3, key3_down, now);
   if (key3_down)
     s_last_touch_us = now; /* knappkontakt är aktivitet, precis som touch */
@@ -538,10 +547,10 @@ void app_main(void) {
   (void)s_touch;
 #endif
 
-  /* KEY3 (GPIO18, aktiv låg enligt spec/hardware.md): intern pullup,
-   * pollas av tick_cb som appväxlare. */
+  /* KEY (TORGET_KEY_GPIO, aktiv låg): intern pullup, pollas av tick_cb som
+   * appväxlare. */
   gpio_config_t key3 = {
-    .pin_bit_mask = 1ULL << GPIO_NUM_18,
+    .pin_bit_mask = 1ULL << TORGET_KEY_GPIO,
     .mode = GPIO_MODE_INPUT,
     .pull_up_en = GPIO_PULLUP_ENABLE,
   };
@@ -565,11 +574,13 @@ void app_main(void) {
   lv_timer_create(tick_cb, TICK_EVERY_MS, NULL);
   torget_ui_unlock();
 
-  /* Fysisk sanning i loggen: KEY3:s råa nivå vid boot. Låg utan finger =
-   * pinnen är inte att lita på förrän knappolicyns väpning släppt igenom
-   * den (så hände 2026-08-14, då ett fönster öppnade sig självt). */
-  ESP_LOGI(TAG, "KEY3 rå nivå vid boot: %d (1 = släppt)",
-           gpio_get_level(GPIO_NUM_18));
+  /* Fysisk sanning i loggen: KEY:s råa nivå vid boot, MED pinnumret. Låg utan
+   * finger = pinnen är inte att lita på förrän knappolicyns väpning släppt
+   * igenom den (så hände 2026-08-14, då ett fönster öppnade sig självt).
+   * Numret står i loggen sedan 2026-08-18: den tysta knappen på det här
+   * kortet gick inte att se, just för att raden bara sa "KEY3". */
+  ESP_LOGI(TAG, "KEY (GPIO%d) rå nivå vid boot: %d (1 = släppt)",
+           TORGET_KEY_GPIO, gpio_get_level(TORGET_KEY_GPIO));
 
   wifi_start();
   /* Nättasken FÖRE OTA-vakten: apparnas dataväg är plattformens kritiska

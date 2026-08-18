@@ -32,6 +32,12 @@ Pins come from the vendor's own ESP-IDF 5.5.1 examples in
 | Touch INT / RST | GPIO48 / GPIO47 |
 | Buttons BOOT / PWR / PLUS | GPIO0 / GPIO5 / GPIO4 |
 
+**The button silkscreened KEY is PLUS, GPIO4** — measured on the unit
+2026-08-18 by logging all three under a press; BOOT and PWR never moved. It
+carries KEY3's three intents (next app, panic, maintenance window) via
+`TORGET_KEY_GPIO` in `main/main.c`. Use the `BSP_BUTTON_*` macro, never the
+number. See §9.
+
 Two things that are easy to get wrong:
 
 - **The panel ships colour-inverted.** `esp_lcd_panel_invert_color(panel, true)`
@@ -211,8 +217,40 @@ power setting, not firmware.
    rather than trusting the constants.
 2. **Touch alignment** — `main.c` sets `swap_xy/mirror_x/mirror_y` all 0 and
    this has **never been checked on the glass**. Tap bottom-left and top-right
-   and see whether the hit lands where the finger did.
+   and see whether the hit lands where the finger did. Sharpened 2026-08-18:
+   the CST816 itself is fine (`CST816S: IC id: 182`, "Touch input device
+   registered successfully" in the boot log), yet the UPDATE pill on the OTA
+   takeover did not answer a finger. A live touch chip plus a dead-feeling
+   glass is the signature of wrong axes, and this is the remaining suspect.
 3. **Auto-rotation** — see §5.
+4. **The capability registry still calls itself the AMOLED board** —
+   `spec/hardware-capabilities.yaml` opens with
+   `board: waveshare-esp32-s3-touch-amoled-2.16` while carrying this board's
+   entries (`display.lcd-240`, `input.key-lcd-1-54`). Consequence, hit
+   2026-08-18: a capability cannot cite the 1.54 unit in a `verification:`
+   block, because `hardware_registry.py` matches the unit's board against that
+   header — so pins measured on the physical unit have to stay
+   `unit_verified: unknown`. Splitting the registry per board is the fix.
+
+## 9. The silent button (2026-08-18)
+
+The port carried `main.c` over unchanged, including `gpio_get_level(GPIO_NUM_18)`
+— the AMOLED board's KEY3. On this board GPIO18 is not a button, so with an
+internal pull-up it reads "released" forever. Every KEY3 intent was dead: app
+switching, the Needs You panic, and — the one that hurt — the OTA maintenance
+window, which by design can be opened from nowhere else. The panel showed
+UPDATE READY, the pusher waited, and neither could reach the other.
+
+What made it invisible: this port's own BSP defines `BSP_BUTTON_BOOT/PWR/PLUS`
+and **used them nowhere**, the pin table above listed them correctly, and the
+boot log printed `KEY3 rå nivå vid boot: 1` — a pin nobody had connected,
+truthfully reporting "released". A dead input has no error path. It just never
+fires.
+
+The repair: `TORGET_KEY_GPIO` (= `BSP_BUTTON_PLUS`) in `main/main.c`, the boot
+log now prints the pin number with the level, and the on-glass detail during an
+open window says `KEY CLOSES` rather than naming a button this board does not
+have.
 
 ## Provenance
 

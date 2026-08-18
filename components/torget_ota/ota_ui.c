@@ -97,7 +97,7 @@ static struct {
   lv_obj_t *arc;     /* lucktid (OPEN) eller mottagen andel (övriga)     */
   lv_obj_t *center;  /* mm:ss (OPEN) eller procentsiffrorna (övriga)    */
   lv_obj_t *pctsign; /* "%" bredvid siffrorna — dolt i OPEN             */
-  lv_obj_t *detail;  /* KEY3 CLOSES / SHA-256 — tomt annars             */
+  lv_obj_t *detail;  /* KEY CLOSES / SHA-256 — tomt annars              */
   lv_obj_t *version; /* körande version (OPEN) / inkommande (övriga)    */
   lv_obj_t *later;   /* NOTICE: snooze-pillret (vänster, dämpat)        */
   lv_obj_t *update;  /* NOTICE: JA-pillret (höger, vitt) — enda JA:et   */
@@ -226,7 +226,7 @@ static const char *state_word(tg_ota_ui_state state) {
  * sitt ord och sin siffra — en dominerande siffra, inga bihang. */
 static const char *state_detail(tg_ota_ui_state state) {
   switch (state) {
-    case TG_OTA_UI_OPEN:      return "KEY3 CLOSES";
+    case TG_OTA_UI_OPEN:      return "KEY CLOSES";
     case TG_OTA_UI_VERIFYING: return "SHA-256";
     case TG_OTA_UI_NOTICE:    return "";
     default:                  return "";

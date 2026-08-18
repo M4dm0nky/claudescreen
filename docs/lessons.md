@@ -21,6 +21,38 @@ point at the backlog item.
 
 ---
 
+## 2026-08-18 · The port kept the old board's button pin, and nothing said so
+
+**What happened:** the panel showed UPDATE READY, `tools/ota-flash.sh` waited,
+and the two could not be introduced. Neither the UPDATE pill nor a 3 s button
+hold did anything. OTA was impossible; the only way back in was a USB cable.
+
+**Root cause:** `main/main.c` still polled `GPIO_NUM_18` — KEY3 on the
+**AMOLED** board this fork came from. On the ESP32-S3-Touch-LCD-1.54 the single
+button silkscreened KEY is `BSP_BUTTON_PLUS`, GPIO4. GPIO18 is not a button
+here, so with the internal pull-up it read "released" forever. The port had
+already written the right pins into `components/board_lcd_1_54/` and into the
+pin table — and then used them nowhere.
+
+**The rule now:** a dead input has no error path; it just never fires, so it
+cannot be found by reading logs for failures. When a port inherits a `main.c`,
+every raw `GPIO_NUM_*` in it is a claim about the *old* board until measured on
+the new one. Go through the board's `BSP_*` macro, never the number. And when a
+pin is unknown, hunt it: log all candidates and press — one flash answers it,
+where guessing costs a wrong flash and another cable.
+
+**Guards:** `TORGET_KEY_GPIO` in `main/main.c` (single definition, from the BSP
+macro); the boot log now prints the pin number next to the level, so the same
+silence would be visible next time; `docs/port-lcd-1.54.md` §9;
+`spec/hardware-capabilities.yaml` gains `input.key-lcd-1-54` and marks
+`input.key3` firmware_enabled: no.
+
+**Watch for:** the entry below tells you the exit from a hostage takeover is a
+3 s KEY3 hold. That advice was **false on this board** until this fix — worth
+remembering the next time a runbook names a button. Also open: the same
+takeover ignored touch even though the CST816 initialises cleanly, which points
+at the never-verified touch axes (`docs/port-lcd-1.54.md` §8.2).
+
 ## 2026-08-18 · A local build took the glass hostage
 
 **What happened:** an `idf.py build` run purely to verify a feature compiled

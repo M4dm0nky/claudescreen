@@ -203,6 +203,26 @@ an otherwise well-logged function.
 **Fix:** log the real enum + URL; retry instead of task suicide; add the
 missing log line.
 
+### OBS-32 · The `-dirty` gate reads a cached version, not the tree
+`tools · S · open`
+`tools/ota-flash.sh` refuses `-dirty` images by reading the version out of
+the binary's app descriptor — the right source, since it describes what is
+actually being sent. But that string is computed when CMake configures and
+then cached: a build made from a dirty tree can carry a **clean** version
+string if the tree was clean at the last reconfigure. Measured 2026-08-18:
+`main.c`, `ota_ui.c` and four docs were uncommitted, `git describe` said
+`v0.6.0-14-g7d08d6a-dirty`, and the built binary announced
+`v0.6.0-14-g7d08d6a`. The pusher printed that clean string, the CI bridge
+found green runs for a commit the binary does not actually contain, and
+the upload went through. Harmless that day (the same code had just gone on
+by cable), but this is the 2026-08-14 ghost-binary family: a sender gate
+that reports success while not holding. The device cannot catch it — its
+gates only ask whether an image is *valid*.
+**Fix:** have the pusher compare the binary's version against
+`git describe --dirty` at send time and refuse on mismatch (a stale
+descriptor is itself the fault worth reporting), or force a version
+regeneration before the gate runs.
+
 ---
 
 ## P2 — stop making it worse

@@ -355,16 +355,21 @@ understand how the pieces fit together.
 ## Over-the-air updates
 
 After the first USB flash, the screen updates itself over WiFi. The consent
-chain is deliberate and three-factor: a **physical 3-second hold on KEY3**
-opens a ten-minute maintenance window (the glass shows an UPDATES ON ring
-with the lease draining clockwise), a **64-hex token** from `secrets.h`
-authenticates the upload, and the window **closes itself** — a short KEY3
+chain is deliberate and three-factor: a **physical 3-second hold on the KEY
+button** opens a ten-minute maintenance window (the glass shows an UPDATES ON
+ring with the lease draining clockwise), a **64-hex token** from `secrets.h`
+authenticates the upload, and the window **closes itself** — a short KEY
 press closes it early. No button, no update; a script can never open the
 window for you.
 
+> On this board (ESP32-S3-Touch-LCD-1.54) the button silkscreened **KEY** is
+> GPIO4. Upstream's AMOLED board calls the same button KEY3 on GPIO18, and the
+> port polled that pin for a day before anyone noticed the difference —
+> `docs/lessons.md`, 2026-08-18.
+
 ```
 idf.py build
-tools/ota-flash.sh <device-ip>     # waits for your KEY3 hold, then uploads
+tools/ota-flash.sh <device-ip>     # waits for your KEY hold, then uploads
 ```
 
 The device verifies the image (magic, chip, project, SHA-256), writes it to
@@ -378,7 +383,7 @@ one hold, not one per build.
 
 The tokenserver announces the newest build on your Mac
 (`otaAvailableVersion` on `/api/tokens`); when the screen runs an older
-version it takes the glass with an **UPDATE READY** notice — hold KEY3 to
+version it takes the glass with an **UPDATE READY** notice — hold KEY to
 receive — or answer the on-glass LATER/UPDATE pills by touch; tapping
 UPDATE opens the window just like the hold does. A snooze returns every
 hour until installed. Full lifecycle reference: [docs/ota.md](docs/ota.md).

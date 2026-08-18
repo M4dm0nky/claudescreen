@@ -10,10 +10,13 @@ Day-to-day firmware goes over the air: `idf.py build && tools/ota-flash.sh`
 (device IP from git-ignored `.ota-device`). The full loop, consent model and
 troubleshooting live in `docs/ota.md` — read it before touching anything
 OTA. Non-negotiables: the maintenance window opens ONLY from the device (a
-3 s KEY3 hold, or the UPDATE pill on the takeover) — never claim or imply a
+3 s hold on the KEY button — GPIO4 on this board, never the AMOLED board's
+GPIO18 — or the UPDATE pill on the takeover) — never claim or imply a
 script can; the sender gates (newest-binary-at-send, version printed,
--dirty refused) exist because a stale archived build once froze the panel —
-never bypass them with TG_OTA_ALLOW_DIRTY without the user saying so; and
+-dirty refused, binary-matches-tree, green CI in the repo derived from
+origin) exist because a stale archived build once froze the panel —
+never bypass them with TG_OTA_ALLOW_DIRTY / _STALE / _NO_CI without the
+user saying so; and
 after editing `tools/tokenserver/`, restart the launchd service
 (`launchctl kickstart -k gui/$(id -u)/se.torget.tokenserver`) — the running
 process keeps old code and the panel honestly shows the gap.

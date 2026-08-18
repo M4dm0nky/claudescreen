@@ -109,9 +109,11 @@ agentstatus, M cyklar Max Tracker-fixtur (Claude- och Codex-sidorna, två av
 VibePulse-vyns nio sidor), W cyklar femtimmarsfönstrets tre lägen
 (aktivt/tomt/okänt — de skiljer sig bara i vad som är sant om en saknad
 siffra, så de måste gå att jämföra),
-N växlar app (KEY3-knappens bänkmotsvarighet), L öppnar launchern (långtryck med
-musen fungerar också — det är enhetens gest). På enheten växlar KEY3
-(GPIO18) app med ett tryck.
+N växlar app (KEY-knappens bänkmotsvarighet), L öppnar launchern (långtryck med
+musen fungerar också — det är enhetens gest). På enheten växlar KEY-knappen
+app med ett tryck. På det HÄR kortet (ESP32-S3-Touch-LCD-1.54) sitter den på
+GPIO4; GPIO18 är AMOLED-kortets KEY3 och ingen knapp alls här (se
+`docs/lessons.md`, 2026-08-18).
 En obevakad körning BMP-dumpar VibePulse-vyerna och launchern (plus
 companion-apparnas vyer när de är utcheckade) till /tmp/torget-*.bmp —
 pixelverifieringens facit.

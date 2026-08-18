@@ -457,8 +457,20 @@ panel, so on a board where touch is unverified there is no visible way
 out (KEY3 held 3 s works, but the glass does not say so).
 **Fix:** carry the compile-time flag into the UI. With uploads disabled,
 render the notice without the UPDATE pill and put the reason on the
-version line, or say `HOLD KEY3` where the pill would be — a takeover
+version line, or say `HOLD KEY` where the pill would be — a takeover
 should never present an action it cannot perform.
+
+**Second trigger, found 2026-08-18 (same fix covers it):** touch itself
+can be absent. `main.c` treats a `bsp_touch_new` failure as non-fatal by
+design — a board that boots display-only beats one that panics in a loop —
+and says so in one `ESP_LOGE` line. On the glass a dead touch panel is
+indistinguishable from a live one, so the takeover offered two buttons
+nobody could press. That day the KEY hold was dead too (the GPIO18 port
+bug), leaving a healthy device with no way to state its own condition; the
+false trail cost an hour and two wrong suspects. The firmware knows at boot
+whether touch registered, so the notice can name the physical way out
+instead of drawing pills. Do NOT put touch in the boot-health gate — a
+flaky touch chip must never roll back a healthy image.
 
 ### OBS-28 · Pin logging config on purpose
 `firmware · S · open`

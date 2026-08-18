@@ -16,8 +16,8 @@ Preview, install, acceptance are separate gates.
    `design/vibepulse/studio-design.json`, and the latest physical review under
    `docs/superpowers/reviews/`. If no physical review exists, do not claim approval.
 2. Check `git status` and relevant diff. Scope concurrent Claude/Codex edits.
-3. Start `python3 tools/vibepulse_studio/server.py`. Work at 1:1 480 x 480;
-   show materially different states when coherent.
+3. Start `python3 tools/vibepulse_studio/server.py`. Work 1:1 at real panel
+   size (240 x 240 here); show materially different states when coherent.
 4. The shared LVGL raster is the visual authority. Test widest realistic copy, a
    missing-data state, broad numbers, and source provenance across
    live, cached/stale, and no-data.
@@ -25,7 +25,7 @@ Preview, install, acceptance are separate gates.
    Keep one dominant metric; round secondary values; encode discovered spacing as validator tests.
 5. Save accepted tokens. Run
    `python3 tools/vibepulse_studio/design.py --check` and
-   `tools/preview-ui.sh vibepulse`; review the exact 480 x 480 captures.
+   `tools/preview-ui.sh vibepulse`; review captures at exact size.
 6. Implement one static shared LVGL batch and run `./test/run.sh`.
    Use two-stage review: specification fidelity, then code/test quality.
 7. Build once after static acceptance. Flash only with explicit user authorization;

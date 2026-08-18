@@ -17,7 +17,7 @@ short version; this is the reference.
 │ tools/ota-flash.sh waits │          │                             │
 │  for the window...       │          │  YOU consent:               │
 │                          │          │   · tap UPDATE pill, or     │
-│                          │          │   · hold KEY3 ~3 s          │
+│                          │          │   · hold KEY ~3 s           │
 │  └─ POST firmware ─────────────────►│  window open 10 min         │
 │     (token + SHA-256)    │          │  RECEIVING → VERIFYING →    │
 │                          │          │  RESTARTING → reboot into   │
@@ -31,7 +31,7 @@ short version; this is the reference.
 Nothing can write firmware to the screen without three independent factors:
 
 1. **Physical presence** — the maintenance window opens only from the
-   device itself: a ~3 s KEY3 hold, or a tap on the UPDATE pill when the
+   device itself: a ~3 s KEY hold, or a tap on the UPDATE pill when the
    UPDATE READY takeover is showing. A script, a LAN neighbour, or a
    compromised Mac cannot open it remotely. On the takeover, the UPDATE
    pill is the *only* yes — a tap anywhere else (including LATER)
@@ -44,7 +44,7 @@ Nothing can write firmware to the screen without three independent factors:
    the first flash. Rotating it always costs one cable flash, because the
    sender must authenticate against the token compiled into the *running*
    firmware — the new one only takes effect after it is installed.
-3. **Time** — the window closes itself after ten minutes; a short KEY3
+3. **Time** — the window closes itself after ten minutes; a short KEY
    press closes it early. While it is closed the HTTP server does not
    even exist in memory (the lazy-surface rule from the 2026-08-14
    freeze lesson).
@@ -75,7 +75,7 @@ compares against its own running version:
 
 - **Mismatch** → full-screen takeover: UPDATE / READY in the ring, the
   waiting version inside, LATER + UPDATE pills below.
-- **UPDATE pill** (or a KEY3 hold) → opens the window; if
+- **UPDATE pill** (or a KEY hold) → opens the window; if
   `tools/ota-flash.sh` is waiting on the Mac, delivery is automatic.
 - **LATER / any other tap** → snooze; the takeover returns every hour
   (`TG_NOTICE_NAG_US` in `notice_policy.h` — raise it when the platform
@@ -122,17 +122,17 @@ tools/ota-flash.sh                  # waits for consent, then uploads
 
 The device IP is read from a git-ignored `.ota-device` file in the repo
 root (write it once: `echo 192.168.1.x > .ota-device`), or pass it as the
-first argument. For any agent session starting cold: the repo lives at
-`~/Torget` on this machine (the GitHub name is `vibepulse` — the local
-directory is not), the OTA work is on the `claude/ota-foundation` branch,
-and this file plus `docs/agent-setup.md` are the runbooks.
+first argument. For any agent session starting cold: the working copy is
+`~/vibepulse`, the GitHub remote is **`M4dm0nky/claudescreen`** (three
+different names for one project — do not assume they match), the OTA work is
+on `main`, and this file plus `docs/agent-setup.md` are the runbooks.
 
-Hold KEY3 (or answer the takeover with UPDATE) when you're ready. After
+Hold KEY (or answer the takeover with UPDATE) when you're ready. After
 the OTA reboot the window re-arms itself once (PENDING_VERIFY boot), so
 an iterate-flash-iterate session needs one consent, not one per build —
 observed live 2026-08-14: with the pusher armed, a new build delivered
 itself straight into the re-armed window with no touch at all. Chained
-updates are the intended dev rhythm; a short KEY3 press ends the chain.
+updates are the intended dev rhythm; a short KEY press ends the chain.
 
 Everything the transfer shows on the glass is honest device-owned data:
 the ring fills clockwise with the received share, VERIFYING counts the
@@ -143,12 +143,13 @@ SHA, the version line names the incoming image.
 | Symptom | Likely cause | Check |
 |---|---|---|
 | "This project has no OTA" | Reading a pre-OTA tree (factory-only `partitions.csv`) | `git branch --show-current`; read `partitions.csv` in *that* checkout |
-| Upload gets 403 | Window not open | Hold KEY3; the glass must show the ring/UPDATES ON |
+| Upload gets 403 | Window not open | Hold KEY; the glass must show the ring/UPDATES ON |
 | Upload gets 401 | Token mismatch or malformed | `TG_OTA_TOKEN` in `secrets.h`: exactly 64 lowercase hex |
 | Upload gets 400 "not a torget esp32s3 image" | Wrong file (bootloader? another project?) | Send `build*/torget.bin`, nothing else |
 | 202 but the old version still runs after reboot | Health gate rolled the image back | The new build is broken on-device; check it on USB with the console |
 | UPDATE READY never appears | Same version already running, or tokenserver older than the feature | `curl localhost:8737/api/tokens \| grep otaAvailable` |
 | Takeover shows but UPDATE does nothing | No pusher waiting on the Mac | Start `tools/ota-flash.sh <ip>` — the tap opens the window; the Mac must deliver |
 | Takeover shows but nothing on the glass reacts at all | OTA was never configured: the `TG_OTA_TOKEN` line in `secrets.h` is still the commented example, so the device compiled its upload handler out and the sender refuses | `sed -n 's/.*TG_OTA_TOKEN[^"]*"\([0-9a-f]\{64\}\)".*/ok/p' secrets.h` — silence means unset. Boot log says `inget OTA-token i secrets.h`. First install is USB either way |
-| UPDATE READY appears after a build you never meant to ship | The tokenserver advertises the newest `build*/torget.bin`, and a dirty tree builds `…-dirty`, which differs from the running version | Expected, not a fault. Exit with a 3 s KEY3 hold, or move the binary aside so the announcement goes out and the notice hides itself |
-| Takeover is up and you cannot dismiss it (no touch) | Touch is a bonus on this board, and the takeover owns the whole screen | **KEY3 held 3 s** always works — it opens the window, which makes the device busy and clears the notice |
+| UPDATE READY appears after a build you never meant to ship | The tokenserver advertises the newest `build*/torget.bin`, and a dirty tree builds `…-dirty`, which differs from the running version | Expected, not a fault. Exit with a 3 s KEY hold, or move the binary aside so the announcement goes out and the notice hides itself |
+| Takeover is up and you cannot dismiss it (no touch) | Touch is a bonus on this board, and the takeover owns the whole screen | **KEY held 3 s** always works — it opens the window, which makes the device busy and clears the notice |
+| Takeover is up and NEITHER touch nor the button does anything | Both consent paths dead at once. Measured 2026-08-18: the port polled the AMOLED board's GPIO18 for the button (dead here), while on that boot the CST816 had not come up (non-fatal by design, one `ESP_LOGE`, invisible on the glass) | Boot log: `KEY (GPIO4) rå nivå vid boot` must be `1`, and `CST816S: IC id` must appear. The touch axes are measured correct — that is NOT the fault to chase (`docs/port-lcd-1.54.md` §8.2, §10) |

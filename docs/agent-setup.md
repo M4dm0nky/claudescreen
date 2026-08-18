@@ -284,7 +284,7 @@ Three things must line up — a device key, the bridge, and hooks.
    can silently block http hooks — if the panel never reacts, check that first.
 
 On the glass: a tap opens the decision; APPROVE / DENY / LEAVE IT answer it; on
-the private screen a tap hands it to the terminal. KEY3 held ~1.5–3 s and
+the private screen a tap hands it to the terminal. KEY held ~1.5–3 s and
 released is the panic — deny everything parked; the 3 s hold still opens OTA.
 
 ## When it does not work
@@ -298,9 +298,9 @@ workflow, consent model and troubleshooting live in [ota.md](ota.md).
 | Dashes, and the Mac's URL is set | tokenserver not running, or Mac asleep, or firewall | Start it; check `curl localhost:8737/` |
 | Dashes only for Claude, Codex fine (or vice versa) | That provider's source is unavailable | Check `claudeProbe`; the other half working is by design |
 | Never joins WiFi | Network is 5 GHz | 2.4 GHz only. iPhone hotspot: enable "Maximize Compatibility" |
-| "This project has no OTA" / partitions.csv shows one factory partition | Reading a tree from before the OTA foundation (A/B slots + otadata + `components/torget_ota/`) | Check which branch/commit the checkout is on; read `partitions.csv` in THAT tree before concluding. OTA workflow: `tools/ota-flash.sh <ip>` + a 3 s KEY3 hold |
-| UPDATE READY takeover appeared and nothing on the glass reacts | Either OTA was never configured (`TG_OTA_TOKEN` still commented out — the button has no backend), or touch is unverified on this board | `sed -n 's/.*TG_OTA_TOKEN[^"]*"\([0-9a-f]\{64\}\)".*/ota token set/p' secrets.h`. Escape without touch: **hold KEY3 3 s** |
-| The takeover shows up after a build you never intended to ship | The tokenserver advertises the newest `build*/torget.bin`; a dirty tree builds `…-dirty`, which differs from the running version | Expected. Hold KEY3 3 s, or move the binary aside — the notice hides itself once the announcement stops |
+| "This project has no OTA" / partitions.csv shows one factory partition | Reading a tree from before the OTA foundation (A/B slots + otadata + `components/torget_ota/`) | Check which branch/commit the checkout is on; read `partitions.csv` in THAT tree before concluding. OTA workflow: `tools/ota-flash.sh <ip>` + a 3 s KEY hold |
+| UPDATE READY takeover appeared and nothing on the glass reacts | Either OTA was never configured (`TG_OTA_TOKEN` still commented out — the pill has no backend), or the touch chip did not come up on this boot (non-fatal by design, one `ESP_LOGE` line, invisible on the glass — 2026-08-18) | `sed -n 's/.*TG_OTA_TOKEN[^"]*"\([0-9a-f]\{64\}\)".*/ota token set/p' secrets.h`, and check the boot log for `CST816S: IC id`. The touch AXES are measured correct — do not go changing `swap_xy/mirror_*`. Escape without touch: **hold KEY 3 s** |
+| The takeover shows up after a build you never intended to ship | The tokenserver advertises the newest `build*/torget.bin`; a dirty tree builds `…-dirty`, which differs from the running version | Expected. Hold KEY 3 s, or move the binary aside — the notice hides itself once the announcement stops |
 | Five-hour page reads `0%` with `STARTS ON NEXT REQUEST` | No active window: a fresh probe returned limits but no live session row | Normal between sessions. If the Mac is unreachable it must show dashes instead — `curl localhost:8737/api/tokens \| grep claudeSessionState` |
 | Panel shows stale quota / empty Fable weekly in the morning | Upstream 429 penalty from the shared account bucket | Self-heals: dead tokens are never resent, the penalty persists across restarts, deltas serve from cache. Check `claudeProbe` on `curl localhost:8737/` |
 | Panel shows stale while powered from the computer USB port | The Mac port cannot feed WiFi TX bursts — fetches time out | Expected on Mac USB; run from wall power. Logs stay valid on Mac USB, data does not |

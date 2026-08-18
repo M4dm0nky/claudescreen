@@ -4,6 +4,13 @@ Extraherad ur webbänken `/device` (app/components/device/DeviceScreen.tsx +
 app/globals.css) 2026-07-17. Bänken är specen: ändra aldrig här utan att ändra
 webben först. Alla mått i panelpixlar på 480 × 480.
 
+> **Måtten nedan gäller AMOLED-kortet (480 × 480), inte den här forkens
+> panel.** Forken kör ESP32-S3-Touch-LCD-1.54 på **240 × 240**; den kedjan
+> (capability → `design.py` → `vibepulse_layout.generated.h`) beskrivs i
+> [../docs/port-lcd-1.54.md](../docs/port-lcd-1.54.md) §2, och den är
+> facit för allt som ritas idag. Proportionerna och hierarkin här står
+> kvar; de absoluta talen gör det inte.
+
 ## Grund
 
 - Botten: `#000000`, äkta svart (släckta pixlar på AMOLED).

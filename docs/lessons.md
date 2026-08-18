@@ -21,6 +21,36 @@ point at the backlog item.
 
 ---
 
+## 2026-08-18 · Two wrong suspects, because the panel cannot say "my touch is dead"
+
+**What happened:** the UPDATE READY takeover ignored every finger. Suspicion
+fell first on the port's never-verified touch axes, then on the pill's event
+wiring. Both were wrong. Measuring took ten minutes and settled it: a build
+logging `lv_indev_get_point` showed three corner taps landing at `(1, 12)`,
+`(239, 10)`, `(13, 237)` on a 240 x 240 panel — axes correct — and the pill
+then answered a finger on the first press with the console attached.
+
+**Root cause:** on that one boot the CST816 had not come up. Touch-init failure
+is non-fatal by design and leaves exactly one `ESP_LOGE` line; on the glass a
+dead touch panel looks identical to a live one. The same afternoon the KEY hold
+was dead too ([the entry below]), so the device had no working way to report
+its own state, and the takeover kept offering two buttons it could not honour.
+
+**The rule now:** when an input "does nothing", measure the input before
+theorising about the layer above it. A logged coordinate is cheap and final;
+axis flags are four combinations and four flashes of guessing. And when a doc
+names an unverified suspect (§8.2 of the port guide did), that suspicion is a
+question, not evidence — it pulled two people toward the wrong answer, and it
+now records the measurement instead.
+
+**Guards:** `docs/port-lcd-1.54.md` §8.2 carries the measured coordinates with
+a "do not fix these flags" warning, §10 has the full narrative; OBS-31 gained
+this second trigger.
+
+**Watch for:** the takeover still draws pills it may not be able to honour —
+whenever touch is absent, or the OTA token is unset. That fix is OBS-31 and is
+still open.
+
 ## 2026-08-18 · The port kept the old board's button pin, and nothing said so
 
 **What happened:** the panel showed UPDATE READY, `tools/ota-flash.sh` waited,

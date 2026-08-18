@@ -80,7 +80,15 @@ interaktionsprotokollet i AMOLED-skillen, mätt på panelen först.
 480 x 480 AMOLED — read [docs/port-lcd-1.54.md](docs/port-lcd-1.54.md) first.
 Use `.claude/skills/iterating-esp32-amoled-ui/SKILL.md` for the workflow; its
 process holds, only the pixel count differs. Show output at the panel's exact
-size, never scaled. Measure text with `tools/text_fit.py` rather than trusting
+size, never scaled.
+
+Two facts measured on the physical unit 2026-08-18, both of which cost an hour
+when they were assumed instead: the user button silkscreened **KEY is GPIO4**
+(`BSP_BUTTON_PLUS`) — GPIO18 is the AMOLED board's KEY3 and is not a button
+here — and the **touch axes are correct** (`swap_xy/mirror_x/mirror_y` all 0;
+corner taps land where the finger does). Do not change either on suspicion.
+When an input "does nothing", log the input before theorising about the layer
+above it: `docs/lessons.md`, 2026-08-18. Measure text with `tools/text_fit.py` rather than trusting
 a capture — the fixture's short string fits where the long one does not.
 Review the static physical panel before motion. Studio approval never
 authorizes a flash; obtain explicit user authorization for the physical

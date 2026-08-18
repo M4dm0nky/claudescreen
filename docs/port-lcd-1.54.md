@@ -215,13 +215,16 @@ power setting, not firmware.
    reordering and checked by measuring the pager row in real 240×240 captures
    (`PAGER_Y + 3`, nine runs, the active one 18 px). Re-run that measurement
    rather than trusting the constants.
-2. **Touch alignment** — `main.c` sets `swap_xy/mirror_x/mirror_y` all 0 and
-   this has **never been checked on the glass**. Tap bottom-left and top-right
-   and see whether the hit lands where the finger did. Sharpened 2026-08-18:
-   the CST816 itself is fine (`CST816S: IC id: 182`, "Touch input device
-   registered successfully" in the boot log), yet the UPDATE pill on the OTA
-   takeover did not answer a finger. A live touch chip plus a dead-feeling
-   glass is the signature of wrong axes, and this is the remaining suspect.
+2. ~~**Touch alignment**~~ — **checked on the glass 2026-08-18, and it is
+   correct.** `swap_xy/mirror_x/mirror_y` all 0 is right for this board. A
+   temporary build logged `lv_indev_get_point` on each new press; three taps
+   into three corners gave `(1, 12)`, `(239, 10)`, `(13, 237)` for top-left,
+   top-right and bottom-left of a 240 x 240 panel. No axis swapped, none
+   mirrored. The UPDATE pill was then operated by finger with the console
+   attached and answered on the first try (`notisen besvarad med JA —
+   fönstret öppnas`). **Do not "fix" these flags** — the day this was
+   measured, a dead-feeling takeover had already been blamed on them twice.
+   See §10 for what was actually wrong.
 3. **Auto-rotation** — see §5.
 4. ~~**The capability registry still calls itself the AMOLED board**~~ —
    fixed 2026-08-18. A capability may now declare its own `board:`, and
@@ -251,6 +254,36 @@ The repair: `TORGET_KEY_GPIO` (= `BSP_BUTTON_PLUS`) in `main/main.c`, the boot
 log now prints the pin number with the level, and the on-glass detail during an
 open window says `KEY CLOSES` rather than naming a button this board does not
 have.
+
+## 10. The takeover that could not be answered (2026-08-18)
+
+The same afternoon, the panel showed the UPDATE READY takeover — UPDATE NOW and
+LATER, UPDATE NOW highlighted — and **nothing on the glass responded to a
+finger**, while the KEY hold was independently dead (§9). The board looked
+hung. It was not.
+
+Two suspects were named and both were wrong, which is the useful part:
+
+- **The touch axes** (§8.2) — measured and correct. See above.
+- **The pill's wiring** — `ota_ui.c` creates it `LV_OBJ_FLAG_CLICKABLE`, binds
+  `LV_EVENT_CLICKED`, and the NOTICE renderer un-hides it. Read line by line,
+  then proven live: with the console attached the pill answered on the first
+  press and opened the window.
+
+What is left is the one thing that leaves no trace on the glass: on that boot
+the CST816 had not come up. `main.c` treats a touch-init failure as non-fatal
+on purpose — the panel is the point, and a board that boots display-only beats
+one that panics in a loop — but the only evidence is a single `ESP_LOGE` line
+on a console nobody is watching. **A panel with dead touch is visually
+identical to one with working touch.** Add the dead button, and the device had
+no way at all to say what was wrong.
+
+The lesson is not "make touch fatal" (a flaky touch chip must never roll back a
+healthy image). It is that a full-screen takeover offering two buttons is a
+promise, and the firmware knows at boot whether it can keep it. Tracked as
+OBS-31 in `docs/observability-backlog.md`, whose fix — render the notice
+without pills and name the physical way out instead — covers this trigger as
+well as the missing-token one it was written for.
 
 ## Provenance
 

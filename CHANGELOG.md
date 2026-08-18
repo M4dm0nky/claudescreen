@@ -1,11 +1,37 @@
 # Changelog
 
-Notable changes to VibePulse. Release notes for tagged versions are published
-on the [releases page](https://github.com/niclasvestlund-YT/vibepulse/releases).
+Notable changes to VibePulse. Release notes for this fork's tagged versions are
+published on [its own releases page](https://github.com/M4dm0nky/claudescreen/releases);
+upstream's live at
+[niclasvestlund-YT/vibepulse](https://github.com/niclasvestlund-YT/vibepulse/releases).
 
 ## Unreleased
 
 ### Fixed
+
+- The KEY button works on this fork's board. `main.c` was still polling
+  `GPIO_NUM_18` — KEY3 on the upstream AMOLED-2.16 — while the
+  ESP32-S3-Touch-LCD-1.54 wires its single button, silkscreened KEY, to GPIO4.
+  With an internal pull-up an unconnected pin reads "released" forever, so
+  every intent on that button was dead: app switching, the Needs You panic,
+  and the OTA maintenance window, which by design opens from nowhere else. The
+  port had written the right pins into its own BSP and used them nowhere. The
+  pin was measured, not guessed (all three candidates logged under a press;
+  only GPIO4 moved), and the glass now says `KEY CLOSES` instead of naming a
+  button this board does not have.
+- Two sender gates that were not actually guarding. The CI bridge called
+  `gh run list` without `-R`, so with no default repo set it could answer for
+  a *different* repository and report "no green CI" for a commit with two
+  green runs — the repo is now derived from `origin`. And the `-dirty` gate
+  trusted a version string that CMake computes at configure time and then
+  caches, so a build from a dirty tree could carry a clean name and sail
+  through; the image is now compared against `git describe --tags --dirty` at
+  send time (`TG_OTA_ALLOW_STALE=1` overrides). That is OBS-32, closed.
+- The hardware registry can hold a measurement taken on a second board. A
+  capability may now declare its own `board:`, defaulting to the file header,
+  and a `verification:` unit is matched against *that*. Until now a pin
+  measured on the physical 1.54 unit could not be recorded at all, because the
+  registry header still named the AMOLED board.
 
 - The panel names all three GPT-5.6 variants. `gpt-5.6-sol` had a typeset
   screen label while its siblings `terra` and `luna` fell through to their

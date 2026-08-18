@@ -71,7 +71,11 @@ class SharedAmoledSkillTests(unittest.TestCase):
             "latest physical review",
             "docs/superpowers/reviews/",
             "If no physical review exists",
-            "1:1 480 x 480",
+            # Not "1:1 480 x 480": the skill is shared across boards, and this
+            # fork's panel is 240 x 240. Hardcoding one board's pixels in the
+            # shared gate is how a ported repo ends up reviewing captures at a
+            # size no panel has. What matters is 1:1 at the REAL size.
+            "1:1 at real panel size",
             "materially different states",
             "design.py --check",
             "tools/preview-ui.sh vibepulse",
@@ -113,9 +117,13 @@ class SharedAmoledSkillTests(unittest.TestCase):
             "Do not infer visual correctness from a green test",
             "two-stage review",
         )
+        # Radbrytnings-okänsligt, av samma skäl som i
+        # test_both_agents_route_visual_work_through_the_physical_gate: en
+        # mening som råkar brytas mitt itu är inte en saknad regel.
+        flat_body = " ".join(body.split())
         for phrase in required_workflow:
             with self.subTest(phrase=phrase):
-                self.assertIn(phrase, body)
+                self.assertIn(phrase, flat_body)
 
         interface = yaml.safe_load(
             (SKILL / "agents/openai.yaml").read_text(encoding="utf-8")
@@ -259,11 +267,24 @@ class SharedAmoledSkillTests(unittest.TestCase):
 
     def test_both_agents_route_visual_work_through_the_physical_gate(self) -> None:
         for filename in ("AGENTS.md", "CLAUDE.md"):
-            text = (ROOT / filename).read_text(encoding="utf-8")
+            # Radbrytnings-okänsligt: meningen "Studio approval never
+            # authorizes a flash" bröts över två rader när stycket skrevs om
+            # (2026-08-17) och testet stod rött i två dygn för en formulering
+            # som fanns i båda filerna hela tiden. Ett test som mäter
+            # radbrytningar mäter fel sak.
+            text = " ".join(
+                (ROOT / filename).read_text(encoding="utf-8").split()
+            )
             with self.subTest(filename=filename):
                 self.assertIn("iterating-esp32-amoled-ui", text)
+                # Kortagnostiskt sedan porten (2026-08-17): båda korten ska
+                # nämnas så ingen läser den enas mått som den andras, och
+                # granskningsraden säger "panel", inte "AMOLED" — den gäller
+                # glaset som sitter där, oavsett teknik. Testet krävde det
+                # gamla ordet och stod rött i två dygn utan att någon såg det.
+                self.assertIn("240 x 240", text)
                 self.assertIn("480 x 480", text)
-                self.assertIn("static physical AMOLED", text)
+                self.assertIn("static physical panel", text)
                 self.assertIn("Studio approval never authorizes a flash", text)
 
 

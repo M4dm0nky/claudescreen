@@ -7,7 +7,11 @@ symptom→fix table. This file is maintainer context for working *on* the
 platform, and it is mostly Swedish.
 
 Det här repot är **VibePulse**: appen som visar Claude Code- och
-Codex-kvoter på en Waveshare ESP32-S3-Touch-AMOLED-2.16 (480×480). Appen kör
+Codex-kvoter på en hyllskärm. Uppströms är kortet en Waveshare
+ESP32-S3-Touch-AMOLED-2.16 (480×480); **den här forken kör
+ESP32-S3-Touch-LCD-1.54 (240×240, ST7789, CST816)** — läs
+[docs/port-lcd-1.54.md](docs/port-lcd-1.54.md) innan du rör layout,
+fonter eller touch. Appen kör
 på **Torget**, en liten LVGL-appplattform som bor i samma repo och äger
 panelen, WiFi, ljuset och launchern — därav alla `torget_*`-namn i koden och
 `torget.bin` som byggresultat. En skärm = en binär = ett bygge här.
@@ -70,12 +74,17 @@ interaktionsprotokollet i AMOLED-skillen, mätt på panelen först.
 - **Ärlighetsinvarianten:** aldrig påhittade nollor — utan data visas
   streck; räknare backar aldrig; copyn säger vad siffran faktiskt mäter.
 
-## AMOLED visual work
+## Panel visual work
 
-Use `.claude/skills/iterating-esp32-amoled-ui/SKILL.md` for AMOLED work. Show
-exact 480 x 480 output at meaningful stages. Review the static physical AMOLED
-before motion. Studio approval never authorizes a flash; obtain explicit user
-authorization for the physical install.
+**This fork's panel is 240 x 240** (ESP32-S3-Touch-LCD-1.54), not upstream's
+480 x 480 AMOLED — read [docs/port-lcd-1.54.md](docs/port-lcd-1.54.md) first.
+Use `.claude/skills/iterating-esp32-amoled-ui/SKILL.md` for the workflow; its
+process holds, only the pixel count differs. Show output at the panel's exact
+size, never scaled. Measure text with `tools/text_fit.py` rather than trusting
+a capture — the fixture's short string fits where the long one does not.
+Review the static physical panel before motion. Studio approval never
+authorizes a flash; obtain explicit user authorization for the physical
+install.
 
 ## Logs, errors, and learning from mistakes
 

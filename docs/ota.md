@@ -38,6 +38,12 @@ Nothing can write firmware to the screen without three independent factors:
    snoozes, so an accidental touch always lands on the safe side.
 2. **Knowledge** — the upload must carry `Authorization: Bearer <token>`,
    64 lowercase hex from `secrets.h` (`TG_OTA_TOKEN`), never committed.
+   In a fresh checkout that line is **commented out**, and its absence is
+   silent on the glass: the firmware compiles the upload handler out, so the
+   takeover still offers UPDATE NOW while nothing can answer it. Set it before
+   the first flash. Rotating it always costs one cable flash, because the
+   sender must authenticate against the token compiled into the *running*
+   firmware — the new one only takes effect after it is installed.
 3. **Time** — the window closes itself after ten minutes; a short KEY3
    press closes it early. While it is closed the HTTP server does not
    even exist in memory (the lazy-surface rule from the 2026-08-14
@@ -131,3 +137,6 @@ SHA, the version line names the incoming image.
 | 202 but the old version still runs after reboot | Health gate rolled the image back | The new build is broken on-device; check it on USB with the console |
 | UPDATE READY never appears | Same version already running, or tokenserver older than the feature | `curl localhost:8737/api/tokens \| grep otaAvailable` |
 | Takeover shows but UPDATE does nothing | No pusher waiting on the Mac | Start `tools/ota-flash.sh <ip>` — the tap opens the window; the Mac must deliver |
+| Takeover shows but nothing on the glass reacts at all | OTA was never configured: the `TG_OTA_TOKEN` line in `secrets.h` is still the commented example, so the device compiled its upload handler out and the sender refuses | `sed -n 's/.*TG_OTA_TOKEN[^"]*"\([0-9a-f]\{64\}\)".*/ok/p' secrets.h` — silence means unset. Boot log says `inget OTA-token i secrets.h`. First install is USB either way |
+| UPDATE READY appears after a build you never meant to ship | The tokenserver advertises the newest `build*/torget.bin`, and a dirty tree builds `…-dirty`, which differs from the running version | Expected, not a fault. Exit with a 3 s KEY3 hold, or move the binary aside so the announcement goes out and the notice hides itself |
+| Takeover is up and you cannot dismiss it (no touch) | Touch is a bonus on this board, and the takeover owns the whole screen | **KEY3 held 3 s** always works — it opens the window, which makes the device busy and clears the notice |

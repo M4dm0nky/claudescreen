@@ -177,6 +177,14 @@ governed by the honesty invariant (never invented zeros):
   old, or the server marked its own numbers stale. Freeze-frame, not
   live.
 - **`NO DATA` / `USAGE UNAVAILABLE`** — the per-field honest absence.
+- **`0%` + `STARTS ON NEXT REQUEST`** — five-hour page only, and the one
+  place a zero is allowed to appear without a measurement behind it. It
+  requires the server to have *seen* the emptiness: `claudeSessionState:
+  "idle"`, meaning a fresh probe returned limits but no live session row.
+  `"unknown"` (the probe returned nothing) still dashes, because a zero
+  there would be a claim nobody can back. If you see this state while the
+  Mac is unreachable, that is a bug, not a quiet window — check
+  `curl localhost:8737/api/tokens | grep claudeSessionState`.
 
 Caveat: the 120 s freshness clock is fed **only by `/api/tokens`**. If
 the max-tracker or agent-status feed dies while `/api/tokens` keeps

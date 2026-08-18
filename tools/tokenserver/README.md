@@ -270,6 +270,7 @@ null = ärlig frånvaro, skärmen visar streck):
 {"v": 2, "dayTokens": 48231907, "dayTokensPerHour": 5120000,
  "daySessions": 4, "monthTokens": 612480233,
  "claudeSessionPct": 21.0, "claudeSessionResetMin": 80,
+ "claudeSessionState": "active",
  "claudeWeekPct": 47.0, "claudeWeekResetMin": 850,
  "claudeWeekStale": false,
  "claudeModelWeekPct": 73.0, "claudeModelWeekResetMin": 850,
@@ -291,6 +292,16 @@ null = ärlig frånvaro, skärmen visar streck):
  "codexForecastPaceFactor": null,
  "codexForecastAt": null, "codexForecastOffsetMin": null}
 ```
+
+`claudeSessionState` säger VARFÖR femtimmarsprocenten saknas, vilket `null`
+ensamt inte kan: `active` (fönstret lever), `idle` (en färsk probe såg inget
+aktivt fönster — då är noll sant och skärmen skriver `0%` med
+`STARTS ON NEXT REQUEST`) eller `unknown` (proben gav inget alls — streck,
+för noll vore ett påstående ingen kan backa upp). Tillståndet härleds ur vad
+`get_limits()` returnerade, ALDRIG ur `claudeWeekPct`: veckan kan komma ur
+disk-cachen långt efter att proben dog, sessionen aldrig. En okänd eller
+frånvarande sträng tolkas som `unknown`, så äldre skärmkod beter sig
+oförändrat.
 
 De nya delta- och prognosfälten är frivilliga för äldre skärmkod och `null`
 när underlaget saknas. Prognosen blir först aktiv efter minst tre punkter,

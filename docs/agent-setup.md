@@ -46,7 +46,10 @@ cannot determine yourself.
    finds no Claude token at all — there is no keychain and the credential
    file is read only on Windows
    ([#2](https://github.com/niclasvestlund-YT/vibepulse/issues/2)).
-2. **Do they have the board?** Waveshare ESP32-S3-Touch-AMOLED-2.16. No
+2. **Do they have the board?** Upstream targets the Waveshare
+   ESP32-S3-Touch-AMOLED-2.16; **this fork targets the
+   ESP32-S3-Touch-LCD-1.54** (240×240, ST7789, CST816) — read
+   [port-lcd-1.54.md](port-lcd-1.54.md) before any layout or touch work. No
    board → skip to [Simulator only](#simulator-only-no-board).
 3. **Is their WiFi 2.4 GHz?** The ESP32-S3 cannot see 5 GHz at all. This is
    the single most common "it won't connect" cause. Ask; don't assume.
@@ -93,6 +96,33 @@ will look for a host that does not exist and every page will stay on dashes.
 Ask the user for the WiFi password. Do not guess it, and do not commit
 `secrets.h` — it is gitignored, keep it that way.
 
+### Set the OTA token now, or the first update needs the cable again
+
+`TG_OTA_TOKEN` ships commented out. Leave it that way and the panel will
+still show the UPDATE READY takeover when the Mac advertises a newer build —
+but the firmware compiled its upload handler out, so **the UPDATE NOW button
+answers to nothing** and `tools/ota-flash.sh` refuses to send. Nothing on the
+glass explains this; only the boot log says `inget OTA-token i secrets.h`.
+That trap cost a real debugging session on 2026-08-18 (see
+[lessons.md](lessons.md)).
+
+```sh
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Put it in `secrets.h` as `#define TG_OTA_TOKEN "…64 hex…"` before Step 2.
+Set it later and you pay one more cable flash: the sender authenticates
+against the token compiled into the *running* firmware, so a rotated token
+only takes effect after it is installed.
+
+Verify:
+
+```sh
+sed -n 's/.*TG_OTA_TOKEN[^"]*"\([0-9a-f]\{64\}\)".*/ota token set/p' secrets.h
+```
+
+Silence means it is unset or malformed. Never print the value itself.
+
 ## Step 2 — build
 
 ```sh
@@ -123,7 +153,10 @@ this works, both learned the hard way:
 - **A computer USB port often cannot power the running firmware.** The AMOLED
   panel's current draw makes the board bounce off the bus or hang. This looks
   exactly like a bad cable and is not one. After flashing, run the screen from
-  its own USB power supply.
+  its own USB power supply. On the 1.54" LCD board this has not been
+  reproduced — it flashed and then ran for hours off a MacBook port on
+  2026-08-18, serial readable throughout — but that is one unit on one port,
+  not a cleared warning.
 
 **Verify:** the flash log says `Hash of data verified`, then the panel lights
 up after reset.
@@ -266,6 +299,9 @@ workflow, consent model and troubleshooting live in [ota.md](ota.md).
 | Dashes only for Claude, Codex fine (or vice versa) | That provider's source is unavailable | Check `claudeProbe`; the other half working is by design |
 | Never joins WiFi | Network is 5 GHz | 2.4 GHz only. iPhone hotspot: enable "Maximize Compatibility" |
 | "This project has no OTA" / partitions.csv shows one factory partition | Reading a tree from before the OTA foundation (A/B slots + otadata + `components/torget_ota/`) | Check which branch/commit the checkout is on; read `partitions.csv` in THAT tree before concluding. OTA workflow: `tools/ota-flash.sh <ip>` + a 3 s KEY3 hold |
+| UPDATE READY takeover appeared and nothing on the glass reacts | Either OTA was never configured (`TG_OTA_TOKEN` still commented out — the button has no backend), or touch is unverified on this board | `sed -n 's/.*TG_OTA_TOKEN[^"]*"\([0-9a-f]\{64\}\)".*/ota token set/p' secrets.h`. Escape without touch: **hold KEY3 3 s** |
+| The takeover shows up after a build you never intended to ship | The tokenserver advertises the newest `build*/torget.bin`; a dirty tree builds `…-dirty`, which differs from the running version | Expected. Hold KEY3 3 s, or move the binary aside — the notice hides itself once the announcement stops |
+| Five-hour page reads `0%` with `STARTS ON NEXT REQUEST` | No active window: a fresh probe returned limits but no live session row | Normal between sessions. If the Mac is unreachable it must show dashes instead — `curl localhost:8737/api/tokens \| grep claudeSessionState` |
 | Panel shows stale quota / empty Fable weekly in the morning | Upstream 429 penalty from the shared account bucket | Self-heals: dead tokens are never resent, the penalty persists across restarts, deltas serve from cache. Check `claudeProbe` on `curl localhost:8737/` |
 | Panel shows stale while powered from the computer USB port | The Mac port cannot feed WiFi TX bursts — fetches time out | Expected on Mac USB; run from wall power. Logs stay valid on Mac USB, data does not |
 | OTA boots always show state 0xffffffff and the health gate always rests | `sdkconfig` generated before the rollback line landed in `sdkconfig.defaults` (defaults only apply on fresh generation) | `grep BOOTLOADER_APP_ROLLBACK sdkconfig` — set `=y`, rebuild, and USB-flash ONCE (the bootloader carries the logic; OTA never writes it) |

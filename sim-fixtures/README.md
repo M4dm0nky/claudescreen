@@ -11,6 +11,13 @@ Regler som fixturerna låser:
 
 - Före FÖRSTA lyckade svaret: streck, aldrig påhittade nollor.
 - Efter fel: senaste goda datat kvarstår, stale-markering efter 120 s.
+- En nolla kräver att någon SETT tomheten. Femtimmarsfönstret har därför tre
+  fixturer, en per betydelse en saknad procent kan bära: `tokens.json`
+  (`claudeSessionState: "active"`), `tokens-session-idle.json` (`"idle"` —
+  färsk probe, inget aktivt fönster, skärmen skriver `0%` med
+  `STARTS ON NEXT REQUEST`) och `tokens-missing.json` (`"unknown"` — proben
+  gav inget, streck). De granskas bredvid varandra i
+  `--vibepulse-static-qa`; ensamma ser de förvillande lika ut.
 
 ## Max Tracker-fixturer
 

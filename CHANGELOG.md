@@ -25,6 +25,20 @@ on the [releases page](https://github.com/niclasvestlund-YT/vibepulse/releases).
 
 ### Added
 
+- The five-hour session window has its own page, and it is the first one, so
+  the number that decides whether a long run finishes needs no swipe. Every
+  later `VIEW_*` shifts one step right. The data already reached the device
+  (`claudeSessionPct`/`ResetMin`/`HourDeltaPct` parsed into `claude_session`)
+  and `USAGE_CARD_FIVE_HOURS` already existed — neither was read by anything.
+- `claudeSessionState` (`active`/`idle`/`unknown`) in the `/api/tokens`
+  contract. An absent percentage used to mean two different things — no window
+  is running, or the probe failed — and the screen could only dash for both.
+  The state is derived from what `get_limits()` returned, never from
+  `claudeWeekPct`: the week can come from the disk cache long after the probe
+  died, the session never can. Only a fresh probe that saw an empty window
+  earns the honest `0%` and its `STARTS ON NEXT REQUEST` note. An unknown or
+  absent state string parses as `unknown`, so an older tokenserver behaves
+  exactly as before.
 - The tokenserver reads Claude's OAuth token on Windows. Claude Code has no
   keychain integration there, so `claude login` writes the same
   `{"claudeAiOauth": {...}}` record the macOS keychain holds to a plain file,

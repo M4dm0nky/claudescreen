@@ -4,8 +4,11 @@
 > Den här filen är den djupa dokumentationen — struktur, appkontraktet och
 > hårdvarufällorna.
 
-Appplattformen för hyllskärmen (Waveshare ESP32-S3-Touch-AMOLED-2.16,
-480×480). Torget äger den fysiska skärmen och producerar DEN enda
+Appplattformen för hyllskärmen. Uppströms är kortet en Waveshare
+ESP32-S3-Touch-AMOLED-2.16 (480×480); **den här forken kör
+ESP32-S3-Touch-LCD-1.54 (240×240, ST7789, CST816)** — se
+[docs/port-lcd-1.54.md](docs/port-lcd-1.54.md) för vad porten kostade och vad
+som fortfarande är öppet. Torget äger den fysiska skärmen och producerar DEN enda
 firmware-binär som flashas; appar pluggar in som ESP-IDF-komponenter och
 kan bo i egna repon. En skärm = en binär = ett bygge här. MIT-licens.
 
@@ -103,7 +106,10 @@ cmake -S sim -B sim/build -G Ninja && ninja -C sim/build
 
 Tangent 1-4 väljer Solelkollen-fixtur (bara med companion utcheckad), T matar om VibePulse-usage, S cyklar
 agentstatus, M cyklar Max Tracker-fixtur (Claude- och Codex-sidorna, två av
-VibePulse-vyns sex sidor), N växlar app (KEY3-knappens bänkmotsvarighet), L öppnar launchern (långtryck med
+VibePulse-vyns nio sidor), W cyklar femtimmarsfönstrets tre lägen
+(aktivt/tomt/okänt — de skiljer sig bara i vad som är sant om en saknad
+siffra, så de måste gå att jämföra),
+N växlar app (KEY3-knappens bänkmotsvarighet), L öppnar launchern (långtryck med
 musen fungerar också — det är enhetens gest). På enheten växlar KEY3
 (GPIO18) app med ett tryck.
 En obevakad körning BMP-dumpar VibePulse-vyerna och launchern (plus

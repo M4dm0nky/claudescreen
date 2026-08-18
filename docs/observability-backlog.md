@@ -416,6 +416,23 @@ underlying fallthrough is not.
 dated suffix dropped) and keep the map for exceptions only — then a new
 model is styled on arrival instead of on the next hand edit.
 
+### OBS-31 · The takeover offers a button whose backend may be disabled
+`firmware · S · open`
+Without a valid `TG_OTA_TOKEN` the firmware compiles its upload handler
+out (`ota_service.c:551` logs `inget OTA-token i secrets.h — uppladdning
+avstängd`), but `torget_ota_ui_set(TG_OTA_UI_NOTICE, …)` still draws
+UPDATE NOW. On 2026-08-18 a user tapped it repeatedly on a fresh setup
+where the token was still the commented example line; nothing happened,
+nothing on the glass explained why, and the false trail led to the port's
+uncalibrated touch instead. The device knows the answer at boot — it just
+never tells the screen. Aggravating factor: the takeover owns the whole
+panel, so on a board where touch is unverified there is no visible way
+out (KEY3 held 3 s works, but the glass does not say so).
+**Fix:** carry the compile-time flag into the UI. With uploads disabled,
+render the notice without the UPDATE pill and put the reason on the
+version line, or say `HOLD KEY3` where the pill would be — a takeover
+should never present an action it cannot perform.
+
 ### OBS-28 · Pin logging config on purpose
 `firmware · S · open`
 `sdkconfig.defaults` deliberately pins flash, PSRAM, LVGL, and mbedTLS

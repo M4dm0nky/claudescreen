@@ -1,5 +1,14 @@
 # VibePulse design QA
 
+> **Historiskt dokument — 480 × 480-eran.** Varje mått, koordinat och
+> sidräkning nedan (inklusive "fyra globala sidor") beskriver ett läge som
+> passerats: panelen i den här forken är 240 × 240 och VibePulse har nio
+> sidor. Måtten är ALDRIG omräknade för 240 — det arbetet står kvar som öppen
+> punkt 1 i [docs/port-lcd-1.54.md](docs/port-lcd-1.54.md), tillsammans med
+> den exakta rastergranskningen. Läs det här som protokoll över en genomförd
+> granskning, inte som facit för dagens glas. Uppdatera inte siffrorna här
+> genom att räkna om dem i huvudet; de ska mätas på panelen.
+
 **Resultat:** PASS i simulatorn. Fysisk AMOLED-grind återstår.
 
 ## Jämförelse

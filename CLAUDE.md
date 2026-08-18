@@ -18,12 +18,17 @@ after editing `tools/tokenserver/`, restart the launchd service
 (`launchctl kickstart -k gui/$(id -u)/se.torget.tokenserver`) — the running
 process keeps old code and the panel honestly shows the gap.
 
-## AMOLED visual work
+## Panel visual work
 
-Use `.claude/skills/iterating-esp32-amoled-ui/SKILL.md` for AMOLED work. Show
-exact 480 x 480 output at meaningful stages. Review the static physical AMOLED
-before motion. Studio approval never authorizes a flash; obtain explicit user
-authorization for the physical install.
+**This fork's panel is 240 x 240** (ESP32-S3-Touch-LCD-1.54), not upstream's
+480 x 480 AMOLED — read [docs/port-lcd-1.54.md](docs/port-lcd-1.54.md) first.
+Use `.claude/skills/iterating-esp32-amoled-ui/SKILL.md` for the workflow; its
+process holds, only the pixel count differs. Show output at the panel's exact
+size, never scaled. Measure text with `tools/text_fit.py` rather than trusting
+a capture — the fixture's short string fits where the long one does not.
+Review the static physical panel before motion. Studio approval never
+authorizes a flash; obtain explicit user authorization for the physical
+install.
 
 ## Logs, errors, and learning from mistakes
 
@@ -51,7 +56,8 @@ Two rules, learned 2026-08-16, not optional:
 
 - **When an important feature ships, update `README.md` in the same effort** —
   headline it at the top (tagline + intro) AND add/refresh its own section with
-  current 480 x 480 simulator frames. A feature nobody can see in the README is
+  current simulator frames at the panel's real size. A feature nobody can see
+  in the README is
   a feature nobody adopts.
 - **Every GitHub release gets real feature images and a clean card.** Embed the
   feature's simulator frames in the release body via absolute

@@ -21,6 +21,53 @@ point at the backlog item.
 
 ---
 
+## 2026-08-18 · A local build took the glass hostage
+
+**What happened:** an `idf.py build` run purely to verify a feature compiled
+put the UPDATE READY takeover on the panel. The user could not dismiss it and
+could not reach any page behind it.
+
+**Root cause:** the tokenserver advertises the newest `build*/torget.bin` on
+the Mac, whatever it is. A dirty tree builds `…-dirty`, which differs from the
+clean string the device runs, so the notice fires correctly on a build nobody
+intended to ship. The takeover then owns the whole screen by design.
+
+**The rule now:** a build is not free — it is an announcement. Expect the
+takeover after any local build whose version differs from the running one, and
+know the two exits before you build: **KEY3 held 3 s** (physical, needs no
+touch, opens the window and clears the notice), or make the Mac stop
+advertising (move the binary aside; the notice hides itself within one fetch,
+per the contract in `notice_policy.h` — "försvinner själv när annonsen
+slocknar").
+
+**Guards:** none in code — this is operator knowledge. `notice_policy.c`
+already does the right thing.
+
+**Watch for:** the same surprise in CI or on a second machine sharing the LAN.
+
+## 2026-08-18 · The OTA token was a placeholder, so the pill led nowhere
+
+**What happened:** with the takeover up, tapping UPDATE NOW did nothing.
+Suspicion fell on the port's uncalibrated touch. It was not touch: `secrets.h`
+still carried the commented example line, so `TG_OTA_TOKEN` was never defined
+— the sender refuses without a 64-hex value, and the flashed firmware compiled
+its upload handler out. There was no path behind the button at all.
+
+**Root cause:** an optional secret whose absence is silent by design. The boot
+log says it (`inget OTA-token i secrets.h — uppladdning avstängd`) but nothing
+on the glass does, so the panel offers a button whose backend is disabled.
+
+**The rule now:** before debugging why an OTA consent gesture "does not work",
+check that OTA is configured at all — `sed -n 's/.*TG_OTA_TOKEN[^"]*"\([0-9a-f]\{64\}\)".*/ok/p' secrets.h`.
+Rotating the token always costs one cable flash, because the sender
+authenticates against the token compiled into the *running* firmware.
+
+**Guards:** none yet. Worth a backlog item: the notice should not offer
+UPDATE NOW when the device knows its own upload endpoint is disabled.
+
+**Watch for:** the same shape in `TK_VIBEPULSE_DEVICE_KEY` — absent means
+display-only, and only the boot log says so.
+
 ## 2026-08-16 · LVGL's pool starved the flush's DMA and the glass froze
 
 **What happened:** the Needs You build froze the panel intermittently on

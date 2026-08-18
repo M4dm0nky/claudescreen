@@ -83,7 +83,7 @@ class RegistryValidationTests(unittest.TestCase):
         path.write_text(yaml.safe_dump(value, sort_keys=False), encoding="utf-8")
         return path
 
-    def load(self, capability=None, sources=None, unit=None):
+    def load(self, capability=None, sources=None, unit=None, units=None):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             raw_capabilities = capability or VALID_CAPABILITY
@@ -100,7 +100,7 @@ class RegistryValidationTests(unittest.TestCase):
             })
             self.write_yaml(root, "device-units.yaml", {
                 "schema_version": 1,
-                "units": [unit or VALID_UNIT],
+                "units": units or [unit or VALID_UNIT],
             })
             return load_registry(root)
 
@@ -237,6 +237,50 @@ class RegistryValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(
                 RegistryError, "verification unit board does not match"):
             self.load(unit=unit)
+
+    # Ett repo kan bära mer än ett kort. Porten till LCD-1.54 (2026-08-17) la
+    # in det kortets förmågor i ett register vars huvud fortfarande säger
+    # AMOLED — och då gick en pinne MÄTT på den fysiska 1.54-enheten inte att
+    # skriva in, för enhetens kort matchade inte huvudets. Ett register som
+    # inte kan bära en mätning lär folk att låta bli att mäta. En förmåga får
+    # därför namnge SITT kort; saknas det gäller huvudets som förr.
+    def test_capability_may_declare_its_own_board(self):
+        unit = dict(VALID_UNIT, id="lcd-01", board="waveshare-lcd-1.54")
+        source = dict(VALID_SOURCE, unit="lcd-01")
+        capability = dict(
+            VALID_CAPABILITY,
+            board="waveshare-lcd-1.54",
+            verification={"unit": "lcd-01", "test": "display-smoke"},
+        )
+        registry = self.load(capability=capability, sources=[source], unit=unit)
+        self.assertEqual(
+            registry.capabilities["display.amoled"]["board"],
+            "waveshare-lcd-1.54",
+        )
+
+    def test_capability_board_defaults_to_registry_board(self):
+        registry = self.load()
+        self.assertEqual(
+            registry.capabilities["display.amoled"]["board"],
+            "waveshare-esp32-s3-touch-amoled-2.16",
+        )
+
+    def test_capability_board_must_be_a_board_someone_owns(self):
+        # En felstavad kortsträng ska inte tyst skapa ett tredje kort som
+        # ingen enhet är — då vore grinden bara dekoration.
+        capability = dict(VALID_CAPABILITY, board="waveshare-typo-1.54")
+        with self.assertRaisesRegex(RegistryError, "unknown board"):
+            self.load(capability=capability)
+
+    def test_verification_unit_must_match_the_capabilitys_own_board(self):
+        # Egen kortsträng skyddar inte mot att verifiera på FEL enhet: med två
+        # enheter i huset ska en 1.54-förmåga inte kunna luta sig mot en
+        # mätning gjord på AMOLED-enheten.
+        lcd_unit = dict(VALID_UNIT, id="lcd-01", board="waveshare-lcd-1.54")
+        capability = dict(VALID_CAPABILITY, board="waveshare-lcd-1.54")
+        with self.assertRaisesRegex(
+                RegistryError, "verification unit board does not match"):
+            self.load(capability=capability, units=[VALID_UNIT, lcd_unit])
 
     def test_unit_verification_requires_matching_physical_test_source(self):
         evidence = [
@@ -888,21 +932,34 @@ class RepositoryRegistryTests(unittest.TestCase):
         }
         self.assertEqual(
             verified_ids,
-            {"display.amoled", "radio.wifi-24"},
+            {"display.amoled", "radio.wifi-24", "input.key-lcd-1-54"},
         )
+        # Regeln, inte ögonblicksbilden: huset har två kort och två enheter
+        # sedan 2026-08-18, så "verifierad" får inte längre betyda "mätt på
+        # torget-home-01". Det som ska gälla är att mätningen är gjord på en
+        # enhet som ÄR förmågans kort, och att beviset pekar på ett fysiskt
+        # test för just den enheten.
         for capability_id in verified_ids:
             with self.subTest(capability=capability_id):
                 capability = registry.capabilities[capability_id]
+                unit_id = capability["verification"]["unit"]
+                self.assertIn(unit_id, registry.units)
                 self.assertEqual(
-                    capability["verification"]["unit"],
-                    "torget-home-01",
+                    registry.units[unit_id]["board"], capability["board"],
                 )
                 self.assertTrue(capability["verification"]["test"].strip())
                 sources = {
                     finding["source"] for finding in capability["evidence"]
                     if finding["field"] == "unit_verified"
                 }
-                self.assertEqual(sources, {"torget-physical-2026-08-06"})
+                self.assertTrue(sources)
+                for source_id in sources:
+                    source = registry.sources[source_id]
+                    self.assertEqual(source["kind"], "physical-test")
+                    self.assertEqual(source["unit"], unit_id)
+                    self.assertIn(
+                        capability["verification"]["test"], source["tests"],
+                    )
 
     def test_repository_required_truth_distinctions(self):
         registry = self.load_repository_registry()
@@ -1014,7 +1071,7 @@ class RepositoryRegistryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             result.stdout,
-            "OK: 30 capabilities, 9 sources, 1 units\n",
+            "OK: 32 capabilities, 11 sources, 2 units\n",
         )
 
     def test_repository_registry_loads(self):
@@ -1023,6 +1080,7 @@ class RepositoryRegistryTests(unittest.TestCase):
         expected_capabilities = {
             "compute.esp32s3r8",
             "display.amoled",
+            "display.lcd-240",
             "memory.psram",
             "touch.controller",
             "radio.wifi-24",
@@ -1038,6 +1096,7 @@ class RepositoryRegistryTests(unittest.TestCase):
             "usb.device",
             "usb.host",
             "input.key3",
+            "input.key-lcd-1-54",
             "input.boot-button",
             "antenna.onboard",
             "antenna.ipex-mod",
@@ -1053,7 +1112,7 @@ class RepositoryRegistryTests(unittest.TestCase):
             "soc.pwm-rmt-twai",
         }
         self.assertEqual(set(registry.capabilities), expected_capabilities)
-        self.assertEqual(len(registry.capabilities), 30)
+        self.assertEqual(len(registry.capabilities), 32)
 
         display = registry.capabilities["display.amoled"]
         self.assertEqual(
@@ -1102,6 +1161,13 @@ class RepositoryRegistryTests(unittest.TestCase):
             ),
             "esp-idf-5.5-ota": ("framework-doc", 5, "ESP-IDF-v5.5"),
             "esp-idf-5.5-usb": ("framework-doc", 5, "ESP-IDF-v5.5"),
+            "waveshare-lcd-1-54-examples-2026-08-17": (
+                "source-code", 3, "main@2026-08-17",
+            ),
+            "torget-lcd-154-physical-2026-08-18": (
+                "physical-test", 1,
+                "findings-2026-08-18; unit=torget-lcd-154-01",
+            ),
         }
         self.assertEqual(set(expected_sources), set(registry.sources))
         for source_id, expected in expected_sources.items():

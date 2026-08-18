@@ -204,7 +204,14 @@ an otherwise well-logged function.
 missing log line.
 
 ### OBS-32 · The `-dirty` gate reads a cached version, not the tree
-`tools · S · open`
+`tools · S · done (2026-08-18)` — the pusher now compares the image's
+version against `git describe --tags --dirty` at send time and refuses a
+mismatch (`TG_OTA_ALLOW_STALE=1` overrides), and the CI bridge names the
+repository derived from `origin` instead of trusting `gh`'s ambient
+context. Both are locked by `test/test_ota_sender_gates.py`. Verified on
+the spot: tree `v0.6.0-15-g4ecd3d8-dirty` against binary
+`v0.6.0-14-g7d08d6a` is now refused, and the CI query returns 2 green runs
+where the bare call returned 0. Original problem, for the record:
 `tools/ota-flash.sh` refuses `-dirty` images by reading the version out of
 the binary's app descriptor — the right source, since it describes what is
 actually being sent. But that string is computed when CMake configures and

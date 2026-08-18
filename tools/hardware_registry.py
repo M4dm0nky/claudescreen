@@ -151,7 +151,21 @@ def load_registry(root):
                     f"unit {unit_id}: secret field {secret_field}",
                 )
 
+    # Ett repo kan bära mer än ett kort: porten till LCD-1.54 la in det
+    # kortets förmågor bredvid AMOLED-kortets, i ett register vars huvud
+    # fortfarande namnger AMOLED. En förmåga får därför namnge SITT kort;
+    # utan egen rad gäller huvudets, precis som förr. Kortet måste vara ett
+    # som någon enhet faktiskt är (eller huvudets) — annars skapar en
+    # felstavning tyst ett tredje kort som ingen kan verifiera mot.
+    known_boards = {registry_board} | {unit["board"] for unit in units.values()}
     for capability_id, capability in capabilities.items():
+        capability_board = capability.get("board", registry_board)
+        if capability_board not in known_boards:
+            raise RegistryError(
+                f"{capability_id}: unknown board {capability_board!r} — no "
+                "registered unit is that board",
+            )
+        capability["board"] = capability_board
         for key in ("name", "resources", "constraints", "conflicts",
                     "opportunities", "sources", "evidence", "last_verified"):
             if key not in capability:
@@ -285,10 +299,10 @@ def load_registry(root):
                 raise RegistryError(
                     f"{capability_id}: verification needs known unit and test",
                 )
-            if units[unit_id]["board"] != registry_board:
+            if units[unit_id]["board"] != capability["board"]:
                 raise RegistryError(
                     f"{capability_id}: verification unit board does not match "
-                    "registry board",
+                    "the capability's board",
                 )
             matching_physical_source = any(
                 finding["field"] == "unit_verified"

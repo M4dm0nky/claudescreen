@@ -61,6 +61,25 @@ case "$BIN_VERSION" in
     ;;
 esac
 
+# STALE-GRINDEN (OBS-32, mätt 2026-08-18): -dirty-grinden ovan litar på
+# versionssträngen i binären — men den beräknas när CMake KONFIGURERAR och
+# cachas sedan. Ett bygge ur ett smutsigt träd bär därför ett RENT namn om
+# trädet var rent vid senaste omkonfigurering, och grinden vinkar igenom
+# exakt det den finns för att stoppa. Den dagen gick vår egen okommitterade
+# knappfix iväg under namnet på commiten före den. Jämför mot trädet HÄR,
+# vid sändningen: skiljer de sig är avbilden inte vad den utger sig för.
+TREE_VERSION=$(git describe --tags --dirty 2>/dev/null || true)
+if [ -n "$TREE_VERSION" ] && [ "$TREE_VERSION" != "$BIN_VERSION" ]; then
+  if [ "${TG_OTA_ALLOW_STALE:-0}" != "1" ]; then
+    echo "VÄGRAR: avbilden säger '$BIN_VERSION', trädet säger '$TREE_VERSION'." >&2
+    echo "        Binären är byggd ur ett annat träd än det du står i — bygg om" >&2
+    echo "        (idf.py build), eller kör TG_OTA_ALLOW_STALE=1 om du menar det." >&2
+    exit 1
+  fi
+  echo "(avvikelse binär '$BIN_VERSION' mot träd '$TREE_VERSION' släppt igenom"
+  echo " av TG_OTA_ALLOW_STALE=1)"
+fi
+
 # CI-BRYGGAN (beställd 2026-08-14, samma kväll som spökbinären): bara
 # byggen vars commit har GRÖN CI får gå till glaset. Hashen tas ur
 # versionssträngen (gXXXXXXX); en taggad version löses via git. Kräver
@@ -79,14 +98,28 @@ if [ "${TG_OTA_ALLOW_NO_CI:-0}" != "1" ]; then
     echo "        TG_OTA_ALLOW_NO_CI=1 om du menar det." >&2
     exit 1
   fi
-  CI_GREEN=$(gh run list --commit "$BIN_COMMIT" --status success     --json databaseId --jq length 2>/dev/null || echo X)
+  # REPOT NAMNGES UTTRYCKLIGEN (mätt 2026-08-18): `gh run list` utan -R löser
+  # upp repot ur gh:s egen kontext, och utan satt default-repo kan den svara
+  # för ett HELT ANNAT repo. Då rapporterade bryggan "ingen grön CI" för en
+  # commit med två gröna körningar, och enda synliga vägen vidare var att
+  # stänga av grinden. En grind som säger nej för att den frågade fel ställe
+  # lär användaren att kringgå den. Origin är sanningen, inte omgivningen.
+  REPO=$(git remote get-url origin 2>/dev/null \
+         | sed -e 's#^git@github\.com:#https://github.com/#' \
+               -e 's#^https://github\.com/##' -e 's#\.git$##' || true)
+  if [ -z "${REPO:-}" ]; then
+    echo "VÄGRAR: hittar inget origin att fråga GitHub om." >&2
+    echo "        TG_OTA_ALLOW_NO_CI=1 om du menar det." >&2
+    exit 1
+  fi
+  CI_GREEN=$(gh run list -R "$REPO" --commit "$BIN_COMMIT" --status success     --json databaseId --jq length 2>/dev/null || echo X)
   if [ "$CI_GREEN" = "X" ]; then
-    echo "VÄGRAR: kan inte fråga GitHub om CI för $BIN_COMMIT (offline? gh?)." >&2
+    echo "VÄGRAR: kan inte fråga GitHub om CI för $BIN_COMMIT i $REPO (offline? gh?)." >&2
     echo "        TG_OTA_ALLOW_NO_CI=1 om du menar det." >&2
     exit 1
   fi
   if [ "${CI_GREEN:-0}" -lt 1 ]; then
-    CI_PENDING=$(gh run list --commit "$BIN_COMMIT" --json status       --jq '[.[]|select(.status!="completed")]|length' 2>/dev/null || echo 0)
+    CI_PENDING=$(gh run list -R "$REPO" --commit "$BIN_COMMIT" --json status       --jq '[.[]|select(.status!="completed")]|length' 2>/dev/null || echo 0)
     if [ "${CI_PENDING:-0}" -ge 1 ]; then
       echo "VÄGRAR: CI för $BIN_COMMIT kör fortfarande — vänta på grönt." >&2
     else
@@ -95,7 +128,7 @@ if [ "${TG_OTA_ALLOW_NO_CI:-0}" != "1" ]; then
     echo "        TG_OTA_ALLOW_NO_CI=1 om du menar det." >&2
     exit 1
   fi
-  echo "CI grön för $BIN_COMMIT ($CI_GREEN körning(ar))"
+  echo "CI grön för $BIN_COMMIT i $REPO ($CI_GREEN körning(ar))"
 fi
 
 echo "fönstret öppet — laddar upp $BIN ($(wc -c < "$BIN" | tr -d ' ') byte):"

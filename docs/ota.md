@@ -89,17 +89,29 @@ host-tested module (`test/test_ota_notice_policy.c`).
 ## The sender gates
 
 The device proves an image is *valid*; the pusher proves it is the
-*right* one. Four gates run at the moment of upload, all born from the
-2026-08-14 ghost incident:
+*right* one. Five gates run at the moment of upload, born from the
+2026-08-14 ghost incident and sharpened on 2026-08-18:
 
 1. **Newest binary at send time** — never a directory picked at script
    start while a build was mid-write.
 2. **The embedded version is read from the image and announced** before
    anything is sent.
 3. **`-dirty` builds are refused** (`TG_OTA_ALLOW_DIRTY=1` to override).
-4. **CI bridge**: the commit in the version string must have a green CI
+4. **Binary must match the tree** — the image's version is compared
+   against `git describe --tags --dirty` at send time
+   (`TG_OTA_ALLOW_STALE=1` to override). Gate 3 alone is not enough: the
+   version string is computed when CMake *configures* and then cached, so
+   a build made from a dirty tree can carry a perfectly clean name. That
+   is not theory — on 2026-08-18 an uncommitted fix went over the air
+   announcing the commit before it (OBS-32).
+5. **CI bridge**: the commit in the version string must have a green CI
    run on GitHub (`TG_OTA_ALLOW_NO_CI=1` for offline emergencies). CI
-   runs on every pushed branch for exactly this reason.
+   runs on every pushed branch for exactly this reason. The repository is
+   derived from `origin`, never from `gh`'s ambient context — without a
+   default repo set, a bare `gh run list` can answer for a *different*
+   repo and report "no green CI" for a commit that has two (measured
+   2026-08-18). A gate that says no because it asked the wrong place
+   teaches people to switch it off.
 
 ## Day-to-day developer workflow
 

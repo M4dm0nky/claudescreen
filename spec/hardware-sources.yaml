@@ -34,6 +34,25 @@ sources:
     accessed: "2026-08-10"
     board_revision: unknown
 
+  - id: torget-lcd-154-physical-2026-08-18
+    kind: physical-test
+    rank: 1
+    title: Torget physical hardware findings for torget-lcd-154-01
+    publisher: Torget
+    locator: docs/port-lcd-1.54.md
+    revision: findings-2026-08-18; unit=torget-lcd-154-01
+    accessed: "2026-08-18"
+    board_revision: unknown
+    unit: torget-lcd-154-01
+    tests:
+      - key-pin-hunt-boot-pwr-plus-2026-08-18
+    note: >-
+      All three candidate buttons were configured as inputs and every level
+      change logged while the button silkscreened KEY was pressed. Only GPIO4
+      (BSP_BUTTON_PLUS) moved, twice, cleanly; BOOT (GPIO0) and PWR (GPIO5)
+      stayed high throughout. The maintenance window opening afterwards is the
+      end-to-end proof: /api/ota/status only answers while it is open.
+
   - id: waveshare-lcd-1-54-examples-2026-08-17
     kind: source-code
     rank: 3

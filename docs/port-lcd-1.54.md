@@ -223,14 +223,14 @@ power setting, not firmware.
    takeover did not answer a finger. A live touch chip plus a dead-feeling
    glass is the signature of wrong axes, and this is the remaining suspect.
 3. **Auto-rotation** — see §5.
-4. **The capability registry still calls itself the AMOLED board** —
-   `spec/hardware-capabilities.yaml` opens with
-   `board: waveshare-esp32-s3-touch-amoled-2.16` while carrying this board's
-   entries (`display.lcd-240`, `input.key-lcd-1-54`). Consequence, hit
-   2026-08-18: a capability cannot cite the 1.54 unit in a `verification:`
-   block, because `hardware_registry.py` matches the unit's board against that
-   header — so pins measured on the physical unit have to stay
-   `unit_verified: unknown`. Splitting the registry per board is the fix.
+4. ~~**The capability registry still calls itself the AMOLED board**~~ —
+   fixed 2026-08-18. A capability may now declare its own `board:`, and
+   `hardware_registry.py` matches a verification unit against *that* rather
+   than the file header (which stays the default for every inherited entry).
+   `display.lcd-240` and `input.key-lcd-1-54` name this board, the physical
+   unit is registered as `torget-lcd-154-01`, and the KEY pin is
+   `unit_verified: "yes"` against a real physical-test source. A registry that
+   cannot hold a measurement teaches people not to measure.
 
 ## 9. The silent button (2026-08-18)
 

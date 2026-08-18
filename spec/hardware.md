@@ -14,6 +14,15 @@ not automatically wired on this board, enabled in Torget, or verified on the
 physical unit. Run `python3 tools/hardware_registry.py spec` after editing any
 registry file.
 
+**This file documents the AMOLED-2.16 board**, which is where the project
+started; this fork's hardware is the ESP32-S3-Touch-LCD-1.54, and its pin map
+lives in [../docs/port-lcd-1.54.md](../docs/port-lcd-1.54.md). Every pin below
+is a claim about the *other* board — a `main.c` carried over from it polled
+GPIO18 for a button that does not exist here, and nothing said so for a day
+(`docs/lessons.md`, 2026-08-18). `hardware-capabilities.yaml` keeps the same
+default: its `board:` header names AMOLED, and an entry belonging to another
+board says so with its own `board:` line.
+
 ## Beslut som reconen låser (verifierat)
 
 | Fråga | Svar |

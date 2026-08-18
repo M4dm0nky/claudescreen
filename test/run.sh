@@ -175,6 +175,7 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
 "$PYTHON_BIN" test_preview_ui.py
 "$PYTHON_BIN" test_ota_partition.py
 "$PYTHON_BIN" test_ota_reopen_wiring.py
+"$PYTHON_BIN" test_ota_notice_without_touch.py
 "$PYTHON_BIN" test_ota_sender_gates.py
 
 cd ..

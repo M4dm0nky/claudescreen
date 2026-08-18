@@ -17,15 +17,19 @@ assert (
     "#define TK_USAGE_SCREEN_VIEWS (7 + TK_GITHUB_SCREEN_ENABLED + 1)" in header
 )
 for enum_literal in (
+    # Swipe order, pinned on purpose: the pages people reach for daily come
+    # first and the Codex pages last, with GitHub — the one page that can be
+    # compiled out — at the very end. Moving a page is allowed; moving one
+    # without noticing is not, so this list is meant to break.
     "VIEW_CLAUDE_SESSION = 0",
-    "VIEW_CLAUDE_FABLE = 1",
-    "VIEW_CLAUDE_ALL = 2",
-    "VIEW_CODEX_WEEKLY = 3",
-    "VIEW_BURN_RATE = 4",
-    "VIEW_TRACKER_CLAUDE = 5",
-    "VIEW_TRACKER_CODEX = 6",
-    "VIEW_GITHUB = 7",
-    "VIEW_VALUE = 8",
+    "VIEW_CLAUDE_ALL = 1",
+    "VIEW_BURN_RATE = 2",
+    "VIEW_TRACKER_CLAUDE = 3",
+    "VIEW_VALUE = 4",
+    "VIEW_CLAUDE_FABLE = 5",
+    "VIEW_CODEX_WEEKLY = 6",
+    "VIEW_TRACKER_CODEX = 7",
+    "VIEW_GITHUB = 8",
 ):
     assert enum_literal in app_header
 assert "VIEW_VOLUME" not in app_header
@@ -366,4 +370,4 @@ assert "#define TAKEOVER_W (VP_SCREEN_W - 2 * TAKEOVER_X)" in monitor
 assert "int usage_screen_current_view(void);" in header
 assert "usage_screen_current_view()" in sim
 
-print("OK: VibePulse eight-page full-screen layout wiring (github + value)")
+print("OK: VibePulse nine-page full-screen layout wiring (github + value)")

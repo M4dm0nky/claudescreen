@@ -1113,21 +1113,26 @@ void usage_screen_create(lv_obj_t *root) {
   lv_obj_set_style_bg_opa(ui.tileview, LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(ui.tileview, COL_BLACK, 0);
 
+  /* Skapas i svepordning, inte i den ordning sidorna en gång tillkom:
+   * brickans plats kommer från VIEW_*-indexet, så det här är enbart för
+   * läsaren — men en lista som står i annan ordning än glaset kostar tid
+   * varje gång någon letar. quotas[]-platserna är däremot fria: apply_quota
+   * går över QUOTA_PAGES och bryr sig inte om sidordningen. */
   create_quota_page(&ui.quotas[0], VIEW_CLAUDE_SESSION,
                     USAGE_QUOTA_CLAUDE_SESSION, USAGE_PROVIDER_CLAUDE);
-  create_quota_page(&ui.quotas[1], VIEW_CLAUDE_FABLE,
-                    USAGE_QUOTA_CLAUDE_MODEL, USAGE_PROVIDER_CLAUDE);
   create_quota_page(&ui.quotas[2], VIEW_CLAUDE_ALL,
                     USAGE_QUOTA_CLAUDE_ALL, USAGE_PROVIDER_CLAUDE);
-  create_quota_page(&ui.quotas[3], VIEW_CODEX_WEEKLY,
-                    USAGE_QUOTA_CODEX_WEEK, USAGE_PROVIDER_CODEX);
   create_burn_rate_page();
   create_tracker_page(&ui.trackers[0], VIEW_TRACKER_CLAUDE, false);
+  create_value_page();
+  create_quota_page(&ui.quotas[1], VIEW_CLAUDE_FABLE,
+                    USAGE_QUOTA_CLAUDE_MODEL, USAGE_PROVIDER_CLAUDE);
+  create_quota_page(&ui.quotas[3], VIEW_CODEX_WEEKLY,
+                    USAGE_QUOTA_CODEX_WEEK, USAGE_PROVIDER_CODEX);
   create_tracker_page(&ui.trackers[1], VIEW_TRACKER_CODEX, true);
 #if TK_GITHUB_SCREEN_ENABLED
   create_github_page();
 #endif
-  create_value_page();
 #if TK_GITHUB_NOTIFICATIONS_ENABLED
   /* Created before the agent monitor: NEEDS YOU/ERROR/DONE always retain
    * transient priority over a project star. */

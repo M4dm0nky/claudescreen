@@ -84,6 +84,28 @@ on the [releases page](https://github.com/niclasvestlund-YT/vibepulse/releases).
   The static attention gate now permits exactly this one animation and pins
   its shape.
 
+### Changed
+
+- The pages are ordered by how often you look at them instead of by when
+  they were written: five-hour session, Claude weekly, burn rate, Claude Max
+  Tracker, value, Fable weekly, then Codex weekly, Codex Max Tracker and
+  GitHub. The Codex pages no longer sit between the Claude ones, and value
+  moved from last to fifth.
+
+  GitHub landing last is not taste. It is the only page that can be compiled
+  out (`TK_GITHUB_SCREEN_ENABLED`), and `TK_USAGE_SCREEN_VIEWS` shrinks with
+  it — so at index 7 with value behind it, a clone with GitHub disabled had
+  the value tile write `ui.tiles[8]` into an eight-element array. Last is the
+  only position where switching a page off leaves no hole, and the wiring
+  test now says so with the reason attached.
+
+  Nothing but the `VIEW_*` enum had to move: every tile takes its column from
+  its constant, and the pager, the edge swipe directions and the simulator's
+  ~30 `tokens_show_view` calls all follow. Verified by measuring the pager
+  row in fresh 240×240 captures — nine dots, the wide one at 0/1/3/4/5/6/7/8
+  for each page in turn — and by an ASan/UBSan build with GitHub compiled
+  out, which draws eight dots and stays clean.
+
 ## v0.2.1 — 2026-08-13
 
 Server fixes verified live on a real installation the same evening; the

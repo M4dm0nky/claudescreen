@@ -19,18 +19,22 @@
 
 extern const torget_app_t tokens_app;
 
-/* Femtimmarsfönstret ligger först: det är den siffra som avgör om nästa
- * långa körning hinner klart, och den ska synas utan att någon sveper. */
+/* Ordningen är sveplängd, inte historia: det man tittar på varje dag ligger
+ * först, Codex-sidorna sist. Femtimmarsfönstret ligger överst av allt — det
+ * är siffran som avgör om nästa långa körning hinner klart, och den ska
+ * synas utan att någon sveper. GitHub ligger allra sist därför att den är
+ * den enda sidan som kan stängas av (TK_GITHUB_SCREEN_ENABLED); sist är den
+ * enda platsen där ett bortfall inte lämnar ett hål mitt i numreringen. */
 enum {
   VIEW_CLAUDE_SESSION = 0,
-  VIEW_CLAUDE_FABLE = 1,
-  VIEW_CLAUDE_ALL = 2,
-  VIEW_CODEX_WEEKLY = 3,
-  VIEW_BURN_RATE = 4,
-  VIEW_TRACKER_CLAUDE = 5,
-  VIEW_TRACKER_CODEX = 6,
-  VIEW_GITHUB = 7,
-  VIEW_VALUE = 8,
+  VIEW_CLAUDE_ALL = 1,
+  VIEW_BURN_RATE = 2,
+  VIEW_TRACKER_CLAUDE = 3,
+  VIEW_VALUE = 4,
+  VIEW_CLAUDE_FABLE = 5,
+  VIEW_CODEX_WEEKLY = 6,
+  VIEW_TRACKER_CODEX = 7,
+  VIEW_GITHUB = 8,
 };
 
 /* Ett lyckat /api/tokens-svar. Snappar tickern, stämplar färskhet och

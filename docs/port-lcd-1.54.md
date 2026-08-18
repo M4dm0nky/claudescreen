@@ -201,6 +201,14 @@ power setting, not firmware.
    pixel threshold has to be re-derived for 240×240 and confirmed by eye. This
    is the only thing standing between the gate and green — all 31 other suites
    pass.
+
+   Note for whoever does the re-derivation: `test_pager_shows_one_dot_per_view`
+   dies inside `dot_runs()` on the 480-era `PAGER_ROW_Y` before it ever reads
+   its `active_index` values, so those numbers are unverified by the suite even
+   when they are right. They were corrected by hand for the 2026-08-18
+   reordering and checked by measuring the pager row in real 240×240 captures
+   (`PAGER_Y + 3`, nine runs, the active one 18 px). Re-run that measurement
+   rather than trusting the constants.
 2. **Touch alignment** — `main.c` sets `swap_xy/mirror_x/mirror_y` all 0 and
    this has **never been checked on the glass**. Tap bottom-left and top-right
    and see whether the hit lands where the finger did.

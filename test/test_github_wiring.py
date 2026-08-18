@@ -28,17 +28,20 @@ class GitHubWiringTests(unittest.TestCase):
             "(TK_GITHUB_SCREEN_ENABLED || TK_GITHUB_NOTIFICATIONS_ENABLED)",
             net)
 
-    def test_github_is_one_optional_next_to_last_view(self):
+    def test_github_is_the_one_optional_and_therefore_last_view(self):
         header = read("components/app_tokens/usage_screen.h")
         app = read("components/app_tokens/app_tokens.h")
         ui = read("components/app_tokens/usage_screen.c")
         # Seven base tiles + the optional GitHub tile + the always-present
-        # Value tile. The count claimed here and the indices below must move
-        # together: the five-hour session page took index 0 in 2026-08 and
-        # pushed every later tile one step right, GitHub included.
+        # Value tile. GitHub must stay *last*, and that is not taste: it is
+        # the only tile that can be compiled out, and TK_USAGE_SCREEN_VIEWS
+        # shrinks with it. Anywhere but last, switching it off leaves a hole
+        # in the numbering and the tile after it indexes one past the end of
+        # ui.tiles[]. The count claimed here and the indices below move
+        # together.
         self.assertIn("(7 + TK_GITHUB_SCREEN_ENABLED + 1)", header)
-        self.assertIn("VIEW_GITHUB = 7", app)
-        self.assertIn("VIEW_VALUE = 8", app)
+        self.assertIn("VIEW_GITHUB = 8", app)
+        self.assertIn("VIEW_VALUE = 4", app)
         self.assertIn("set_star_hero", ui)
         self.assertIn('"FORKS"', ui)
         self.assertNotIn("ISSUES", ui)

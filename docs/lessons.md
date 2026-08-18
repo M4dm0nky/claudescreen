@@ -45,6 +45,29 @@ already does the right thing.
 
 **Watch for:** the same surprise in CI or on a second machine sharing the LAN.
 
+## 2026-08-18 · An optional page sat in the middle of a fixed numbering
+
+**What happened:** reordering the carousel by how often each page is used
+turned up an older defect. GitHub was view 7 and value view 8, while
+`TK_USAGE_SCREEN_VIEWS` is `(7 + TK_GITHUB_SCREEN_ENABLED + 1)`. With GitHub
+disabled — the default in a fresh clone — the array holds eight tiles and the
+value page wrote `ui.tiles[8]`, one past the end.
+
+**Root cause:** the page count was conditional but the indices were not. Every
+`VIEW_*` after the optional page assumed it was present. Nothing crashed
+visibly, and the simulator, which compiles GitHub *in*, could never show it.
+
+**The rule now:** a compile-time-optional page goes **last**. That is the only
+slot where its absence shortens the list instead of punching a hole in it.
+
+**Guards:** `test_github_wiring.py` pins `VIEW_GITHUB = 8` with the reason in
+the test name and comment; the new order is pinned literal-by-literal in
+`test_vibepulse_layout_wiring.py`. Verified by an ASan/UBSan simulator build
+with `TK_GITHUB_SCREEN_ENABLED=0`.
+
+**Watch for:** the next optional page. Two of them cannot both be last —
+that needs derived indices, not hand-written ones.
+
 ## 2026-08-18 · The OTA token was a placeholder, so the pill led nowhere
 
 **What happened:** with the takeover up, tapping UPDATE NOW did nothing.

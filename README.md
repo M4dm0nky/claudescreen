@@ -56,6 +56,20 @@ GitHub project pulse. Every image below is an exact simulator frame — the
 simulator renders the same pixels as the panel. Upstream frames are 480×480;
 frames from this port are 240×240 and captioned as such.
 
+They are ordered by how often you reach for them, not by when they were
+written:
+
+| # | Page | # | Page |
+|---|---|---|---|
+| 1 | 5-hour session window | 6 | Fable weekly |
+| 2 | Claude weekly | 7 | Codex weekly |
+| 3 | Burn rate | 8 | Codex Max Tracker |
+| 4 | Claude Max Tracker | 9 | GitHub *(optional)* |
+| 5 | Value multiple | | |
+
+GitHub is last because it is the only page that can be compiled out — last is
+the one position where switching a page off leaves no gap behind it.
+
 <table>
 <tr>
 <td width="50%"><img src="docs/img/vibepulse-session-5h.png" alt="Claude 5-hour session window at 21%" width="100%"><br><img src="docs/img/vibepulse-session-idle.png" alt="Session window before it starts: 0% and STARTS ON NEXT REQUEST" width="100%"></td>

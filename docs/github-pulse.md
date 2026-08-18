@@ -41,7 +41,10 @@ total:
 2. **Firmware** (`components/app_tokens/`): `github_net.c` fetches `TK_GITHUB_URL`
    every 30 s after a deliberate 20 s startup delay (so GitHub never contends with
    the token/agent feeds at boot); `usage_screen.c` renders the card as an extra
-   carousel view; `project_star_popup.c` draws the event.
+   carousel view — deliberately the **last** one (`VIEW_GITHUB = 8`), because it
+   is the only page that can be compiled out and `TK_USAGE_SCREEN_VIEWS` shrinks
+   with it; anywhere else, disabling it leaves the page behind it indexing past
+   the end of `ui.tiles[]`. `project_star_popup.c` draws the event.
 3. **Config** (`secrets.h`, see `secrets.h.example`): `TK_GITHUB_URL` plus the
    opt-in flags `TK_GITHUB_SCREEN_ENABLED`, `TK_GITHUB_NOTIFICATIONS_ENABLED`,
    `TK_GITHUB_SOUND_ENABLED` (all default 0).

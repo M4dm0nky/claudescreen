@@ -909,8 +909,8 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
                                     MAX_RED)
 
     def test_pager_shows_one_dot_per_view(self):
-        # The simulator opts into GitHub, so the layout is the full eight
-        # tiles (six base + github + value) and create_pager draws one dot
+        # The simulator opts into GitHub, so the layout is the full nine
+        # tiles (seven base + github + value) and create_pager draws one dot
         # per view, the active one 18px wide and the rest 6px, all on one
         # pixel row with nothing else sharing it — so counting horizontal
         # runs of non-black pixels on that row is an exact dot count and
@@ -918,11 +918,11 @@ class VibePulseVisualLandmarkTests(unittest.TestCase):
         # written here, so adding a view updates this test's expectation but
         # never lets the row silently go uncounted.
         cases = (
-            ("torget-vibepulse-tracker-claude-coldstart.bmp", 4),  # VIEW_TRACKER_CLAUDE
-            ("torget-vibepulse-tracker-codex-full.bmp", 5),        # VIEW_TRACKER_CODEX
-            ("torget-vibepulse-tracker-empty.bmp", 5),             # view unchanged
-            ("torget-vibepulse-tracker-stale.bmp", 5),             # view unchanged
-            ("torget-vibepulse-value-both.bmp", 7),               # VIEW_VALUE (last tile)
+            ("torget-vibepulse-tracker-claude-coldstart.bmp", 3),  # VIEW_TRACKER_CLAUDE
+            ("torget-vibepulse-tracker-codex-full.bmp", 7),        # VIEW_TRACKER_CODEX
+            ("torget-vibepulse-tracker-empty.bmp", 7),             # view unchanged
+            ("torget-vibepulse-tracker-stale.bmp", 7),             # view unchanged
+            ("torget-vibepulse-value-both.bmp", 4),               # VIEW_VALUE
         )
         for name, active_index in cases:
             with self.subTest(name=name):

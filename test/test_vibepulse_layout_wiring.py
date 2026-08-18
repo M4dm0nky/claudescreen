@@ -14,17 +14,18 @@ attention_fonts = (
 )
 
 assert (
-    "#define TK_USAGE_SCREEN_VIEWS (6 + TK_GITHUB_SCREEN_ENABLED + 1)" in header
+    "#define TK_USAGE_SCREEN_VIEWS (7 + TK_GITHUB_SCREEN_ENABLED + 1)" in header
 )
 for enum_literal in (
-    "VIEW_CLAUDE_FABLE = 0",
-    "VIEW_CLAUDE_ALL = 1",
-    "VIEW_CODEX_WEEKLY = 2",
-    "VIEW_BURN_RATE = 3",
-    "VIEW_TRACKER_CLAUDE = 4",
-    "VIEW_TRACKER_CODEX = 5",
-    "VIEW_GITHUB = 6",
-    "VIEW_VALUE = 7",
+    "VIEW_CLAUDE_SESSION = 0",
+    "VIEW_CLAUDE_FABLE = 1",
+    "VIEW_CLAUDE_ALL = 2",
+    "VIEW_CODEX_WEEKLY = 3",
+    "VIEW_BURN_RATE = 4",
+    "VIEW_TRACKER_CLAUDE = 5",
+    "VIEW_TRACKER_CODEX = 6",
+    "VIEW_GITHUB = 7",
+    "VIEW_VALUE = 8",
 ):
     assert enum_literal in app_header
 assert "VIEW_VOLUME" not in app_header
@@ -71,7 +72,7 @@ assert "usage_screen_set_volume" not in source
 
 create = source[source.index("void usage_screen_create"):]
 create = create[:create.index("void usage_screen_apply_tokens")]
-assert create.count("create_quota_page(") == 3
+assert create.count("create_quota_page(") == 4
 assert create.count("create_burn_rate_page(") == 1
 assert create.count("create_tracker_page(") == 2
 assert "create_github_page();" in create
@@ -83,7 +84,7 @@ assert "tk_agent_monitor_create(root);" in create
 
 quota = source[source.index("static void create_quota_page"):]
 quota = quota[:quota.index("static void create_burn_rate_page")]
-for copy in ("USED TODAY", "TO RESET"):
+for copy in ("USED TODAY", "TO RESET", "LAST HOUR"):
     assert f'"{copy}"' in quota
 assert "VP_BAR_Y" in quota and "VP_BAR_H" in quota
 assert "baseline_fill" in quota and "today_fill" in quota

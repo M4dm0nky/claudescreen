@@ -6,6 +6,7 @@
   "monthTokens": 610000000,
   "claudeSessionPct": null,
   "claudeSessionResetMin": null,
+  "claudeSessionState": "unknown",
   "claudeWeekPct": null,
   "claudeWeekResetMin": null,
   "claudeModelWeekPct": null,

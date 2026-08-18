@@ -12,6 +12,7 @@
 #define USAGE_CARD_DELTA_CAP 24
 #define USAGE_CARD_RESET_CAP 32
 #define USAGE_CARD_SHORT_CAP 24
+#define USAGE_CARD_NOTE_CAP 32
 
 typedef enum {
   USAGE_PROVIDER_CLAUDE,
@@ -31,6 +32,11 @@ typedef struct {
   char delta_text[USAGE_CARD_DELTA_CAP];
   char reset_text[USAGE_CARD_RESET_CAP];
   char reset_short_text[USAGE_CARD_SHORT_CAP];
+  /* Tom utom när en nolla behöver en förklaring: ett femtimmarsfönster som
+   * ännu inte startat är noll procent MEN har ingen nedräkning, och utan den
+   * här raden ser sidan trasig ut i stället för tom. Icke-tom betyder att
+   * vyn ska visa noteringen i stället för statistikraden. */
+  char empty_note[USAGE_CARD_NOTE_CAP];
   double pct;
   double delta_pct;
   int has_pct;
@@ -47,6 +53,7 @@ typedef struct {
 typedef enum {
   USAGE_QUOTA_CLAUDE_MODEL,
   USAGE_QUOTA_CLAUDE_ALL,
+  USAGE_QUOTA_CLAUDE_SESSION,
   USAGE_QUOTA_CODEX_WEEK,
 } usage_quota_scope;
 

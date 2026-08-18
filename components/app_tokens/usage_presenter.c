@@ -78,6 +78,29 @@ static void build_card(usage_card_view *out, usage_card_kind kind,
   }
 }
 
+/* Femtimmarsfönstret är den enda kvoten där frånvaro har två betydelser, och
+ * servern skickar vilken det är. Idle = servern har sett ett tomt fönster,
+ * alltså är noll sant och nedräkningen finns inte än. Allt annat faller
+ * tillbaka på build_cards vanliga streck: ett tillstånd vi inte kan backa upp
+ * med en procentsats får aldrig bli en nolla. */
+static void build_session_card(const tk_tokens *tokens,
+                               usage_card_view *out) {
+  build_card(out, USAGE_CARD_FIVE_HOURS, "5H · SESSION",
+             &tokens->claude_session);
+  if (tokens->claude_session.has_pct ||
+      tokens->claude_session_state != TK_SESSION_IDLE) {
+    return;
+  }
+  out->has_pct = 1;
+  out->pct = 0;
+  snprintf(out->pct_text, sizeof out->pct_text, "0%%");
+  snprintf(out->empty_note, sizeof out->empty_note,
+           "STARTS ON NEXT REQUEST");
+  /* Noteringen ersätter statistikraden, så den får inte samtidigt påstå
+   * att förbrukningen är otillgänglig. */
+  out->reset_text[0] = '\0';
+}
+
 static void build_hero_quota(const tk_tokens *tokens, usage_provider provider,
                              usage_card_view *out) {
   if (provider == USAGE_PROVIDER_CODEX) {
@@ -132,6 +155,10 @@ void usage_presenter_build_quota_page(const tk_tokens *tokens,
       out->provider = USAGE_PROVIDER_CLAUDE;
       build_card(&out->quota, USAGE_CARD_ALL_WEEK,
                  "WEEKLY · ALL MODELS", &tokens->claude_week);
+      break;
+    case USAGE_QUOTA_CLAUDE_SESSION:
+      out->provider = USAGE_PROVIDER_CLAUDE;
+      build_session_card(tokens, &out->quota);
       break;
     case USAGE_QUOTA_CODEX_WEEK:
     default:

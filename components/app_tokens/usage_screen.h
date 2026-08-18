@@ -12,8 +12,9 @@
 #include "max_tracker.h"
 #include "tokens.h"
 
-/* Six base tiles + the optional GitHub tile + the always-present Value tile. */
-#define TK_USAGE_SCREEN_VIEWS (6 + TK_GITHUB_SCREEN_ENABLED + 1)
+/* Seven base tiles + the optional GitHub tile + the always-present Value
+ * tile. The seventh base tile is the five-hour session window. */
+#define TK_USAGE_SCREEN_VIEWS (7 + TK_GITHUB_SCREEN_ENABLED + 1)
 
 void usage_screen_create(lv_obj_t *root);
 void usage_screen_apply_tokens(const tk_tokens *tokens);

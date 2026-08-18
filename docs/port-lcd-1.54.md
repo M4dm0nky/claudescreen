@@ -194,8 +194,10 @@ power setting, not firmware.
 ## 8. Open
 
 1. **Exact-raster landmark suite** — `test/test_vibepulse_visual_landmarks.py`
-   (~1000 lines) asserts pixel coordinates against 480×480 captures. 84
-   failures; `./test/run.sh` exits 1 because of it. Every crop region and lit-
+   (~1000 lines) asserts pixel coordinates against 480×480 captures. 87
+   failures (84, plus the three five-hour session captures added 2026-08-18 —
+   same single cause, `(240, 240) != (480, 480)`); `./test/run.sh` exits 1
+   because of it. Every crop region and lit-
    pixel threshold has to be re-derived for 240×240 and confirmed by eye. This
    is the only thing standing between the gate and green — all 31 other suites
    pass.

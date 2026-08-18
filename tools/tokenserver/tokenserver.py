@@ -1829,7 +1829,8 @@ def get_snapshot(projects_dir: Path, history=None, now_ts=None,
 
     # null = ärlig frånvaro (nyckelring/probe/loggar otillgängliga) — skärmen
     # visar streck, aldrig hittade procent. Samma regel som sharePct.
-    claude = get_limits() or {}
+    claude_probe = get_limits()
+    claude = claude_probe or {}
     codex = _read_codex_limits()
     current_ts = time.time() if now_ts is None else now_ts
     usage_history = _get_usage_history() if history is None else history
@@ -1844,6 +1845,17 @@ def get_snapshot(projects_dir: Path, history=None, now_ts=None,
         session_reset_min = None
     result["claudeSessionPct"] = session_pct
     result["claudeSessionResetMin"] = session_reset_min
+    # Varför saknas procenten? Utan det svaret betyder null två helt olika
+    # saker och skärmen kan bara rita streck. En FÄRSK probe utan
+    # sessionsrad (eller med passerad reset) betyder att fönstret bevisligen
+    # är tomt — då är 0 % sant. En probe som inte gav något alls betyder att
+    # ingen vet, och då vore 0 % en lögn. Måttet på färskhet är probens
+    # returvärde, ALDRIG claudeWeekPct: veckan kan komma ur disk-cachen
+    # (_resolve_weekly_quota) långt efter att proben dog, sessionen aldrig.
+    result["claudeSessionState"] = (
+        "active" if session_pct is not None
+        else "idle" if claude_probe
+        else "unknown")
     # Never disk-cached (a Claude session window resets every 5h, so a
     # fallback would be meaningless) -- a non-None reading here is always a
     # genuinely fresh probe result, the honest gate Task 6 requires before

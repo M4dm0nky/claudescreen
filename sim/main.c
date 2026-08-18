@@ -514,21 +514,24 @@ static void platform_tour_cb(lv_timer_t *t) {
 /* Tangent 1-4: Solelkollen-fixtur. T: mata VibePulse. S: nästa agentläge.
  * L: launchern. [ och ] bläddrar VibePulse-sidor; N byter app (KEY3).
  * M: nästa Max Tracker-fixtur. G: simulera en ny GitHub-stjärna.
+ * W: bläddra femtimmarsfönstrets tre lägen (aktivt/tomt/okänt) — de skiljer
+ * sig bara i vad som är sant om frånvaron, så de måste gå att jämföra.
  * LVGL:s SDL-drivrutin
  * pumpar eventen, så ren tangentbordspollning räcker — ingen indev-
  * rördragning för ett bänkverktyg. */
 static void poll_keys(lv_timer_t *t) {
   (void)t;
-  static bool held[12];
+  static bool held[13];
   const Uint8 *ks = SDL_GetKeyboardState(NULL);
-  const SDL_Scancode keys[12] = { SDL_SCANCODE_1, SDL_SCANCODE_2,
+  const SDL_Scancode keys[13] = { SDL_SCANCODE_1, SDL_SCANCODE_2,
                                   SDL_SCANCODE_3, SDL_SCANCODE_4,
                                   SDL_SCANCODE_T, SDL_SCANCODE_S,
                                   SDL_SCANCODE_L, SDL_SCANCODE_N,
                                   SDL_SCANCODE_LEFTBRACKET,
                                   SDL_SCANCODE_RIGHTBRACKET,
-                                  SDL_SCANCODE_M, SDL_SCANCODE_G };
-  for (int i = 0; i < 12; i++) {
+                                  SDL_SCANCODE_M, SDL_SCANCODE_G,
+                                  SDL_SCANCODE_W };
+  for (int i = 0; i < 13; i++) {
     bool down = ks[keys[i]];
     if (down && !held[i]) {
       if (i < 4) {
@@ -552,9 +555,19 @@ static void poll_keys(lv_timer_t *t) {
       }
       else if (i == 10)
         apply_max_tracker_fixture(max_tracker_fixture_idx + 1);
-      else {
+      else if (i == 11) {
         torget_app_show(SIM_APP_VIBEPULSE);
         apply_github_file("github-star.json", true);
+      }
+      else {
+        static const char *const session_fixtures[3] = {
+          "tokens.json", "tokens-session-idle.json", "tokens-missing.json",
+        };
+        static int session_idx;
+        torget_app_show(SIM_APP_VIBEPULSE);
+        tokens_show_view(VIEW_CLAUDE_SESSION);
+        feed_tokens_file(session_fixtures[session_idx]);
+        session_idx = (session_idx + 1) % 3;
       }
     }
     held[i] = down;
@@ -671,6 +684,18 @@ static int run_vibepulse_static_qa(void) {
   dump_frame("vibepulse-claude-all");
   tokens_show_view(VIEW_CODEX_WEEKLY);
   dump_frame("vibepulse-codex-weekly");
+
+  /* Femtimmarsfönstrets tre lägen genom den riktiga parsern. De skiljer sig
+   * bara i vad som är sant om en frånvarande siffra, så de granskas bredvid
+   * varandra: 21 % med nedräkning, en ärlig nolla med sin förklaring, och
+   * streck när ingen vet något alls. */
+  tokens_show_view(VIEW_CLAUDE_SESSION);
+  dump_frame("vibepulse-session-active");
+  feed_tokens_file("tokens-session-idle.json");
+  dump_frame("vibepulse-session-idle");
+  feed_tokens_file("tokens-missing.json");
+  dump_frame("vibepulse-session-unknown");
+  feed_tokens();
 
   /* Source-provenance evidence is built directly rather than read from the
    * live token service. Each capture therefore proves one exact wire state. */

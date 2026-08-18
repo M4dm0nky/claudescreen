@@ -201,6 +201,7 @@ static bool known_top_level_key(const char *key) {
       "claudeModelWeekStale", "codexWeekStale", "claudeModelWeekLabel",
       "claudeModelWeekTodayDeltaPct", "claudeWeekTodayDeltaPct",
       "claudeSessionHourDeltaPct", "codexWeekTodayDeltaPct",
+      "claudeSessionState",
       "claudeForecastState", "claudeForecastPctAtReset",
       "claudeForecastPaceFactor", "claudeForecastAt",
       "claudeForecastOffsetMin", "codexForecastState",
@@ -331,6 +332,22 @@ static void optional_value(const cJSON *root, bool trust_strings,
   }
 }
 
+/* Ett slutet ordförråd, inte en etikett: strängen jämförs mot två kända ord
+ * och kastas sedan. Allt annat — okänt ord, fel typ, frånvarande nyckel —
+ * lämnar TK_SESSION_UNKNOWN kvar, vilket ger streck. Ett fält vi inte
+ * förstår får aldrig bli påståendet "0 % förbrukat". */
+static void optional_session_state(const cJSON *root, bool trust_strings,
+                                   tk_session_state *out) {
+  const cJSON *item =
+      cJSON_GetObjectItemCaseSensitive(root, "claudeSessionState");
+  if (!trust_strings || !cJSON_IsString(item) || !item->valuestring) return;
+  if (strcmp(item->valuestring, "active") == 0) {
+    *out = TK_SESSION_ACTIVE;
+  } else if (strcmp(item->valuestring, "idle") == 0) {
+    *out = TK_SESSION_IDLE;
+  }
+}
+
 static void optional_forecast(const cJSON *root, const char *prefix,
                               bool trust_strings, tk_forecast *out) {
   char state_key[40];
@@ -441,6 +458,8 @@ bool tk_tokens_parse(const char *json, size_t len, tk_tokens *out) {
   optional_nonnegative_number(
       root, "claudeSessionHourDeltaPct", 100,
       &t.claude_session.delta_pct, &t.claude_session.has_delta);
+  optional_session_state(root, trust_optional_strings,
+                         &t.claude_session_state);
   optional_nonnegative_number(
       root, "codexWeekTodayDeltaPct", 100,
       &t.codex_week.delta_pct, &t.codex_week.has_delta);

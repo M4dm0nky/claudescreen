@@ -21,9 +21,10 @@
 agents are doing — taps you on the shoulder when one is stuck waiting for
 you, and (if you want) lets you answer it with a tap on the glass.**
 
-Claude Code and Codex usage, live agent activity, and a full-screen
-**NEEDS YOU** alert you can answer with a tap. A ~$30 ESP32-S3 panel plus a
-pure-stdlib Python service on your Mac. No cloud, no accounts, no API keys on the device. Agent data
+Claude's **5-hour session window** and weekly quotas, Codex usage, live agent
+activity, and a full-screen **NEEDS YOU** alert you can answer with a tap.
+A ~$30 ESP32-S3 panel plus a pure-stdlib Python service on your Mac. No cloud,
+no accounts, no API keys on the device. Agent data
 never leaves your LAN; the optional public-repository module makes only
 anonymous GitHub API reads from the Mac.
 
@@ -47,21 +48,37 @@ the room, no window to switch to, no menu bar to squint at.
 
 ## What's on screen
 
-Six core pages, swipe or auto-rotate, plus the always-present value-multiple
+Seven core pages, swipe or auto-rotate, plus the always-present value-multiple
 page (it shows the dollar total once agents log priced usage, but the
 multiple itself stays dashed — `SET YOUR PLAN COST` — until you pick a named
 plan tier or state your exact cost) and an optional, compile-time-gated
-GitHub project pulse. Every image below is an exact 480×480 frame — the
-simulator renders
-the same pixels as the panel.
+GitHub project pulse. Every image below is an exact simulator frame — the
+simulator renders the same pixels as the panel. Upstream frames are 480×480;
+frames from this port are 240×240 and captioned as such.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/img/vibepulse-claude-week.png" alt="Claude weekly quota at 73%" width="100%"></td>
+<td width="50%"><img src="docs/img/vibepulse-session-5h.png" alt="Claude 5-hour session window at 21%" width="100%"><br><img src="docs/img/vibepulse-session-idle.png" alt="Session window before it starts: 0% and STARTS ON NEXT REQUEST" width="100%"></td>
 <td valign="top">
 
-**Usage** — Claude's weekly and heaviest-model-weekly quota, plus Codex's
-weekly quota. Each with a reset countdown and how much you've burned today.
+**5-hour session window** *(first page; 240×240 port frame)* — how full the
+window you are working in right now is, with the countdown to its reset and
+how much of it went in the last hour. It is the number that decides whether
+a long run finishes, so it needs no swipe.
+
+Between windows it reads `0%` with `STARTS ON NEXT REQUEST`, and if the Mac
+cannot reach the quota API at all it dashes instead — a zero is only ever
+shown when the window is known to be empty.
+
+</td>
+</tr>
+<tr>
+<td><img src="docs/img/vibepulse-claude-week.png" alt="Claude weekly quota at 73%" width="100%"></td>
+<td valign="top">
+
+**Weekly usage** — Claude's weekly and heaviest-model-weekly quota, plus
+Codex's weekly quota. Each with a reset countdown and how much you've burned
+today.
 
 </td>
 </tr>

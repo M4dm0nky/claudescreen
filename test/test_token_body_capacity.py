@@ -52,6 +52,8 @@ def worst_case_payload() -> dict:
         # limits (floats as the server publishes them)
         "claudeSessionPct": 100.0,
         "claudeSessionResetMin": 999_999,
+        # "unknown" is the longest of active/idle/unknown
+        "claudeSessionState": "unknown",
         "claudeWeekPct": 100.0,
         "claudeWeekResetMin": 999_999,
         "claudeModelWeekPct": 100.0,

@@ -145,6 +145,12 @@ def dot_runs(image, y):
 
 
 EXPECTED = {
+    # The five-hour session page, one capture per meaning an absent
+    # percentage can carry: a live window, a window the server has seen to be
+    # empty (an honest 0 %), and no answer at all (dashes).
+    "torget-vibepulse-session-active.bmp",
+    "torget-vibepulse-session-idle.bmp",
+    "torget-vibepulse-session-unknown.bmp",
     "torget-vibepulse-claude-fable.bmp",
     "torget-vibepulse-claude-all.bmp",
     "torget-vibepulse-codex-weekly.bmp",

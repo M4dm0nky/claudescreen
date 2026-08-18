@@ -178,7 +178,8 @@ def check_defines() -> list[str]:
 # listed in full; free-form text (project names, questions, commands) is
 # represented by a realistic long sample and must carry LONG_DOT in the C code.
 
-QUOTA_LABELS = ["WEEKLY", "WEEKLY · ALL MODELS", "FABLE · WEEK", "OPUS 5 · WEEK"]
+QUOTA_LABELS = ["WEEKLY", "WEEKLY · ALL MODELS", "FABLE · WEEK", "OPUS 5 · WEEK",
+                "5H · SESSION"]
 # usage_live_policy.c emits the model alone (it is what carries information);
 # the halo beside the icon already says something is running.
 LIVE_CONTEXT = [
@@ -231,7 +232,13 @@ ELEMENTS = [
     ("quota.percent", "plex_hero_84", T["VP_SCREEN_W"] - 16, -4, PERCENT, False),
     ("quota.stat_value.today", "plex_ui_21", STAT_COL_W, 0, DELTA, False),
     ("quota.stat_value.reset", "plex_ui_21", STAT_COL_W, 0, RESET_SHORT, False),
-    ("quota.stat_caption", "plex_ui_12", STAT_COL_W, 1, ["USED TODAY", "TO RESET"], False),
+    ("quota.stat_caption", "plex_ui_12", STAT_COL_W, 1,
+     ["USED TODAY", "TO RESET", "LAST HOUR"], False),
+    # Replaces the stat row rather than sitting beside it, so it gets the
+    # full content width — it does not fit a stat column and never shares
+    # the line with one.
+    ("quota.empty_note", "plex_ui_12", T["VP_CONTENT_W"], 1,
+     ["STARTS ON NEXT REQUEST"], False),
 
     # --- analytics header (value / burn / tracker) ------------------------
     ("analytics.heading", "plex_ui_16", 112, 2, ["VALUE", "BURN RATE"], False),

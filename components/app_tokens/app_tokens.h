@@ -19,15 +19,18 @@
 
 extern const torget_app_t tokens_app;
 
+/* Femtimmarsfönstret ligger först: det är den siffra som avgör om nästa
+ * långa körning hinner klart, och den ska synas utan att någon sveper. */
 enum {
-  VIEW_CLAUDE_FABLE = 0,
-  VIEW_CLAUDE_ALL = 1,
-  VIEW_CODEX_WEEKLY = 2,
-  VIEW_BURN_RATE = 3,
-  VIEW_TRACKER_CLAUDE = 4,
-  VIEW_TRACKER_CODEX = 5,
-  VIEW_GITHUB = 6,
-  VIEW_VALUE = 7,
+  VIEW_CLAUDE_SESSION = 0,
+  VIEW_CLAUDE_FABLE = 1,
+  VIEW_CLAUDE_ALL = 2,
+  VIEW_CODEX_WEEKLY = 3,
+  VIEW_BURN_RATE = 4,
+  VIEW_TRACKER_CLAUDE = 5,
+  VIEW_TRACKER_CODEX = 6,
+  VIEW_GITHUB = 7,
+  VIEW_VALUE = 8,
 };
 
 /* Ett lyckat /api/tokens-svar. Snappar tickern, stämplar färskhet och

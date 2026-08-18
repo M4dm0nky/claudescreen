@@ -1515,6 +1515,67 @@ class UsageSnapshotTests(unittest.TestCase):
         self.assertIsInstance(snapshot["claudeForecastPctAtReset"], int)
         self.assertEqual(snapshot["codexForecastState"], "at_reset")
 
+    def test_session_state_is_active_when_the_probe_names_a_live_window(self):
+        now_ts = 1_800_000_000
+        snapshot = self._snapshot(
+            StubHistory(), now_ts,
+            claude=dict(self._live_claude(now_ts),
+                        sessionPct=3.0,
+                        sessionResetAt=int(now_ts + 293 * 60)))
+        self.assertEqual(snapshot["claudeSessionState"], "active")
+        self.assertEqual(snapshot["claudeSessionPct"], 3.0)
+        self.assertEqual(snapshot["claudeSessionResetMin"], 293)
+
+    def test_session_state_is_idle_when_a_fresh_probe_names_no_window(self):
+        # Efter fem timmars tystnad rapporterar API:t sessionsraden med
+        # passerad reset och _parse_usage_limits hoppar korrekt över den.
+        # Veckan kom ändå fram, alltså VET vi att fönstret är tomt — det är
+        # skillnaden mot "unknown" nedan, och den enda grund panelen har för
+        # att visa 0 % i stället för streck.
+        now_ts = 1_800_000_000
+        snapshot = self._snapshot(
+            StubHistory(), now_ts, claude=self._live_claude(now_ts))
+        self.assertEqual(snapshot["claudeSessionState"], "idle")
+        self.assertIsNone(snapshot["claudeSessionPct"])
+        self.assertIsNone(snapshot["claudeSessionResetMin"])
+
+    def test_session_state_is_unknown_when_the_probe_delivered_nothing(self):
+        now_ts = 1_800_000_000
+        snapshot = self._snapshot(StubHistory(), now_ts, claude={})
+        self.assertEqual(snapshot["claudeSessionState"], "unknown")
+        self.assertIsNone(snapshot["claudeSessionPct"])
+
+    def test_session_state_is_unknown_when_only_the_week_cache_survives(self):
+        # Den vassa kanten: en död probe lämnar veckoprocenten kvar från
+        # disk-cachen. Läser tillståndet av claudeWeekPct i stället för av
+        # probens returvärde blir det "idle" — och panelen påstår 0 %
+        # förbrukat medan ingen vet något alls.
+        now_ts = 1_800_000_000
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache = QuotaCache(Path(temp_dir) / "quota.json",
+                               now=lambda: now_ts)
+            cache.put(CachedQuota(
+                provider="claude", scope="general_weekly",
+                identity=tokenserver._quota_identity(
+                    "claude", "general_weekly"),
+                pct=47.0, reset_at=now_ts + 3600,
+                observed_at=now_ts - 60))
+            snapshot = self._snapshot(StubHistory(), now_ts,
+                                      claude={}, quota_cache=cache)
+        self.assertEqual(snapshot["claudeWeekPct"], 47.0)  # ur cachen
+        self.assertTrue(snapshot["claudeWeekStale"])
+        self.assertEqual(snapshot["claudeSessionState"], "unknown")
+
+    def test_session_state_is_idle_when_the_window_already_expired(self):
+        now_ts = 1_800_000_000
+        snapshot = self._snapshot(
+            StubHistory(), now_ts,
+            claude=dict(self._live_claude(now_ts),
+                        sessionPct=3.0,
+                        sessionResetAt=int(now_ts - 60)))
+        self.assertEqual(snapshot["claudeSessionState"], "idle")
+        self.assertIsNone(snapshot["claudeSessionPct"])
+
     def test_snapshot_flattens_collecting_and_exhaustion_states(self):
         now_ts = 1_800_000_000
         history = StubHistory({

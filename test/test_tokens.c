@@ -182,6 +182,7 @@ int main(void) {
   check("femtimmars timdelta",
         t.claude_session.has_delta &&
         t.claude_session.delta_pct == 11.0);
+
   check("Codex dagsdelta",
         t.codex_week.has_delta && t.codex_week.delta_pct == 5.0);
   check("Claude prognos vid reset",
@@ -196,6 +197,40 @@ int main(void) {
         t.codex_forecast.at_epoch == 1800007200LL &&
         t.codex_forecast.has_offset_min &&
         t.codex_forecast.offset_min == -540);
+
+  /* Sessionstillståndet: skillnaden mellan "fönstret är bevisligen tomt"
+   * och "ingen vet". Bara det första får rita 0 % på glaset. */
+  check("sessionstillstånd active",
+        PARSE("{\"v\":2,\"dayTokens\":0,\"dayTokensPerHour\":0,"
+              "\"daySessions\":0,\"monthTokens\":0," BASE_NULLS ","
+              "\"claudeSessionState\":\"active\"}", &t) &&
+              t.claude_session_state == TK_SESSION_ACTIVE);
+  check("sessionstillstånd idle",
+        PARSE("{\"v\":2,\"dayTokens\":0,\"dayTokensPerHour\":0,"
+              "\"daySessions\":0,\"monthTokens\":0," BASE_NULLS ","
+              "\"claudeSessionState\":\"idle\"}", &t) &&
+              t.claude_session_state == TK_SESSION_IDLE);
+  check("sessionstillstånd unknown",
+        PARSE("{\"v\":2,\"dayTokens\":0,\"dayTokensPerHour\":0,"
+              "\"daySessions\":0,\"monthTokens\":0," BASE_NULLS ","
+              "\"claudeSessionState\":\"unknown\"}", &t) &&
+              t.claude_session_state == TK_SESSION_UNKNOWN);
+  /* En äldre tokenserver skickar inget fält alls — då är streck rätt svar,
+   * inte 0 %. Samma sak för en sträng vi inte känner igen. */
+  check("frånvarande sessionstillstånd är unknown",
+        PARSE("{\"v\":2,\"dayTokens\":0,\"dayTokensPerHour\":0,"
+              "\"daySessions\":0,\"monthTokens\":0," BASE_NULLS "}", &t) &&
+              t.claude_session_state == TK_SESSION_UNKNOWN);
+  check("okänt sessionstillstånd är unknown",
+        PARSE("{\"v\":2,\"dayTokens\":0,\"dayTokensPerHour\":0,"
+              "\"daySessions\":0,\"monthTokens\":0," BASE_NULLS ","
+              "\"claudeSessionState\":\"tom\"}", &t) &&
+              t.claude_session_state == TK_SESSION_UNKNOWN);
+  check("sessionstillstånd av fel typ är unknown",
+        PARSE("{\"v\":2,\"dayTokens\":0,\"dayTokensPerHour\":0,"
+              "\"daySessions\":0,\"monthTokens\":0," BASE_NULLS ","
+              "\"claudeSessionState\":7}", &t) &&
+              t.claude_session_state == TK_SESSION_UNKNOWN);
 
   check("största representerbara säkra int64-epoch accepteras",
         PARSE("{\"v\":2,\"dayTokens\":1,\"dayTokensPerHour\":0,"

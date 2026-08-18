@@ -74,6 +74,53 @@ int main(void) {
         strcmp(page.quota.pct_text, "57%") == 0 &&
         strcmp(page.quota.reset_short_text, "1D 12H") == 0);
 
+  tokens.claude_session_state = TK_SESSION_ACTIVE;
+  usage_presenter_build_quota_page(&tokens, USAGE_QUOTA_CLAUDE_SESSION,
+                                   &page);
+  check("session page reads the five-hour window",
+        page.provider == USAGE_PROVIDER_CLAUDE &&
+        page.quota.kind == USAGE_CARD_FIVE_HOURS &&
+        strcmp(page.quota.label, "5H · SESSION") == 0 &&
+        strcmp(page.quota.pct_text, "21%") == 0 &&
+        strcmp(page.quota.delta_text, "+11%") == 0 &&
+        strcmp(page.quota.reset_short_text, "1H 20M") == 0 &&
+        page.quota.empty_note[0] == '\0');
+
+  /* Idle: servern har SETT att fönstret är tomt. Då är noll sanningen, och
+   * noteringen förklarar varför ingen nedräkning står bredvid. */
+  tk_tokens idle = {0};
+  idle.claude_session_state = TK_SESSION_IDLE;
+  usage_presenter_build_quota_page(&idle, USAGE_QUOTA_CLAUDE_SESSION, &page);
+  check("idle session window reads zero, not dashes",
+        page.quota.has_pct && page.quota.pct == 0 &&
+        strcmp(page.quota.pct_text, "0%") == 0 &&
+        strcmp(page.quota.empty_note, "STARTS ON NEXT REQUEST") == 0 &&
+        strcmp(page.quota.reset_short_text, "–") == 0 &&
+        !page.quota.has_delta);
+
+  /* Unknown: proben gav inget. Noll här vore ett påstående ingen kan backa
+   * upp — samma streck som varje annan otillgänglig kvot. */
+  tk_tokens unknown = {0};
+  unknown.claude_session_state = TK_SESSION_UNKNOWN;
+  usage_presenter_build_quota_page(&unknown, USAGE_QUOTA_CLAUDE_SESSION,
+                                   &page);
+  check("unknown session window stays dashed",
+        !page.quota.has_pct &&
+        strcmp(page.quota.pct_text, "–") == 0 &&
+        strcmp(page.quota.reset_short_text, "–") == 0 &&
+        page.quota.empty_note[0] == '\0');
+
+  /* Ett aktivt tillstånd utan procent är en motsägelse i kontraktet.
+   * Streck, inte noll: fältet vi litar minst på får inte vinna. */
+  tk_tokens lying = {0};
+  lying.claude_session_state = TK_SESSION_ACTIVE;
+  usage_presenter_build_quota_page(&lying, USAGE_QUOTA_CLAUDE_SESSION,
+                                   &page);
+  check("active without a percentage still dashes",
+        !page.quota.has_pct &&
+        strcmp(page.quota.pct_text, "–") == 0 &&
+        page.quota.empty_note[0] == '\0');
+
   tk_tokens missing = {0};
   usage_presenter_build_quota_page(&missing, USAGE_QUOTA_CLAUDE_MODEL,
                                    &page);

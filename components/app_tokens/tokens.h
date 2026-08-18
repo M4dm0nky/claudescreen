@@ -90,6 +90,17 @@ typedef struct {
   int has_claude_plan_usd, has_codex_plan_usd;
 } tk_value;
 
+/* Varför claude_session saknar procent. Utan detta betyder en tom kvot två
+ * skilda saker — "fönstret är bevisligen tomt" och "ingen vet" — och skärmen
+ * kan bara rita streck för båda. Servern skiljer dem åt i claudeSessionState;
+ * en okänd eller frånvarande sträng ger TK_SESSION_UNKNOWN, så en äldre
+ * tokenserver beter sig precis som förut. */
+typedef enum {
+  TK_SESSION_UNKNOWN,  /* proben gav inget — streck, aldrig 0 % */
+  TK_SESSION_IDLE,     /* färsk probe, inget aktivt fönster — 0 % är sant */
+  TK_SESSION_ACTIVE,
+} tk_session_state;
+
 typedef struct {
   /* volymen (alltid närvarande) */
   double day_tokens;          /* idag, lokal Mac-tid */
@@ -100,6 +111,7 @@ typedef struct {
   /* taken (null-bara). claude_model_week är veckofönstret för tyngsta
    * modellen (Fable/Opus) — tredje raden i Claudes egen usage-panel. */
   tk_limit claude_session, claude_week, claude_model_week;
+  tk_session_state claude_session_state;
   tk_limit codex_session, codex_week;
   char claude_model_week_label[TK_QUOTA_LABEL_CAP];
   int has_claude_model_week_label;

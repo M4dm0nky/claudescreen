@@ -315,8 +315,42 @@ capabilities:
       - {field: firmware_enabled, value: "yes", source: torget-main-1fad449}
     last_verified: "2026-08-10"
 
+  - id: sensors.imu-qmi8658-lcd-1-54
+    name: QMI8658 six-axis IMU (ESP32-S3-Touch-LCD-1.54)
+    board: waveshare-esp32-s3-touch-lcd-1.54
+    states:
+      soc_capable: "yes"
+      board_wired: "yes"
+      bsp_support: "yes"
+      firmware_enabled: "yes"
+      unit_verified: "yes"
+    confidence: measured
+    resources:
+      - "shared I2C port 0 at 400 kHz (SCL GPIO41, SDA GPIO42)"
+      - "QMI8658 address 0x6A or 0x6B"
+    constraints:
+      - "the first WHO_AM_I read fails; the driver's second address attempt succeeds"
+      - "orientation is read only when the panel is not flat, like a phone"
+      - "gravity magnitude reads ~1140 mg in plane; quadrants are what matter, not scale"
+    conflicts:
+      - "component headers declare read_accel_mg, which the locked source does not implement"
+    opportunities: ["auto-rotation", "gesture input", "tap-to-wake"]
+    sources:
+      - waveshare-lcd-1-54-examples-2026-08-17
+      - torget-lcd-154-physical-2026-08-18
+    evidence:
+      - {field: soc_capable, value: "yes", source: waveshare-lcd-1-54-examples-2026-08-17}
+      - {field: board_wired, value: "yes", source: waveshare-lcd-1-54-examples-2026-08-17}
+      - {field: bsp_support, value: "yes", source: waveshare-lcd-1-54-examples-2026-08-17}
+      - {field: firmware_enabled, value: "yes", source: waveshare-lcd-1-54-examples-2026-08-17}
+      - {field: unit_verified, value: "yes", source: torget-lcd-154-physical-2026-08-18}
+    last_verified: "2026-08-19"
+    verification:
+      unit: torget-lcd-154-01
+      test: imu-quadrant-four-pose-2026-08-19
+
   - id: sensors.imu-qmi8658
-    name: QMI8658 six-axis IMU
+    name: QMI8658 six-axis IMU (ESP32-S3-Touch-AMOLED-2.16)
     states:
       soc_capable: "yes"
       board_wired: "yes"

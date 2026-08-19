@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "esp_lv_adapter.h"
 #include "qmi8658.h"
+#include "torget_app.h" /* TORGET_SCREEN_W/H — panelen, inte 480-eran */
 
 /* main.c äger panelhandtagen sedan displaystarten blev vår egen; BSP:ns
  * bsp_display_rotation_set läser statiska handles som aldrig sätts. */
@@ -33,9 +34,17 @@ static const char *TAG = "rotation";
 #define MAX_FLAT_Z_MG   850.0f
 #define MAX_OFFAXIS_DEG 35.0f
 
-/* MADCTL-cykeln för kvartsvarv. Boot-orienteringen är 0xA0 (ROTATE_270 i
- * BSP:ns numrering — panelen sitter roterad i kåpan, spec/hardware.md), så
- * r extra kvartsvarv från boot = cycle[(3 + r) % 4]. */
+/* MADCTL-cykeln för kvartsvarv.
+ *
+ * AMOLED-kortet bootade i 0xA0 (ROTATE_270) för att panelen sitter vriden i
+ * kåpan, så r kvartsvarv var cycle[(3 + r) % 4]. DET HÄR kortet skickar
+ * inget MADCTL alls vid start (components/board_lcd_1_54 rör aldrig 0x36),
+ * så panelen står i sitt eget nolläge och bilden är rättvänd från boot —
+ * vilket alla ser varje dag. Versatsen är därför 0. Med den ärvda trean
+ * började varje kvartsvarv 270° fel, vilket är precis "varje kvartsvarv
+ * landade i fel läge" som porten noterade och därför stängde av allt.
+ * BOOT_ROTATION är den enda platsen att ändra om ett kort bootar vridet. */
+#define BOOT_ROTATION 0
 static const bsp_display_rotation_t CYCLE[4] = {
   BSP_DISPLAY_ROTATE_0, BSP_DISPLAY_ROTATE_90,
   BSP_DISPLAY_ROTATE_180, BSP_DISPLAY_ROTATE_270,
@@ -47,12 +56,29 @@ static volatile int s_rot;        /* 0-3: extra kvartsvarv från boot */
 
 /* FAST kalibrering (självankringen revs 2026-08-06: den ankrade den pose
  * användaren råkade hålla vid boot och allt blev fel därefter).
- * SG_QUAD_UP = IMU-kvadranten när skärmen står rättvänt (uppmätt stående:
- * x -932, y 447 → 154° → kvadrant 2). SG_QUAD_DIR vänder vridriktningen om
- * hårdvarutestet visar spegelvända kvartsvarv. Ett fel i endera syns som
- * konstant fel läge respektive fel håll — en konstant var att justera. */
-#define SG_QUAD_UP  1  /* kontrollerat 4-lägestest: med 3 blev ALLA lägen exakt upp och ner → offset 2 fel, riktningen rätt */
-#define SG_QUAD_DIR -1 /* +1 gav spegelvända sidolägen (hårdvarutest 2026-08-06) */
+ * SG_QUAD_UP = IMU-kvadranten när skärmen står rättvänt. SG_QUAD_DIR vänder
+ * vridriktningen om hårdvarutestet visar spegelvända kvartsvarv. Ett fel i
+ * endera syns som konstant fel läge respektive fel håll — en konstant i
+ * taget att justera, aldrig två.
+ *
+ * Uppmätt på torget-lcd-154-01 2026-08-19, en pose i taget, bekräftad av
+ * användaren innan varje avläsning:
+ *   rättvänt          x -145  y  +800  → kvadrant 1
+ *   90° medurs        x +860  y  -125  → kvadrant 0
+ *   180°              x -151  y -1142  → kvadrant 3
+ *   90° moturs        x -1140 y  -162  → kvadrant 2
+ * Alltså: ETT kvartsvarv medurs sänker kvadranten med 1, tre gånger i rad.
+ * Att 1:an är samma siffra som AMOLED-kortets är ett MÄTT sammanträffande —
+ * IMU:n sitter likadant. Porten antog motsatsen och stängde av rotationen;
+ * felet satt i BOOT_ROTATION och i 479:an, inte här. */
+#define SG_QUAD_UP  1
+/* -1 var AMOLED-kortets värde. Här vred bilden åt fel håll: ett kvartsvarv
+ * medurs (kvadrant 0) valde läge 1 / MADCTL 0x60, och användaren såg bilden
+ * upp och ner — vilket är precis vad ETT kvartsvarv åt fel håll ser ut som
+ * mot ett kvartsvarv åt rätt. 180°-posen ser rätt ut med båda tecknen (den
+ * mappar till läge 2 oavsett), så sidolägena är det enda som avslöjar det.
+ * Vänt till +1 och verifierat på torget-lcd-154-01 2026-08-19. */
+#define SG_QUAD_DIR 1
 
 /* Touchen roteras i MOTSATT led mot bilden, ett kvartsvarv per steg.
  * Vridriktningen mot IMU:n är empirisk — visar sig hårdvarutestet att
@@ -62,13 +88,17 @@ static volatile int s_rot;        /* 0-3: extra kvartsvarv från boot */
 static void read_rotated(lv_indev_t *indev, lv_indev_data_t *data) {
   s_orig_read(indev, data);
   int r = s_rot & 3;
+  /* Spegelvandet gar mot panelens egen kant, inte mot 479: den siffran ar
+   * 480-1 fran AMOLED-kortet och skulle kasta varje vridet finger 240 px
+   * utanfor det har glaset (2026-08-19). Panelen ar kvadratisk, men skriv
+   * ratt axel anda — nasta panel behover inte vara det. */
   for (int i = 0; i < r; i++) {
     int32_t x = data->point.x;
 #if TOUCH_CW
     data->point.x = data->point.y;
-    data->point.y = 479 - x;
+    data->point.y = (TORGET_SCREEN_H - 1) - x;
 #else
-    data->point.x = 479 - data->point.y;
+    data->point.x = (TORGET_SCREEN_W - 1) - data->point.y;
     data->point.y = x;
 #endif
   }
@@ -95,9 +125,15 @@ static void apply_rotation(int r) {
    * flätas. Full invalidering efteråt — panelens adressmappning har bytts,
    * varje delvis uppdatering vore skräp. */
   if (esp_lv_adapter_lock(-1) != ESP_OK) return;
-  torget_display_rotation_set(CYCLE[(3 + r) % 4]);
+  torget_display_rotation_set(CYCLE[(BOOT_ROTATION + r) % 4]);
   s_rot = r;
+  /* ALLA lager, inte bara den aktiva sidan: OTA-overlayn och bootskärmen bor
+   * på lv_layer_top() och skulle annars behålla pixlar ritade i förra lägets
+   * adressmappning. Panelens mappning har just bytts — varje pixel som inte
+   * ritas om är skräp, oavsett vilket lager den råkar ligga på. */
   lv_obj_invalidate(lv_screen_active());
+  lv_obj_invalidate(lv_layer_top());
+  lv_obj_invalidate(lv_layer_sys());
   esp_lv_adapter_unlock();
   ESP_LOGI(TAG, "roterade till läge %d", r);
 }

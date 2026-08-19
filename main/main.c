@@ -53,7 +53,7 @@ static const char *TAG = "torget";
 
 /* Autorotation: av tills kvartsvarven är kalibrerade för DET HÄR kortet.
  * Se motiveringen vid sg_rotation_start() längre ned. */
-#define TORGET_AUTOROTATE 0
+#define TORGET_AUTOROTATE 1
 
 /* Användarknappen — den som bär KEY3:s tre avsikter (nästa app, panik,
  * underhållsfönster). Kortets ENDA knapp märkt KEY sitter på BSP_BUTTON_PLUS;
@@ -451,22 +451,50 @@ static void display_start(void) {
   ESP_ERROR_CHECK(esp_lv_adapter_start());
 }
 
-/* MADCTL-vridningen: vi startar displayen själva, så BSP:ns egen
- * rotationssättare (som läser handles den aldrig får) används inte.
+/* Vridningen: vi startar displayen själva, så BSP:ns egen rotationssättare
+ * (som läser handles den aldrig får) används inte.
  *
- * ST7789 över vanlig SPI: kommandot är rena 0x36 (CO5300:s QSPI-inpackning
- * (0x36<<8)|(0x02<<24) gäller inte här), värdena följer standardkonventionen
- * MV/MX/MY, och RGB-biten är 0 eftersom panelen konfigureras som RGB.
+ * GÅR GENOM DRIVRUTINEN, inte förbi den. Fram till 2026-08-19 skrevs MADCTL
+ * rått med esp_lcd_panel_io_tx_param(0x36, …). Två saker gick sönder av det:
  *
- * Inget gap: CO5300-glasets 6-pixelfönster var en egenhet hos den panelen.
- * ST7789-modulen på det här kortet mappar 240×240 rakt av — ser du en ljus
- * kantremsa i något läge kalibreras den med P24-metoden (ETT strukturerat
- * fyrlägestest, en konstant per läge — aldrig fotoforensik). */
+ *  1. GAPET. ST7789:an på den här modulen har 240x320 GRAM medan glaset är
+ *     240x240. Speglas den axel som faller på 320-sidan hamnar det synliga
+ *     fönstret 80 px bort — och drivrutinen är den enda som lägger på ett gap
+ *     (den adderar x_gap/y_gap i varje draw_bitmap). Utan gap ritade LVGL
+ *     vidare mot 0..239: rutorna landade 80 px fel OCH resten av GRAM behöll
+ *     förra lägets bild, som det nya MADCTL:et nu läste ut vridet. Det såg ut
+ *     som två bilder ovanpå varandra, den nya osentrerad. Ett fel, två
+ *     symptom (fysiskt sett 2026-08-19).
+ *  2. Drivrutinens egen madctl_val slutade stämma. Nästa
+ *     esp_lcd_panel_mirror/swap_xy/invert_color hade räknat från ett
+ *     inaktuellt värde och slagit sönder vridningen — en tickande bomb som
+ *     ingen hade kopplat till rotationen.
+ *
+ * MODES[] är samma fyra lägen som förr, uttryckta i MV/MX/MY. GAP[] är
+ * 320-240 = 80 px på den axel som 320-sidan hamnar på, och bara när den är
+ * speglad. Läge 0 är verifierat sedan porten (0/0, bilden står rätt varje
+ * dag); övriga tre kalibreras ETT läge i taget mot glaset (P24-metoden —
+ * aldrig fotoforensik, aldrig två konstanter samtidigt). */
 esp_err_t torget_display_rotation_set(bsp_display_rotation_t rotation) {
-  static const uint8_t MADCTL[4] = { 0x00, 0x60, 0xC0, 0xA0 };
+  static const struct {
+    bool swap_xy, mirror_x, mirror_y;
+    int x_gap, y_gap;
+  } MODES[4] = {
+    { false, false, false,  0,  0 }, /* 0x00 — verifierat */
+    { true,  true,  false,  0,  0 }, /* 0x60 — MY av: ingen förskjutning */
+    { false, true,  true,   0, 80 }, /* 0xC0 — MY på, 320-axeln är y      */
+    { true,  false, true,  80,  0 }, /* 0xA0 — MY på, MV lägger 320 på x  */
+  };
   if (rotation > BSP_DISPLAY_ROTATE_270) return ESP_ERR_INVALID_ARG;
-  ESP_LOGI(TAG, "MADCTL 0x%02X (läge %d)", MADCTL[rotation], rotation);
-  return esp_lcd_panel_io_tx_param(s_panel_io, 0x36, &MADCTL[rotation], 1);
+  const int i = (int)rotation;
+  ESP_LOGI(TAG, "vridning läge %d (swap %d, mx %d, my %d, gap %d/%d)", i,
+           MODES[i].swap_xy, MODES[i].mirror_x, MODES[i].mirror_y,
+           MODES[i].x_gap, MODES[i].y_gap);
+  esp_err_t err = esp_lcd_panel_swap_xy(s_panel, MODES[i].swap_xy);
+  if (err != ESP_OK) return err;
+  err = esp_lcd_panel_mirror(s_panel, MODES[i].mirror_x, MODES[i].mirror_y);
+  if (err != ESP_OK) return err;
+  return esp_lcd_panel_set_gap(s_panel, MODES[i].x_gap, MODES[i].y_gap);
 }
 
 /* ------------------------------------------------------------------- start */

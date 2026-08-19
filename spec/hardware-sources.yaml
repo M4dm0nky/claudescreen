@@ -46,6 +46,8 @@ sources:
     unit: torget-lcd-154-01
     tests:
       - key-pin-hunt-boot-pwr-plus-2026-08-18
+      - touch-corner-taps-240x240-2026-08-18
+      - imu-quadrant-four-pose-2026-08-19
     note: >-
       All three candidate buttons were configured as inputs and every level
       change logged while the button silkscreened KEY was pressed. Only GPIO4

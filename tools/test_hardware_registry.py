@@ -932,7 +932,12 @@ class RepositoryRegistryTests(unittest.TestCase):
         }
         self.assertEqual(
             verified_ids,
-            {"display.amoled", "radio.wifi-24", "input.key-lcd-1-54"},
+            {
+                "display.amoled",
+                "radio.wifi-24",
+                "input.key-lcd-1-54",
+                "sensors.imu-qmi8658-lcd-1-54",
+            },
         )
         # Regeln, inte ögonblicksbilden: huset har två kort och två enheter
         # sedan 2026-08-18, så "verifierad" får inte längre betyda "mätt på
@@ -1071,7 +1076,7 @@ class RepositoryRegistryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             result.stdout,
-            "OK: 32 capabilities, 11 sources, 2 units\n",
+            "OK: 33 capabilities, 11 sources, 2 units\n",
         )
 
     def test_repository_registry_loads(self):
@@ -1088,6 +1093,7 @@ class RepositoryRegistryTests(unittest.TestCase):
             "audio.microphones",
             "audio.speaker-output",
             "sensors.imu-qmi8658",
+            "sensors.imu-qmi8658-lcd-1-54",
             "sensors.ambient-light",
             "power.axp2101",
             "power.battery-connector",
@@ -1112,7 +1118,7 @@ class RepositoryRegistryTests(unittest.TestCase):
             "soc.pwm-rmt-twai",
         }
         self.assertEqual(set(registry.capabilities), expected_capabilities)
-        self.assertEqual(len(registry.capabilities), 32)
+        self.assertEqual(len(registry.capabilities), 33)
 
         display = registry.capabilities["display.amoled"]
         self.assertEqual(

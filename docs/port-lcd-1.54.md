@@ -131,17 +131,37 @@ cp package/fonts/complete/woff/IBMPlexSans-{Bold,SemiBold}.woff platform/fonts/s
 Verified 2026-08-17: a font regenerated from woff is **bit-identical** to the
 committed TTF-generated file apart from the path in the opts comment.
 
-## 5. Deliberately off
+## 5. Auto-rotation — on since 2026-08-19, partially verified
 
-**Auto-rotation** (`TORGET_AUTOROTATE 0` in `main/main.c`). The IMU answers on
-this board — but `rotation.c`'s constants (`SG_QUAD_UP`, `SG_QUAD_DIR`,
-`TOUCH_CW`, and the 0xA0 boot orientation) are calibrated for the AMOLED
-board's IMU mounting and for a panel that sits rotated in its case. Neither
-holds here, so every quarter turn landed wrong. On the old board the IMU was
-unreachable anyway, so off is also what the port inherited.
+`TORGET_AUTOROTATE 1`. It was off since the port because "every quarter turn
+landed wrong". Four things were wrong, and only one of them was a calibration
+constant:
 
-To enable: run the P24 four-position test, one constant at a time, and pair
-each MADCTL mode with its touch flags. Never change one side alone.
+| What | Was | Is | How it was found |
+|---|---|---|---|
+| `BOOT_ROTATION` | implicit 3 (`ROTATE_270`) | **0** | this board sends no MADCTL at boot, so the panel starts in its own zero — the image is upright every day, which the inherited 3 contradicted |
+| touch mirror edge | `479` | `TORGET_SCREEN_W/H - 1` | 480−1 from the AMOLED board; every rotated tap landed 240 px off-glass |
+| `SG_QUAD_UP` | 1 | **1** (unchanged) | measured, one pose at a time — the port's guess that the IMU sits differently was wrong |
+| `SG_QUAD_DIR` | −1 | **+1** | image turned the wrong way; one quarter turn the wrong way reads as 180° |
+
+Measured on `torget-lcd-154-01`, each pose confirmed before the reading:
+upright = quadrant 1, 90° CW = 0, 180° = 3, 90° CCW = 2. One clockwise quarter
+turn lowers the quadrant by one, three times running.
+
+**The panel gap is the part that bites.** See §11 — rotation goes through the
+ESP-IDF driver, never through a raw `0x36` write.
+
+**Verified on the glass so far:** upright (mode 0, gap 0/0) and 90° clockwise
+(mode 3, gap 80/0), both inspected by the user and correct — right way up,
+full-bleed, no remnant of the previous mode. **Not yet inspected:** 180°
+(mode 2, gap 0/80) and 90° counter-clockwise (mode 1, gap 0/0). Their gap
+values follow the same rule and are expected to hold, but expected is not
+verified. Two thirty-second checks close this out; until then do not claim the
+four-position gate as passed.
+
+**Also still owed:** `TOUCH_CW` has not been re-checked since the image
+direction flipped. Tap a known corner in each rotated pose. Never change the
+image side alone.
 
 ## 6. Build, flash, measure
 
@@ -225,7 +245,9 @@ power setting, not firmware.
    fönstret öppnas`). **Do not "fix" these flags** — the day this was
    measured, a dead-feeling takeover had already been blamed on them twice.
    See §10 for what was actually wrong.
-3. **Auto-rotation** — see §5.
+3. **Auto-rotation** — on since 2026-08-19, but only two of four poses have
+   been looked at, and the touch side has not been re-checked since the image
+   direction changed. See §5 and §11.
 4. ~~**The capability registry still calls itself the AMOLED board**~~ —
    fixed 2026-08-18. A capability may now declare its own `board:`, and
    `hardware_registry.py` matches a verification unit against *that* rather
@@ -284,6 +306,38 @@ promise, and the firmware knows at boot whether it can keep it. Tracked as
 OBS-31 in `docs/observability-backlog.md`, whose fix — render the notice
 without pills and name the physical way out instead — covers this trigger as
 well as the missing-token one it was written for.
+
+## 11. The 80 pixels the driver was never allowed to add (2026-08-19)
+
+The ST7789 on this module has **240 x 320 of GRAM**; the glass shows 240 x 240.
+Mirror the axis that falls on the 320 side and the visible window moves by
+**80 px**. The ESP-IDF driver handles exactly this — it keeps `x_gap`/`y_gap`
+and adds them to every window in `panel_st7789_draw_bitmap()`.
+
+`torget_display_rotation_set()` used to write MADCTL raw:
+
+```c
+esp_lcd_panel_io_tx_param(s_panel_io, 0x36, &MADCTL[rotation], 1);
+```
+
+which goes **past** the driver. So no gap was ever set — there was not a single
+`esp_lcd_panel_set_gap()` call in the repo. LVGL kept drawing to 0..239, the
+tiles landed 80 px off, and the part of GRAM nothing overwrote still held the
+previous mode's image, which the new MADCTL now scanned out rotated. On the
+glass: the old picture standing behind a new one that is not centred. One
+fault, two symptoms — and easy to misread as two separate bugs.
+
+The raw write was also a slow fuse: the driver's own `madctl_val` went stale,
+so any later `esp_lcd_panel_mirror/swap_xy/invert_color` would have computed
+from a wrong value and destroyed the rotation, in a place nobody would connect
+to rotation.
+
+Rotation now goes through `esp_lcd_panel_swap_xy()`, `esp_lcd_panel_mirror()`
+and `esp_lcd_panel_set_gap()`, with MV/MX/MY and the gap in one table beside
+each other. And `apply_rotation()` invalidates `lv_layer_top()` and
+`lv_layer_sys()` as well as the active screen — the OTA takeover and boot
+screen live on the top layer and would otherwise keep pixels drawn under the
+old address mapping.
 
 ## Provenance
 

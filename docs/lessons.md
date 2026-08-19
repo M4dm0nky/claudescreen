@@ -21,6 +21,39 @@ point at the backlog item.
 
 ---
 
+## 2026-08-19 · Writing a register past the driver also skips what the driver was going to add
+
+**What happened:** with auto-rotation finally enabled, the tilted poses showed
+the previous image still standing behind a new one that was not centred. It
+looked like two bugs — a redraw bug and an alignment bug.
+
+**Root cause:** one bug. The ST7789 on this module has 240 x 320 of GRAM behind
+a 240 x 240 glass, so mirroring the axis on the 320 side moves the visible
+window by 80 px. The driver exists to handle that (`x_gap`/`y_gap`, added to
+every window in `draw_bitmap`) — but `torget_display_rotation_set()` wrote
+MADCTL raw with `esp_lcd_panel_io_tx_param(0x36, …)`, straight past it. No gap
+was ever set; there was not one `esp_lcd_panel_set_gap()` call in the repo. So
+LVGL drew to 0..239, the tiles landed 80 px off (**not centred**), and the GRAM
+nothing overwrote still held the old image, which the new MADCTL scanned out
+rotated (**old picture behind**).
+
+**The rule now:** when you bypass a driver to poke a register, you also skip
+every correction that driver was going to apply — and you desynchronise the
+state it keeps. Here the stale `madctl_val` was a second, unexploded fault: the
+next `esp_lcd_panel_mirror/swap_xy` would have computed from it and broken
+rotation somewhere unrelated. Use the driver's API, or own the whole job
+knowingly.
+
+**Guards:** `torget_display_rotation_set()` now goes through
+`esp_lcd_panel_swap_xy/mirror/set_gap` with MV/MX/MY and the gap in one table;
+`apply_rotation()` invalidates the top and sys layers as well as the active
+screen; `docs/port-lcd-1.54.md` §11.
+
+**Watch for:** only two of the four poses have been inspected on the glass
+(upright and 90° CW). 180° and 90° CCW carry gap values derived from the same
+rule but unverified, and `TOUCH_CW` has not been re-checked since the image
+direction flipped. Do not record the four-position gate as passed.
+
 ## 2026-08-18 · Two wrong suspects, because the panel cannot say "my touch is dead"
 
 **What happened:** the UPDATE READY takeover ignored every finger. Suspicion

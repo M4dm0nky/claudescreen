@@ -111,11 +111,18 @@ root-cause story add an entry there.
   annars heapkorruption och eviga loopar.
 - LVGL 9.5: `lv_span_set_text` ritar INTE om — explicit `lv_spangroup_refresh`.
 - För IMU-adress och fysisk verifiering gäller capability
-  `sensors.imu-qmi8658`; komponentens header deklarerar `read_accel_mg`, som
-  saknas i källan — använd `read_accel`.
-- Rotationskalibrering: SG_QUAD_UP 1, SG_QUAD_DIR -1, trösklar med
+  `sensors.imu-qmi8658-lcd-1-54` på DET HÄR kortet (I2C-port 0);
+  `sensors.imu-qmi8658` är AMOLED-kortets. Komponentens header deklarerar
+  `read_accel_mg`, som saknas i källan — använd `read_accel`.
+- Rotationskalibrering på det här kortet (uppmätt 2026-08-19): SG_QUAD_UP 1,
+  **SG_QUAD_DIR +1** (AMOLED-kortet hade -1), BOOT_ROTATION 0, trösklar med
   iterationshistorik i rotation.c. Kalibrera fysisk hårdvara med ETT
   strukturerat flerlägestest, aldrig fotoforensik; en konstant per iteration.
+  Två av fyra lägen är ännu inte granskade på glaset — se
+  `docs/port-lcd-1.54.md` §5.
+- Vrid ALDRIG panelen genom att skriva 0x36 rått: drivrutinen äger MADCTL och
+  lägger på gapet (240x320 GRAM bakom 240x240 glas = 80 px). Gå via
+  `esp_lcd_panel_swap_xy/mirror/set_gap` — `docs/lessons.md`, 2026-08-19.
 - S3:an är 2,4 GHz-only; bootskanningen i loggen är facit för vilka nät som
   finns. MADCTL och touch roteras ALLTID i samma grepp.
 - ESP-IDF 5.5.2 i `~/esp/esp-idf` (`. ~/esp/esp-idf/export.sh`), LVGL pinnad

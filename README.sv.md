@@ -164,8 +164,12 @@ finns i de validerade registren under `spec/`. Fällorna nedan är en kortform:
 - LVGL 9.5: `lv_span_set_text` ritar INTE om — `lv_spangroup_refresh` krävs.
 - För IMU-adress och fysisk verifiering gäller capability
   `sensors.imu-qmi8658`; headerns `read_accel_mg` finns inte i källan — använd
-  `read_accel`. Kalibrering: SG_QUAD_UP 1, SG_QUAD_DIR -1.
-- MADCTL och touch roteras ALLTID i samma grepp (rotation.c gör det rätt).
+  `read_accel`. Kalibrering på det här kortet (2026-08-19): SG_QUAD_UP 1,
+  SG_QUAD_DIR **+1**, BOOT_ROTATION 0 — AMOLED-kortets -1 vred bilden åt fel
+  håll här. Capability: `sensors.imu-qmi8658-lcd-1-54`.
+- MADCTL och touch roteras ALLTID i samma grepp (rotation.c gör det rätt),
+  och MADCTL sätts via drivrutinen — aldrig rått 0x36, för då uteblir gapet
+  på 80 px (`docs/port-lcd-1.54.md` §11).
 - S3:an är 2,4 GHz-only; bootskanningen i loggen är facit för vilka nät
   som finns.
 - LVGL pinnad till samma version i sim och target (9.5.0) — bump båda i

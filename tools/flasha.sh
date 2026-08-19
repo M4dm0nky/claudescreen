@@ -18,7 +18,7 @@ while true; do
     if python3 -m esptool --chip esp32s3 -p "$PORT" -b 460800 \
          --before default_reset --after hard_reset write_flash @flash_args; then
       echo ""
-      echo "KLART — Torget bootar med alla appar (KEY3 växlar; Vibbe är en av dem)."
+      echo "KLART — Torget bootar med alla appar (KEY växlar; Vibbe är en av dem)."
       exit 0
     fi
     echo "Missade fönstret — dra ur och sätt i kabeln igen (eller håll BOOT)."

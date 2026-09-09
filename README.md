@@ -334,7 +334,12 @@ understand how the pieces fit together.
    undefined URL compiles the fetch out entirely and the screen boots fine
    and shows dashes forever. Use your Mac's Bonjour name
    (`scutil --get LocalHostName`) rather than an IP, so the same firmware
-   works on your home network and on a phone hotspot.
+   works on your home network and on a phone hotspot. Note that macOS can
+   change that name on you — it appends a counter after a Bonjour name
+   conflict — which makes a panel that worked for weeks go to dashes while
+   the Mac, the service and the network all still check out fine. If that
+   happens, compare `scutil --get LocalHostName` with the host in
+   `secrets.h` before suspecting anything else.
 
    Board not showing up under `/dev/cu.usbmodem*`? Hold **BOOT**, tap
    **RESET**, release **BOOT** and it re-enumerates in download mode.

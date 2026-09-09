@@ -132,6 +132,18 @@ upstream's live at
   for each page in turn — and by an ASan/UBSan build with GitHub compiled
   out, which draws eight dots and stays clean.
 
+- Setup and troubleshooting now cover a failure mode where every check
+  passes and the panel is still dark on data: macOS appends a counter to
+  its own `LocalHostName` after a Bonjour name conflict, so the host
+  compiled into `secrets.h` stops resolving while the tokenserver keeps
+  answering on `localhost` and the LAN IP and the panel keeps replying to
+  ping. `docs/agent-setup.md` gained a symptom row and a verification that
+  resolves the exact URL out of `secrets.h` instead of only checking that
+  the placeholder is gone; the old `curl localhost:8737/` row now says what
+  a 200 there does and does not prove. No code changed — the fix is
+  `scutil --set LocalHostName`, and making the panel's own log name the
+  drift is OBS-33.
+
 ## v0.2.1 — 2026-08-13
 
 Server fixes verified live on a real installation the same evening; the

@@ -21,6 +21,37 @@ point at the backlog item.
 
 ---
 
+## 2026-09-09 · The Mac renamed itself, and both halves reported healthy
+
+**What happened:** the panel showed no connection to the Mac. Every check on
+either side passed: launchd had the tokenserver running, it answered 200 on
+loopback and on the LAN IP, and the device replied to ping with 0% loss. There
+was nothing to fix on either component, and the system was still down.
+
+**Root cause:** the link between them, which neither half checks. The firmware
+reaches the service by the Bonjour name compiled into `secrets.h`
+(`Macen-8.local`) — deliberately a name, not an IP, so the same firmware
+works on the home net and a phone hotspot. macOS had bumped its own
+`LocalHostName` to `Macen-10` after a name conflict (a DNS failure logged
+overnight at 02:43 marks the network event). `Macen-8.local` no longer
+resolved; `Macen-10.local:8737` answered 200. The name was still free, so
+`sudo scutil --set LocalHostName Macen-8` restored it — no build, no OTA.
+
+**The rule now:** when two healthy components can't talk, the fault is in what
+joins them, and health checks that stay inside one component will all pass.
+Test the exact string the caller uses — resolve the hostname from `secrets.h`,
+don't substitute the IP — and compare it against `scutil --get LocalHostName`
+before suspecting anything else. Verify a fix at the far end, not at the
+server: `netstat -an -p tcp | grep 8737` showed 33 connections from the panel.
+
+**Guards:** none yet. The panel's fetch failure does not name the host it tried
+or separate "did not resolve" from "refused" — `OBS-33` in
+[observability-backlog.md](observability-backlog.md).
+
+**Watch for:** the counter drifted 8 → 10, so it has renamed at least twice.
+If `Macen-8` gets claimed by something else, resetting it will bounce again
+and the durable answer is service discovery, not another manual rename.
+
 ## 2026-08-19 · Writing a register past the driver also skips what the driver was going to add
 
 **What happened:** with auto-rotation finally enabled, the tilted poses showed

@@ -230,6 +230,25 @@ gates only ask whether an image is *valid*.
 descriptor is itself the fault worth reporting), or force a version
 regeneration before the gate runs.
 
+### OBS-33 · A drifting Bonjour name looks exactly like a dead Mac
+`firmware · S · open` — the panel reaches the tokenserver by the Bonjour
+name baked into `secrets.h` (`TK_VIBEPULSE_BASE_URL`). macOS renames its
+own `LocalHostName` on a name conflict, appending a counter, and nothing
+on either side reports it: the Mac keeps serving happily under a new
+name, the panel keeps asking for the old one and shows dashes. Measured
+2026-09-09: firmware held `Macen-8.local`, the Mac had become
+`Macen-10`, the service answered 200 on loopback, LAN IP and the new
+name, and the device pinged fine — every single-component check passed
+while the system was down. Story in
+[lessons.md](lessons.md#2026-09-09--the-mac-renamed-itself-and-both-halves-reported-healthy).
+**Fix:** make the fetch task's failure legible — log the hostname it
+tried and distinguish "DNS/mDNS did not resolve" from "resolved but
+refused/timed out", so the panel's own log names the drift instead of
+reporting a generic fetch failure. A stretch option is resolving the
+service by mDNS service discovery (`_vibepulse._tcp`) rather than a
+fixed hostname, which removes the failure mode instead of describing it;
+that is a feature, not a log fix, and belongs in its own design pass.
+
 ---
 
 ## P2 — stop making it worse

@@ -93,6 +93,24 @@ grep -q 'DIN-MAC' secrets.h && echo "PLACEHOLDER STILL THERE" || echo "hostname 
 prints `hostname set`. If it still says the placeholder is there, the board
 will look for a host that does not exist and every page will stay on dashes.
 
+Better, because it tests the exact string the firmware will use rather than
+merely confirming the placeholder is gone:
+
+```sh
+curl -s -m 5 -o /dev/null -w '%{http_code}\n' \
+  "$(sed -n 's/.*"\(http:\/\/[^"]*\)".*/\1/p' secrets.h | head -1)/api/tokens"
+```
+
+`200` means the panel's own lookup will succeed. Anything else — most often
+`000`, which is "the name did not resolve" — means it will not, however
+healthy the server looks on `localhost`.
+
+That name is not permanent. macOS appends a counter to `LocalHostName` after
+a Bonjour name conflict (`Macen-8` → `Macen-10`, observed 2026-09-09), and
+a panel that worked for weeks then shows dashes while every check on either
+side still passes. Re-run the `curl` above before suspecting anything else;
+the story is in [lessons.md](lessons.md).
+
 Ask the user for the WiFi password. Do not guess it, and do not commit
 `secrets.h` — it is gitignored, keep it that way.
 
@@ -295,7 +313,8 @@ workflow, consent model and troubleshooting live in [ota.md](ota.md).
 | Symptom | Cause | Fix |
 |---|---|---|
 | Screen boots, everything is dashes, forever | `DIN-MAC` never replaced in `secrets.h`, or the `TK_*` defines were removed | Set the real Bonjour name, rebuild, reflash |
-| Dashes, and the Mac's URL is set | tokenserver not running, or Mac asleep, or firewall | Start it; check `curl localhost:8737/` |
+| Dashes, and the Mac's URL is set | tokenserver not running, or Mac asleep, or firewall | Start it; check `curl localhost:8737/`. A 200 here clears the *server*, not the *link* — see the next row before concluding the Mac is fine |
+| It worked for weeks, now dashes — and the server answers on localhost AND on the LAN IP, and the panel replies to ping | macOS renamed itself: `LocalHostName` gains a counter suffix after a Bonjour name conflict, so the name baked into `secrets.h` stops resolving while everything else stays healthy (2026-09-09) | Compare `scutil --get LocalHostName` against the host in `secrets.h`. If they differ and the old name is free, `sudo scutil --set LocalHostName <old-name>` — the panel reconnects on its next poll, no rebuild, no OTA |
 | Dashes only for Claude, Codex fine (or vice versa) | That provider's source is unavailable | Check `claudeProbe`; the other half working is by design |
 | Never joins WiFi | Network is 5 GHz | 2.4 GHz only. iPhone hotspot: enable "Maximize Compatibility" |
 | "This project has no OTA" / partitions.csv shows one factory partition | Reading a tree from before the OTA foundation (A/B slots + otadata + `components/torget_ota/`) | Check which branch/commit the checkout is on; read `partitions.csv` in THAT tree before concluding. OTA workflow: `tools/ota-flash.sh <ip>` + a 3 s KEY hold |

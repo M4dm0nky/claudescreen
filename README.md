@@ -1,4 +1,7 @@
-# VibePulse — ESP32-S3-Touch-LCD-1.54 port
+# Claudescreen — ESP32-S3-Touch-LCD-1.54
+
+*Claudescreen is this project's own name, on the glass and here. The code and
+docs still use "VibePulse" internally, after the upstream project it began as.*
 
 > This is a fork of [niclasvestlund-YT/vibepulse](https://github.com/niclasvestlund-YT/vibepulse)
 > (MIT, © Niclas Vestlund), ported from the 480×480 AMOLED board it targets to

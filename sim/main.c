@@ -1042,6 +1042,10 @@ static int run_vibepulse_static_qa(void) {
    * captured after it would see the page underneath. */
   capture_needs_you_v2();
 
+  /* The launcher carries the app's name and icon letter: a rename has to be
+   * seen here, not only on the boot wordmark. */
+  torget_launcher_open();
+  dump_frame("launcher");
   return capture_failures == 0 ? 0 : 1;
 }
 

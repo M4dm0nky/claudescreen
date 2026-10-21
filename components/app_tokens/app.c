@@ -110,10 +110,10 @@ static void create(lv_obj_t *root) {
 
 const torget_app_t tokens_app = {
   .api_version = TORGET_APP_API_VERSION,
-  .name = "VIBEPULSE",
+  .name = "CLAUDESCREEN",
   .icon = {
     .font = &plex_icon_64,
-    .glyph = "V",
+    .glyph = "C",
     .plate_hex = 0x181636,
     .glyph_hex = 0xFFFFFF,
     .dot_hex = 0x7770FF,

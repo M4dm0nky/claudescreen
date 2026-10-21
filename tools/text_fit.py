@@ -313,7 +313,7 @@ ELEMENTS = [
     ("star.dismiss", "plex_ui_12", PS_CONTENT_W, 2, ["TAP TO DISMISS"], False),
 
     # --- boot screen (platform) ------------------------------------------
-    ("boot.wordmark", "plex_attention_25", T["VP_SCREEN_W"], 0, ["VIBEPULSE"], False),
+    ("boot.wordmark", "plex_attention_25", T["VP_SCREEN_W"], 0, ["CLAUDESCREEN"], False),
     ("boot.step", "plex_ui_16", 72, 2, ["WIFI", "TIME", "DATA"], False),
 
     # --- OTA overlay (platform) ------------------------------------------

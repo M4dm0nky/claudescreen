@@ -1,6 +1,6 @@
 # Changelog
 
-Notable changes to VibePulse. Release notes for this fork's tagged versions are
+Notable changes to Claudescreen (called VibePulse upstream and in most internal names). Release notes for this fork's tagged versions are
 published on [its own releases page](https://github.com/M4dm0nky/claudescreen/releases);
 upstream's live at
 [niclasvestlund-YT/vibepulse](https://github.com/niclasvestlund-YT/vibepulse/releases).
@@ -48,6 +48,13 @@ upstream's live at
   in the local gate — which is exactly how a green CI hid a runtime
   `NameError` in the rebased Windows branch (PR #11): the missing
   `test_interactions` catches it immediately.
+
+### Changed
+
+- **The product is called Claudescreen.** The boot wordmark and the launcher
+  show `CLAUDESCREEN` with a `C` icon (the icon font gained the glyph). Internal
+  names, file names and the OTA headers keep "VibePulse" on purpose: renaming
+  them would change the protocol between panel and Mac service for no visible gain.
 
 ### Added
 

@@ -31,11 +31,11 @@ void torget_boot_screen_create(void) {
   lv_obj_add_flag(ui.overlay, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t *wordmark = lv_label_create(ui.overlay);
-  /* 52 px skulle mäta 284 px — bredare än glaset. 25:an mäter 135. */
+  /* 52 px skulle mäta 284 px — bredare än glaset. 25:an mäter 191 med CLAUDESCREEN. */
   lv_obj_set_style_text_font(wordmark, &plex_attention_25, 0);
   lv_obj_set_style_text_color(wordmark, lv_color_white(), 0);
   lv_obj_align(wordmark, LV_ALIGN_TOP_MID, 0, 96);
-  lv_label_set_text(wordmark, "VIBEPULSE");
+  lv_label_set_text(wordmark, "CLAUDESCREEN");
 
   /* Tre steg med jämn luft, optiskt centrerade som grupp. Delningen följer
    * panelen: 72 px isär rymmer det bredaste ordet (48 px) utan att de rör

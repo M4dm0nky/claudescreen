@@ -28,6 +28,12 @@ no accounts, no API keys on the device. Agent data
 never leaves your LAN; the optional public-repository module makes only
 anonymous GitHub API reads from the Mac.
 
+**v1.0: it can also run without the Mac.** Give the panel its own Claude login
+and it fetches the quota straight from the internet and renews its own token:
+five-hour session, weekly, model weekly and your dollar credits, nothing else.
+That mode *does* put a revocable Claude login on the device, so it is opt-in.
+See [Without a Mac](#without-a-mac-direct-mode).
+
 ## The problem
 
 When you run coding agents all day, two things are invisible:
@@ -269,6 +275,36 @@ Rates are not hand-maintained: they are generated from a public price
 catalogue by `tools/tokenserver/update_prices.py` and committed, so the
 server stays offline and refreshing is one command. An unknown model degrades
 the figure to a dash rather than being silently free.
+
+## Without a Mac (direct mode)
+
+Set `TK_CLAUDE_REFRESH_TOKEN` in `secrets.h` and the panel asks
+`api.anthropic.com` itself, every two minutes, and renews its own OAuth token.
+It builds only the pages it can really fill, so there are no dashes where a
+Mac feature would have been:
+
+<table>
+<tr>
+<td width="33%"><img src="docs/img/direct/session.png" alt="Five-hour session at 41%, 3 h 44 min to reset" width="100%"></td>
+<td width="33%"><img src="docs/img/direct/week.png" alt="Weekly quota at 20%, 5 days 21 hours to reset" width="100%"></td>
+<td width="33%"><img src="docs/img/direct/credits.png" alt="Dollar credits: 80 left, $20.28 spent, 14 days 17 hours to expiry" width="100%"></td>
+</tr>
+<tr>
+<td>5-hour session</td><td>Weekly, all models</td><td>Credits: what is left, what is spent, when it expires</td>
+</tr>
+</table>
+
+- **Own login, never the Mac's.** Anthropic rotates the refresh token on every
+  renewal, so sharing one grant with Claude Code logs one of them out. Create a
+  separate login (`CLAUDE_CONFIG_DIR=~/.claude-panel claude`, then `/login`).
+  Your other computers are unaffected: each login is its own grant.
+- **Credits are found by shape**, not by name: the API calls the pool by a
+  codename that changes. Two matching pools, or none, show dashes, never a guess.
+- **NEEDS YOU, agent activity, burn rate, Max Tracker, Value, Codex and GitHub
+  need the Mac** and are not built in this mode.
+
+Setup, the token lifecycle and what was verified on the real panel:
+[docs/direct-mode.md](docs/direct-mode.md).
 
 ## How it works
 

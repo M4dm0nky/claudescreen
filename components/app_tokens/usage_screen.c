@@ -573,10 +573,12 @@ static void create_quota_page(quota_page *page, int index,
               VP_SAFE_X, STAT_COL_W, false,
               provider == USAGE_PROVIDER_CLAUDE ? COL_CLAUDE : COL_CODEX,
               scope == USAGE_QUOTA_CLAUDE_SESSION ? "LAST HOUR"
-                                                  : "USED TODAY");
+              : scope == USAGE_QUOTA_CLAUDE_CREDITS ? "SPENT"
+                                                    : "USED TODAY");
   create_stat(page->tile, &page->reset, &page->reset_caption,
               RIGHT_STAT_X, RIGHT_STAT_W, true,
-              COL_WHITE, "TO RESET");
+              COL_WHITE,
+              scope == USAGE_QUOTA_CLAUDE_CREDITS ? "EXPIRES" : "TO RESET");
   lv_label_set_text(page->today, "–");
   lv_label_set_text(page->reset, "–");
 
@@ -930,10 +932,17 @@ static void apply_quota(quota_page *page, const tk_tokens *tokens) {
   lv_label_set_text(page->percent, quota->pct_text);
   bool bar_available = apply_today_bar(page, quota);
   lv_label_set_text(page->today,
-                    quota->has_delta && bar_available
+                    quota->stat_text[0] ? quota->stat_text
+                    : quota->has_delta && bar_available
                         ? quota->delta_text : "–");
   lv_label_set_text(page->reset, quota->reset_short_text);
   apply_empty_note(page, quota);
+  /* Direct mode has no Mac log to derive "used today / last hour" from, so a
+   * left statistic that would only ever be a dash is not drawn at all. */
+  if (TK_DIRECT_MODE && !quota->stat_text[0]) {
+    lv_obj_add_flag(page->today, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(page->today_caption, LV_OBJ_FLAG_HIDDEN);
+  }
   refresh_header(page, ui.last_now_us);
 }
 
@@ -1122,16 +1131,25 @@ void usage_screen_create(lv_obj_t *root) {
                     USAGE_QUOTA_CLAUDE_SESSION, USAGE_PROVIDER_CLAUDE);
   create_quota_page(&ui.quotas[2], VIEW_CLAUDE_ALL,
                     USAGE_QUOTA_CLAUDE_ALL, USAGE_PROVIDER_CLAUDE);
-  create_burn_rate_page();
-  create_tracker_page(&ui.trackers[0], VIEW_TRACKER_CLAUDE, false);
-  create_value_page();
+  /* A constant condition, not #if: the Mac-only builders stay referenced, so
+   * the compiler drops them in direct mode instead of warning them unused. */
+  if (!TK_DIRECT_MODE) {
+    create_burn_rate_page();
+    create_tracker_page(&ui.trackers[0], VIEW_TRACKER_CLAUDE, false);
+    create_value_page();
+  }
   create_quota_page(&ui.quotas[1], VIEW_CLAUDE_FABLE,
                     USAGE_QUOTA_CLAUDE_MODEL, USAGE_PROVIDER_CLAUDE);
-  create_quota_page(&ui.quotas[3], VIEW_CODEX_WEEKLY,
-                    USAGE_QUOTA_CODEX_WEEK, USAGE_PROVIDER_CODEX);
-  create_tracker_page(&ui.trackers[1], VIEW_TRACKER_CODEX, true);
+  if (TK_DIRECT_MODE) {
+    create_quota_page(&ui.quotas[3], VIEW_CLAUDE_CREDITS,
+                      USAGE_QUOTA_CLAUDE_CREDITS, USAGE_PROVIDER_CLAUDE);
+  } else {
+    create_quota_page(&ui.quotas[3], VIEW_CODEX_WEEKLY,
+                      USAGE_QUOTA_CODEX_WEEK, USAGE_PROVIDER_CODEX);
+    create_tracker_page(&ui.trackers[1], VIEW_TRACKER_CODEX, true);
+  }
 #if TK_GITHUB_SCREEN_ENABLED
-  create_github_page();
+  if (!TK_DIRECT_MODE) create_github_page();
 #endif
 #if TK_GITHUB_NOTIFICATIONS_ENABLED
   /* Created before the agent monitor: NEEDS YOU/ERROR/DONE always retain
@@ -1146,6 +1164,7 @@ void usage_screen_apply_tokens(const tk_tokens *tokens) {
   ui.last_tokens = *tokens;
   for (size_t i = 0; i < QUOTA_PAGES; i++)
     apply_quota(&ui.quotas[i], tokens);
+  if (TK_DIRECT_MODE) return;
   usage_forecast_page_view forecasts = {0};
   usage_presenter_build_forecasts(tokens, &forecasts);
   for (int i = 0; i < 2; i++)
@@ -1154,14 +1173,14 @@ void usage_screen_apply_tokens(const tk_tokens *tokens) {
 }
 
 void usage_screen_apply_max_tracker(const tk_max_tracker *t) {
-  if (!t) return;
+  if (!t || TK_DIRECT_MODE) return;
   for (int i = 0; i < 2; i++) apply_tracker_page(&ui.trackers[i], t);
 }
 
 void usage_screen_apply_github(const tk_github_status *status) {
   if (!status || !status->enabled) return;
 #if TK_GITHUB_SCREEN_ENABLED
-  apply_github_page(status);
+  if (!TK_DIRECT_MODE) apply_github_page(status);
 #endif
 #if TK_GITHUB_NOTIFICATIONS_ENABLED
   if (status->has_event && !status->stale) {
@@ -1191,7 +1210,9 @@ void usage_screen_apply_agent(const tk_agent_snapshot *snapshot,
   ui.has_agent_snapshot = true;
   for (size_t i = 0; i < QUOTA_PAGES; i++)
     refresh_header(&ui.quotas[i], now_us);
-  for (int i = 0; i < 2; i++) refresh_tracker_header(&ui.trackers[i], now_us);
+  if (!TK_DIRECT_MODE)
+    for (int i = 0; i < 2; i++)
+      refresh_tracker_header(&ui.trackers[i], now_us);
   tk_agent_monitor_apply(snapshot, now_us);
 }
 
@@ -1199,7 +1220,9 @@ void usage_screen_tick(int64_t now_us) {
   ui.last_now_us = now_us;
   for (size_t i = 0; i < QUOTA_PAGES; i++)
     refresh_header(&ui.quotas[i], now_us);
-  for (int i = 0; i < 2; i++) refresh_tracker_header(&ui.trackers[i], now_us);
+  if (!TK_DIRECT_MODE)
+    for (int i = 0; i < 2; i++)
+      refresh_tracker_header(&ui.trackers[i], now_us);
   tk_agent_monitor_tick(now_us);
 #if TK_GITHUB_NOTIFICATIONS_ENABLED
   tk_project_star_popup_tick(now_us);
@@ -1210,6 +1233,7 @@ void usage_screen_set_stale(bool stale) {
   ui.stale = stale;
   for (size_t i = 0; i < QUOTA_PAGES; i++)
     refresh_header(&ui.quotas[i], ui.last_now_us);
+  if (TK_DIRECT_MODE) return;
   for (int i = 0; i < 2; i++)
     refresh_tracker_header(&ui.trackers[i], ui.last_now_us);
 }

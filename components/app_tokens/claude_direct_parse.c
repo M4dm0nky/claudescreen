@@ -72,6 +72,53 @@ static void set_limit(tk_limit *lim, double pct, int64_t reset_at,
   lim->has_reset = 1;
 }
 
+/* The dollar pool has no stable name in the usage document (the API serves a
+ * codename that changes), so it is found by shape: a top-level object with a
+ * positive limit_dollars, non-negative used/remaining that add up to it and a
+ * future resets_at. Exactly one such object counts; with two, which one the
+ * owner means is a guess, so none is shown. */
+static bool credit_pool(const cJSON *obj, int64_t now, double *limit,
+                        double *used, double *left, int64_t *expires) {
+  if (!cJSON_IsObject(obj)) return false;
+  const cJSON *l = cJSON_GetObjectItemCaseSensitive(obj, "limit_dollars");
+  const cJSON *u = cJSON_GetObjectItemCaseSensitive(obj, "used_dollars");
+  const cJSON *r = cJSON_GetObjectItemCaseSensitive(obj, "remaining_dollars");
+  const cJSON *e = cJSON_GetObjectItemCaseSensitive(obj, "resets_at");
+  if (!cJSON_IsNumber(l) || !cJSON_IsNumber(u) || !cJSON_IsNumber(r))
+    return false;
+  if (!isfinite(l->valuedouble) || !isfinite(u->valuedouble) ||
+      !isfinite(r->valuedouble) || l->valuedouble <= 0 ||
+      u->valuedouble < 0 || r->valuedouble < 0)
+    return false;
+  if (fabs(l->valuedouble - u->valuedouble - r->valuedouble) > 0.01)
+    return false;
+  if (!cJSON_IsString(e) || !tk_parse_epoch(e->valuestring, expires) ||
+      *expires <= now)
+    return false;
+  *limit = l->valuedouble;
+  *used = u->valuedouble;
+  *left = r->valuedouble;
+  return true;
+}
+
+static void find_credits(const cJSON *root, int64_t now, tk_tokens *t) {
+  int found = 0;
+  double limit = 0, used = 0, left = 0;
+  int64_t expires = 0;
+  for (const cJSON *c = root->child; c; c = c->next) {
+    double l, u, r;
+    int64_t e;
+    if (!credit_pool(c, now, &l, &u, &r, &e)) continue;
+    limit = l; used = u; left = r; expires = e;
+    found++;
+  }
+  if (found != 1) return;
+  set_limit(&t->claude_credits, used / limit * 100.0, expires, now);
+  t->claude_credits_left_usd = left;
+  t->claude_credits_spent_usd = used;
+  t->has_claude_credits_usd = 1;
+}
+
 bool tk_claude_usage_parse(const char *json, size_t len, int64_t now_epoch,
                            tk_tokens *out) {
   if (!json || !out) return false;
@@ -132,6 +179,7 @@ bool tk_claude_usage_parse(const char *json, size_t len, int64_t now_epoch,
       t.has_claude_model_week_label = 1;
     }
   }
+  find_credits(root, now_epoch, &t);
   cJSON_Delete(root);
   *out = t;
   return true;

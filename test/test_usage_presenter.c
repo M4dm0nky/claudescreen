@@ -131,6 +131,37 @@ int main(void) {
         strcmp(page.quota.reset_short_text, "–") == 0 &&
         !page.quota.has_pct && !page.quota.has_delta);
 
+  /* Credits: the hero is what is LEFT, the bar what is spent. */
+  tk_tokens credits = {0};
+  credits.has_claude_credits_usd = 1;
+  credits.claude_credits_left_usd = 79.715506;
+  credits.claude_credits_spent_usd = 20.284494;
+  credits.claude_credits.pct = 20.3;
+  credits.claude_credits.has_pct = 1;
+  credits.claude_credits.reset_min = 21213;
+  credits.claude_credits.has_reset = 1;
+  usage_presenter_build_quota_page(&credits, USAGE_QUOTA_CLAUDE_CREDITS,
+                                   &page);
+  check("credits hero is the balance left, the bar the share spent",
+        page.provider == USAGE_PROVIDER_CLAUDE &&
+        strcmp(page.quota.label, "CREDITS \xC2\xB7 USD LEFT") == 0 &&
+        strcmp(page.quota.pct_text, "80") == 0 &&
+        page.quota.has_pct && page.quota.pct == 20.3 &&
+        strcmp(page.quota.stat_text, "$20.28") == 0 &&
+        strcmp(page.quota.reset_short_text, "14D 17H") == 0);
+  tk_tokens rich = credits;
+  rich.claude_credits_left_usd = 1250;
+  usage_presenter_build_quota_page(&rich, USAGE_QUOTA_CLAUDE_CREDITS, &page);
+  check("a balance the hero cannot fit is dashed, not clipped",
+        strcmp(page.quota.pct_text, "–") == 0 && !page.quota.has_pct &&
+        page.quota.stat_text[0] == '\0');
+  usage_presenter_build_quota_page(&missing, USAGE_QUOTA_CLAUDE_CREDITS,
+                                   &page);
+  check("no credit pool dashes, never a made-up balance",
+        !page.quota.has_pct && strcmp(page.quota.pct_text, "–") == 0 &&
+        page.quota.stat_text[0] == '\0' &&
+        strcmp(page.quota.reset_short_text, "–") == 0);
+
   usage_detail_page_view details = {0};
   usage_presenter_build_claude_details(&missing, &details);
   check("Claude details use stable Fable identity without data",

@@ -101,6 +101,26 @@ static void build_session_card(const tk_tokens *tokens,
   out->reset_text[0] = '\0';
 }
 
+/* Dollar credits: the hero is what is left, the bar what is spent. Without a
+ * pool that adds up, build_card's dashes stand -- no invented balance. */
+static void build_credits_card(const tk_tokens *tokens,
+                               usage_card_view *out) {
+  build_card(out, USAGE_CARD_ALL_WEEK, "CREDITS \xC2\xB7 USD LEFT",
+             &tokens->claude_credits);
+  if (!tokens->has_claude_credits_usd) return;
+  /* The hero font has digits only and four of them overflow the panel; a
+   * balance that large is not drawn rather than clipped into a wrong one. */
+  if (tokens->claude_credits_left_usd >= 999.5) {
+    out->has_pct = 0;
+    snprintf(out->pct_text, sizeof out->pct_text, "–");
+    return;
+  }
+  snprintf(out->pct_text, sizeof out->pct_text, "%.0f",
+           tokens->claude_credits_left_usd);
+  snprintf(out->stat_text, sizeof out->stat_text, "$%.2f",
+           tokens->claude_credits_spent_usd);
+}
+
 static void build_hero_quota(const tk_tokens *tokens, usage_provider provider,
                              usage_card_view *out) {
   if (provider == USAGE_PROVIDER_CODEX) {
@@ -159,6 +179,10 @@ void usage_presenter_build_quota_page(const tk_tokens *tokens,
     case USAGE_QUOTA_CLAUDE_SESSION:
       out->provider = USAGE_PROVIDER_CLAUDE;
       build_session_card(tokens, &out->quota);
+      break;
+    case USAGE_QUOTA_CLAUDE_CREDITS:
+      out->provider = USAGE_PROVIDER_CLAUDE;
+      build_credits_card(tokens, &out->quota);
       break;
     case USAGE_QUOTA_CODEX_WEEK:
     default:

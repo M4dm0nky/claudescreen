@@ -24,6 +24,6 @@ units:
     battery: unknown
     microsd: unknown
     antenna: onboard
-    installed_firmware: v0.6.0-14-g7d08d6a
-    last_physical_verification: "2026-08-18"
+    installed_firmware: v0.6.0-26-g0def177
+    last_physical_verification: "2026-10-21"
     secrets: false

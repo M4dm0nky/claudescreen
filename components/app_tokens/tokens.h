@@ -113,6 +113,13 @@ typedef struct {
   tk_limit claude_session, claude_week, claude_model_week;
   tk_session_state claude_session_state;
   tk_limit codex_session, codex_week;
+  /* Claude dollar credits (direct mode only): pct = share already spent,
+   * reset_min = minutes until the pool expires. The two amounts are what the
+   * credits page prints; has_claude_credits_usd is 0 whenever the pool is
+   * absent, expired, ambiguous or arithmetically inconsistent. */
+  tk_limit claude_credits;
+  double claude_credits_left_usd, claude_credits_spent_usd;
+  int has_claude_credits_usd;
   char claude_model_week_label[TK_QUOTA_LABEL_CAP];
   int has_claude_model_week_label;
   /* OTA-annonsen: senaste byggets version pa Macen. Enheten jamfor sjalv

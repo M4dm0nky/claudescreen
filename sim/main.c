@@ -613,6 +613,42 @@ static void capture_needs_you_v2(void) {
   dump_frame("vibepulse-needs-you-payoff");
 }
 
+#if TK_DIRECT_MODE
+/* Direct-mode layout: the four pages the panel builds without a Mac. The
+ * numbers are the real usage response of 2026-10-21 (session 41 %, week 20 %,
+ * no model-scoped pool, 79.72 of 100 USD credits left, 14 d 17 h to expiry). */
+static int run_vibepulse_direct_qa(void) {
+  capture_failures = 0;
+  torget_app_show(SIM_APP_VIBEPULSE);
+
+  tk_tokens real = {0};
+  real.claude_session = forecast_limit(41, 224);
+  real.claude_session_state = TK_SESSION_ACTIVE;
+  real.claude_week = forecast_limit(20, 8493);
+  real.claude_credits = forecast_limit(20.3, 21213);
+  real.claude_credits_left_usd = 79.715506;
+  real.claude_credits_spent_usd = 20.284494;
+  real.has_claude_credits_usd = 1;
+  tokens_apply(&real);
+  tokens_show_view(VIEW_CLAUDE_SESSION);  dump_frame("direct-1-session");
+  tokens_show_view(VIEW_CLAUDE_ALL);      dump_frame("direct-2-week");
+  tokens_show_view(VIEW_CLAUDE_FABLE);    dump_frame("direct-3-model-empty");
+  tokens_show_view(VIEW_CLAUDE_CREDITS);  dump_frame("direct-4-credits");
+
+  real.claude_credits_left_usd = 100;
+  real.claude_credits_spent_usd = 0;
+  real.claude_credits = forecast_limit(0, 90);
+  tokens_apply(&real);
+  dump_frame("direct-4-credits-full-expiring");
+
+  real.has_claude_credits_usd = 0;
+  memset(&real.claude_credits, 0, sizeof real.claude_credits);
+  tokens_apply(&real);
+  dump_frame("direct-4-credits-missing");
+  return capture_failures == 0 ? 0 : 1;
+}
+#endif
+
 static int run_vibepulse_static_qa(void) {
   capture_failures = 0;
   torget_app_show(SIM_APP_VIBEPULSE);
@@ -1091,6 +1127,12 @@ int main(int argc, char **argv) {
       printf("sverige: fixtur saknas/avvisad, vyn visar streck\n");
     }
     free(json);
+  }
+#endif
+
+#if TK_DIRECT_MODE
+  if (argc == 2 && strcmp(argv[1], "--vibepulse-direct-qa") == 0) {
+    return run_vibepulse_direct_qa();
   }
 #endif
 

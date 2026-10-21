@@ -76,7 +76,17 @@ assert "usage_screen_set_volume" not in source
 
 create = source[source.index("void usage_screen_create"):]
 create = create[:create.index("void usage_screen_apply_tokens")]
-assert create.count("create_quota_page(") == 4
+# Session, all-models, Fable, plus ONE fourth slot that is Codex weekly on a
+# Mac-backed build and the dollar credits in direct mode.
+assert create.count("create_quota_page(") == 5
+assert create.count("USAGE_QUOTA_CODEX_WEEK") == 1
+assert create.count("USAGE_QUOTA_CLAUDE_CREDITS") == 1
+# Every Mac-only builder must be skipped in direct mode, never left running
+# against pages that do not exist.
+direct_skip = create[create.index("if (!TK_DIRECT_MODE) {"):]
+for builder in ("create_burn_rate_page(", "create_tracker_page(",
+                "create_value_page("):
+    assert builder in direct_skip.split("create_quota_page(&ui.quotas[1]")[0]
 assert create.count("create_burn_rate_page(") == 1
 assert create.count("create_tracker_page(") == 2
 assert "create_github_page();" in create

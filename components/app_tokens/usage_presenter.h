@@ -30,6 +30,8 @@ typedef struct {
   char label[USAGE_CARD_LABEL_CAP];
   char pct_text[USAGE_CARD_PCT_CAP];
   char delta_text[USAGE_CARD_DELTA_CAP];
+  /* Replaces the left statistic when non-empty (credits: money spent). */
+  char stat_text[USAGE_CARD_DELTA_CAP];
   char reset_text[USAGE_CARD_RESET_CAP];
   char reset_short_text[USAGE_CARD_SHORT_CAP];
   /* Tom utom när en nolla behöver en förklaring: ett femtimmarsfönster som
@@ -55,6 +57,7 @@ typedef enum {
   USAGE_QUOTA_CLAUDE_ALL,
   USAGE_QUOTA_CLAUDE_SESSION,
   USAGE_QUOTA_CODEX_WEEK,
+  USAGE_QUOTA_CLAUDE_CREDITS,
 } usage_quota_scope;
 
 typedef struct {

@@ -3,6 +3,7 @@
 
 #include "torget_app.h"
 
+#include "app_tokens_config.h"
 #include "tokens.h"
 #include "agent_status.h"
 #include "github_status.h"
@@ -25,6 +26,23 @@ extern const torget_app_t tokens_app;
  * synas utan att någon sveper. GitHub ligger allra sist därför att den är
  * den enda sidan som kan stängas av (TK_GITHUB_SCREEN_ENABLED); sist är den
  * enda platsen där ett bortfall inte lämnar ett hål mitt i numreringen. */
+#if TK_DIRECT_MODE
+/* Direct mode builds four tiles with no holes. The names below them are
+ * never built there; they sit out of range so shared code still compiles
+ * and nothing can index a tile that does not exist. */
+enum {
+  VIEW_CLAUDE_SESSION = 0,
+  VIEW_CLAUDE_ALL = 1,
+  VIEW_CLAUDE_FABLE = 2,
+  VIEW_CLAUDE_CREDITS = 3,
+  VIEW_BURN_RATE = 100,
+  VIEW_TRACKER_CLAUDE,
+  VIEW_VALUE,
+  VIEW_CODEX_WEEKLY,
+  VIEW_TRACKER_CODEX,
+  VIEW_GITHUB,
+};
+#else
 enum {
   VIEW_CLAUDE_SESSION = 0,
   VIEW_CLAUDE_ALL = 1,
@@ -35,7 +53,9 @@ enum {
   VIEW_CODEX_WEEKLY = 6,
   VIEW_TRACKER_CODEX = 7,
   VIEW_GITHUB = 8,
+  VIEW_CLAUDE_CREDITS = 100, /* direct mode only; never built here */
 };
+#endif
 
 /* Ett lyckat /api/tokens-svar. Snappar tickern, stämplar färskhet och
  * håller skärmen vaken när tokens brinner. Kallas under torget_ui_lock(). */

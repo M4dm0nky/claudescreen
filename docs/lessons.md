@@ -21,6 +21,25 @@ point at the backlog item.
 
 ---
 
+## 2026-10-21 · The build was green and the new code was not in it
+
+**What happened:** direct mode compiled cleanly on the first `idf.py build`,
+but the whole body of `claude_direct_net.c` sits behind
+`#ifdef TK_CLAUDE_REFRESH_TOKEN`, and `secrets.h` had no token yet. The file
+was "built" as an empty object. Commenting out the Mac URLs in `secrets.h` with
+`//` then broke the build for a second reason: a `//` comment ending in a
+backslash continues onto the next line, which `-Werror=comment` rejects.
+**Root cause:** a feature gated by a config macro is only compiled under that
+macro, so a build without it proves nothing about the feature. **The rule:**
+for any `#ifdef`-gated path, compile once with the gate on (an out-of-tree
+build with the macro passed as a flag works and touches nothing); and keep the
+removed-feature code referenced through a constant `if (...)` rather than
+`#if`, so both configurations still compile the shared names. **Guard:** the
+layout wiring test now states which page builders a direct build skips.
+**Watch for:** an enum or helper that one configuration defines and the other
+does not -- the normal-mode simulator build caught `VIEW_CLAUDE_CREDITS`
+missing, which the direct build never could.
+
 ## 2026-09-09 · The Mac renamed itself, and both halves reported healthy
 
 **What happened:** the panel showed no connection to the Mac. Every check on

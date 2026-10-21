@@ -14,7 +14,12 @@
 
 /* Seven base tiles + the optional GitHub tile + the always-present Value
  * tile. The seventh base tile is the five-hour session window. */
+#if TK_DIRECT_MODE
+/* Session, weekly, model weekly, credits. */
+#define TK_USAGE_SCREEN_VIEWS 4
+#else
 #define TK_USAGE_SCREEN_VIEWS (7 + TK_GITHUB_SCREEN_ENABLED + 1)
+#endif
 
 void usage_screen_create(lv_obj_t *root);
 void usage_screen_apply_tokens(const tk_tokens *tokens);

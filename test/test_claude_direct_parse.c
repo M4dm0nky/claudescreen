@@ -49,7 +49,9 @@ static void test_usage_real_capture(void) {
     "\"limit_dollars\":null,\"used_dollars\":null,\"remaining_dollars\":null,\"locked_reason\":null},"
     "\"seven_day\":{\"utilization\":20.0,\"resets_at\":\"2026-10-27T05:59:59.956627+00:00\"},"
     "\"seven_day_opus\":null,\"seven_day_sonnet\":null,"
-    "\"iguana_necktie\":{\"utilization\":20.284494,\"limit_dollars\":100,\"used_dollars\":20.284494},"
+    "\"iguana_necktie\":{\"utilization\":20.284494,\"resets_at\":\"2026-11-05T07:59:00+00:00\","
+    "\"limit_dollars\":100,\"used_dollars\":20.284494,\"remaining_dollars\":79.715506,"
+    "\"locked_reason\":null},"
     "\"extra_usage\":{\"is_enabled\":false,\"monthly_limit\":null,\"user_disabled\":true},"
     "\"limits\":["
     "{\"kind\":\"session\",\"group\":\"session\",\"percent\":41,\"severity\":\"normal\","
@@ -67,6 +69,43 @@ static void test_usage_real_capture(void) {
   assert(t.claude_session.reset_min == 4); /* 225 s */
   assert(t.claude_week.has_pct && t.claude_week.pct == 20.0);
   assert(!t.claude_model_week.has_pct && !t.has_claude_model_week_label);
+  /* The dollar pool is not under a stable name (the API serves a codename),
+   * so it is found by shape: 100 USD limit, 20.284494 spent, 79.715506 left,
+   * expiring 2026-11-05T07:59:00Z = 1793865540 -> 1272766 s from now. */
+  assert(t.has_claude_credits_usd);
+  assert(t.claude_credits_left_usd > 79.71 && t.claude_credits_left_usd < 79.72);
+  assert(t.claude_credits_spent_usd > 20.28 && t.claude_credits_spent_usd < 20.29);
+  assert(t.claude_credits.has_pct && t.claude_credits.pct == 20.3);
+  assert(t.claude_credits.has_reset && t.claude_credits.reset_min == 21213);
+}
+
+static void test_credits_edge_cases(void) {
+  tk_tokens t;
+  /* Two pools of that shape: refuse to guess which one is meant. */
+  const char *two =
+    "{\"limits\":[],\"a\":{\"limit_dollars\":100,\"used_dollars\":10,"
+    "\"remaining_dollars\":90,\"resets_at\":1786900000},"
+    "\"b\":{\"limit_dollars\":50,\"used_dollars\":10,"
+    "\"remaining_dollars\":40,\"resets_at\":1786900000}}";
+  assert(tk_claude_usage_parse(two, strlen(two), NOW, &t));
+  assert(!t.has_claude_credits_usd && !t.claude_credits.has_pct);
+  /* Expired, inconsistent, null and negative pools never show. */
+  const char *bad[] = {
+    "{\"limits\":[],\"a\":{\"limit_dollars\":100,\"used_dollars\":10,"
+    "\"remaining_dollars\":90,\"resets_at\":1786600000}}",
+    "{\"limits\":[],\"a\":{\"limit_dollars\":100,\"used_dollars\":10,"
+    "\"remaining_dollars\":50,\"resets_at\":1786900000}}",
+    "{\"limits\":[],\"a\":{\"limit_dollars\":null,\"used_dollars\":null,"
+    "\"remaining_dollars\":null,\"resets_at\":1786900000}}",
+    "{\"limits\":[],\"a\":{\"limit_dollars\":100,\"used_dollars\":-5,"
+    "\"remaining_dollars\":105,\"resets_at\":1786900000}}",
+    "{\"limits\":[],\"a\":{\"limit_dollars\":100,\"used_dollars\":10,"
+    "\"remaining_dollars\":90}}",
+  };
+  for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
+    assert(tk_claude_usage_parse(bad[i], strlen(bad[i]), NOW, &t));
+    assert(!t.has_claude_credits_usd && !t.claude_credits.has_pct);
+  }
 }
 
 static void test_idle_and_hostile(void) {
@@ -116,6 +155,7 @@ int main(void) {
   test_epoch();
   test_usage();
   test_usage_real_capture();
+  test_credits_edge_cases();
   test_idle_and_hostile();
   test_refresh();
   puts("OK: claude direct parse");

@@ -63,3 +63,46 @@ assert "branches: ['**']" in ci, (
 )
 
 print("OK: avsändargrindarna står — rätt fil, deklarerad version, ren build, grön CI")
+
+# 2026-10-21: an ANNOTATED tag makes `git rev-parse v1.0` answer with the tag
+# object's id, not the commit's. GitHub has no CI run for a tag object, so the
+# bridge refused a build whose commit had a green run -- the same "asked the
+# wrong place" failure as the missing -R above. Run the script's OWN lines that
+# turn a version into a commit, in a throwaway repo, and compare against the
+# commit, not against anything the script says about itself.
+import subprocess
+import tempfile
+
+start = script.index('  case "$BIN_VERSION" in')
+end = script.index("esac", start) + len("esac")
+resolve = script[start:end]
+tail = script[end:script.index("if [ -z \"${BIN_COMMIT:-}\" ]", end)]
+snippet = f"{resolve}\n{tail}\nprintf '%s' \"$BIN_COMMIT\"\n"
+
+with tempfile.TemporaryDirectory() as tmp:
+    def git(*args):
+        return subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+            cwd=tmp, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("commit", "-q", "--allow-empty", "-m", "c")
+    commit = git("rev-parse", "HEAD")
+    for kind, extra in (("annotated", ["-a", "-m", "m"]), ("lightweight", [])):
+        name = f"v9-{kind}"
+        git("tag", *extra, name)
+        out = subprocess.run(
+            ["bash", "-c", snippet], cwd=tmp, check=True, capture_output=True,
+            text=True, env={"BIN_VERSION": name, "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"},
+        ).stdout.strip()
+        assert out == commit, (
+            f"{kind} tag {name} resolved to {out}, not the commit {commit}: "
+            "the CI bridge would ask GitHub about the wrong object"
+        )
+    # A describe-style version still names its commit by the g<hash> suffix.
+    out = subprocess.run(
+        ["bash", "-c", snippet], cwd=tmp, check=True, capture_output=True,
+        text=True, env={"BIN_VERSION": f"v9-3-g{commit[:7]}", "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"},
+    ).stdout.strip()
+    assert out == commit

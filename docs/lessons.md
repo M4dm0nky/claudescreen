@@ -21,6 +21,21 @@ point at the backlog item.
 
 ---
 
+## 2026-10-21 · The CI gate asked about the tag, not the commit
+
+**What happened:** with the release tagged `v1.0` (annotated), the OTA sender
+refused "no green CI for 924dfa6" -- an id that is not any commit. CI was green
+for the real commit `f1f0485`. **Root cause:** for a clean tagged build the
+sender turns the version into a commit with `git rev-parse v1.0`, and for an
+annotated tag that answers with the *tag object's* id; GitHub has no run for
+it. The gate asked the wrong object, the same family as the missing `-R` of
+2026-08-18, and the only visible way forward was `TG_OTA_ALLOW_NO_CI=1`.
+**The rule:** a gate that says no must be right about what it asked; resolve
+`<tag>^{commit}`. **Guard:** `test/test_ota_sender_gates.py` now runs the
+script's own resolve lines in a throwaway repo against an annotated and a
+lightweight tag and compares with the commit. **Watch for:** any other place
+that turns a version or tag into a commit for a lookup outside git.
+
 ## 2026-10-21 · The build was green and the new code was not in it
 
 **What happened:** direct mode compiled cleanly on the first `idf.py build`,

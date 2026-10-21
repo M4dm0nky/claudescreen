@@ -87,7 +87,9 @@ fi
 if [ "${TG_OTA_ALLOW_NO_CI:-0}" != "1" ]; then
   case "$BIN_VERSION" in
     *-g*) BIN_COMMIT=${BIN_VERSION##*-g} ;;
-    *)    BIN_COMMIT=$(git rev-parse --short "$BIN_VERSION" 2>/dev/null || true) ;;
+    # ^{commit}: an annotated tag is its own object, and GitHub has no CI run
+    # for that id (2026-10-21).
+    *)    BIN_COMMIT=$(git rev-parse --short "$BIN_VERSION^{commit}" 2>/dev/null || true) ;;
   esac
   # gh:s --commit kräver FULL sha (kort hash ger tyst tom lista — mätt
   # 2026-08-14); rev-parse expanderar och bevisar samtidigt att committen

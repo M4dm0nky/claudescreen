@@ -9,6 +9,12 @@ upstream's live at
 
 ### Fixed
 
+- The OTA sender's CI gate asked GitHub about the wrong object for an annotated
+  tag: `git rev-parse v1.0` answers with the tag object's id, which has no CI
+  run, so a build with a green commit was refused. It now resolves
+  `<tag>^{commit}`, and a test runs the script's own lines against annotated
+  and lightweight tags. (Found while releasing v1.0; the release tag is
+  lightweight for that reason.)
 - The KEY button works on this fork's board. `main.c` was still polling
   `GPIO_NUM_18` — KEY3 on the upstream AMOLED-2.16 — while the
   ESP32-S3-Touch-LCD-1.54 wires its single button, silkscreened KEY, to GPIO4.

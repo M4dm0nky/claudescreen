@@ -41,7 +41,7 @@ The token is compiled into the firmware image (as are the WiFi credentials). A
 lost panel leaks a revocable Claude login for that account. Revoke it by
 signing out of the panel's session in Claude settings.
 
-## Unverified
+## Unverified (see [direct-mode-handoff.md](direct-mode-handoff.md))
 
 The refresh endpoint (`platform.claude.com/v1/oauth/token`) and the public
 Claude Code client id are taken from Claude Code's public behaviour and have

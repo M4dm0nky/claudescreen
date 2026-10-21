@@ -39,6 +39,36 @@ static void test_usage(void) {
   assert(!t.codex_week.has_pct);
 }
 
+/* A real api.anthropic.com/api/oauth/usage response (captured 2026-10-21 from
+ * the panel's own login, free-text fields trimmed, numbers as served): the
+ * document is far wider than the "limits" array, and only session and
+ * weekly_all are present - no model-scoped pool. */
+static void test_usage_real_capture(void) {
+  const char *body =
+    "{\"five_hour\":{\"utilization\":41.0,\"resets_at\":\"2026-10-21T14:29:59.956604+00:00\","
+    "\"limit_dollars\":null,\"used_dollars\":null,\"remaining_dollars\":null,\"locked_reason\":null},"
+    "\"seven_day\":{\"utilization\":20.0,\"resets_at\":\"2026-10-27T05:59:59.956627+00:00\"},"
+    "\"seven_day_opus\":null,\"seven_day_sonnet\":null,"
+    "\"iguana_necktie\":{\"utilization\":20.284494,\"limit_dollars\":100,\"used_dollars\":20.284494},"
+    "\"extra_usage\":{\"is_enabled\":false,\"monthly_limit\":null,\"user_disabled\":true},"
+    "\"limits\":["
+    "{\"kind\":\"session\",\"group\":\"session\",\"percent\":41,\"severity\":\"normal\","
+    "\"resets_at\":\"2026-10-21T14:29:59.956604+00:00\",\"scope\":null,\"is_active\":true},"
+    "{\"kind\":\"weekly_all\",\"group\":\"weekly\",\"percent\":20,\"severity\":\"normal\","
+    "\"resets_at\":\"2026-10-27T05:59:59.956627+00:00\",\"scope\":null,\"is_active\":false}],"
+    "\"spend\":{\"used\":{\"amount_minor\":0,\"currency\":\"USD\",\"exponent\":2},\"limit\":null,"
+    "\"percent\":0,\"enabled\":false},\"member_dashboard_available\":false,"
+    "\"seven_day_breakdown\":{\"rows\":[{\"key\":\"claude_code\",\"display_name\":\"Claude Code\",\"percent\":71}]},"
+    "\"weekly_scoped_shares\":null}";
+  tk_tokens t;
+  assert(tk_claude_usage_parse(body, strlen(body), 1792592774LL, &t));
+  assert(t.claude_session_state == TK_SESSION_ACTIVE);
+  assert(t.claude_session.has_pct && t.claude_session.pct == 41.0);
+  assert(t.claude_session.reset_min == 4); /* 225 s */
+  assert(t.claude_week.has_pct && t.claude_week.pct == 20.0);
+  assert(!t.claude_model_week.has_pct && !t.has_claude_model_week_label);
+}
+
 static void test_idle_and_hostile(void) {
   tk_tokens t;
   memset(&t, 0x5a, sizeof t);
@@ -85,6 +115,7 @@ static void test_refresh(void) {
 int main(void) {
   test_epoch();
   test_usage();
+  test_usage_real_capture();
   test_idle_and_hostile();
   test_refresh();
   puts("OK: claude direct parse");

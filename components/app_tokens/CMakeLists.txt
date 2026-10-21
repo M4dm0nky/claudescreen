@@ -10,12 +10,12 @@ idf_component_register(
        "github_status_parse.c" "project_star_popup_policy.c"
        "project_star_assets.c" "project_star_chime.c" "project_star_popup.c"
        "agent_net_policy.c" "net.c" "agent_net.c" "needs_you_net.c"
-       "github_net.c"
+       "github_net.c" "claude_direct_parse.c" "claude_direct_net.c"
        "max_tracker_parse.c" "max_tracker_presenter.c"
   INCLUDE_DIRS "."
   REQUIRES torget_app torget_fmt cjson
   # secrets.h bor i repytroten (gitignorad), därav "../..".
   PRIV_INCLUDE_DIRS "../.."
-  PRIV_REQUIRES torget_net esp_http_client)
+  PRIV_REQUIRES torget_net esp_http_client esp-tls nvs_flash)
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE LV_LVGL_H_INCLUDE_SIMPLE)

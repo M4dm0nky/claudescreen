@@ -29,7 +29,12 @@ static const char *TAG = "tokens";
 #define FETCH_EVERY_MS 30000
 #define BODY_MAX 2048
 
-#ifdef TK_TOKENS_URL
+#ifdef TK_CLAUDE_REFRESH_TOKEN
+/* Direct mode (claude_direct_net.c) replaces the Mac /api/tokens poll. */
+void claude_direct_start(void);
+#endif
+
+#if defined(TK_TOKENS_URL) && !defined(TK_CLAUDE_REFRESH_TOKEN)
 
 static void net_task(void *arg) {
   (void)arg;
@@ -67,7 +72,7 @@ static void net_task(void *arg) {
   }
 }
 
-#endif /* TK_TOKENS_URL */
+#endif /* TK_TOKENS_URL && !TK_CLAUDE_REFRESH_TOKEN */
 
 /*
  * Max Tracker-hämttasken — samma glance-mönster som net_task ovan men eget
@@ -120,7 +125,9 @@ static void max_tracker_task(void *arg) {
 #endif /* TK_MAX_TRACKER_URL */
 
 void tokens_net_start(void) {
-#ifdef TK_TOKENS_URL
+#ifdef TK_CLAUDE_REFRESH_TOKEN
+  claude_direct_start();
+#elif defined(TK_TOKENS_URL)
   xTaskCreate(net_task, "tokens", 6144, NULL, 5, NULL);
 #else
   ESP_LOGW(TAG, "TK_TOKENS_URL saknas i secrets.h — VibePulse visar streck");

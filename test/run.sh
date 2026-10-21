@@ -39,6 +39,13 @@ cc -std=c11 -Wall -Wextra -Werror -O1 \
 /tmp/torget-tokens-test
 
 cc -std=c11 -Wall -Wextra -Werror -O1 \
+  ../components/app_tokens/claude_direct_parse.c \
+  test_claude_direct_parse.c /tmp/torget-cjson.o \
+  -lm \
+  -o /tmp/torget-claude-direct-test
+/tmp/torget-claude-direct-test
+
+cc -std=c11 -Wall -Wextra -Werror -O1 \
   -DFIXTURES_DIR="\"$(cd ../sim-fixtures && pwd)\"" \
   ../components/app_tokens/max_tracker_parse.c \
   test_max_tracker_parse.c /tmp/torget-cjson.o \

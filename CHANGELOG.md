@@ -5,7 +5,7 @@ published on [its own releases page](https://github.com/M4dm0nky/claudescreen/re
 upstream's live at
 [niclasvestlund-YT/vibepulse](https://github.com/niclasvestlund-YT/vibepulse/releases).
 
-## Unreleased
+## v1.0 — 2026-10-21
 
 ### Fixed
 
@@ -50,6 +50,19 @@ upstream's live at
   `test_interactions` catches it immediately.
 
 ### Added
+
+- **Direct mode: the panel runs without the Mac.** With `TK_CLAUDE_REFRESH_TOKEN`
+  in `secrets.h` the panel fetches the Claude quota from
+  `api.anthropic.com/api/oauth/usage` itself and renews its own OAuth token
+  (rotated pair kept in NVS, saved before use). It needs its own login: sharing
+  one with Claude Code logs one of them out. Only the pages it can fill are
+  built (session, weekly, model weekly, credits); burn rate, both trackers,
+  Value, Codex and GitHub are not, and the left "used today" statistic is not
+  drawn. Verified on `torget-lcd-154-01` on 2026-10-21; see
+  [docs/direct-mode.md](docs/direct-mode.md).
+- **Dollar credits page.** What is left, the share spent, the amount spent and
+  the time to expiry. The API serves the pool under a codename that changes, so
+  it is found by shape and shows dashes when zero or several pools match.
 
 - The five-hour session window has its own page, and it is the first one, so
   the number that decides whether a long run finishes needs no swipe. Every

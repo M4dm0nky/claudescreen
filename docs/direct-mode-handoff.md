@@ -1,5 +1,14 @@
 # Handoff: direct mode, to the local agent
 
+> **Status 2026-10-21: done.** The local agent compiled it, gave the panel its
+> own login, flashed it over the air and confirmed `usage ok` on the real
+> panel. What was proven, and the one thing still to watch (a rotated token
+> surviving a reboot after the access token expires), is in
+> [direct-mode.md](direct-mode.md#verified-2026-10-21-on-torget-lcd-154-01).
+> The open items below were resolved by building only the pages direct mode can
+> fill. This file is kept as the record of what was handed over; the UNVERIFIED
+> list below is historical.
+
 Written 2026-10-21 by a cloud session that had no access to the Mac, the
 device, `secrets.h`, `.ota-device` or ESP-IDF. Everything below marked
 UNVERIFIED has never run against the real API or the real panel. You have the
